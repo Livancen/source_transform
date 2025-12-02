@@ -22,8 +22,16 @@ pub struct ProcessOptions {
     pub target_height: u32,
     pub reduce_bitrate: bool,
     pub target_bitrate: String, // e.g., "1M", "500k"
-    pub reduce_profile: bool,
-    pub target_profile: String, // e.g., "baseline", "main", "high"
+    pub reduce_level: bool,
+    pub target_level: String, // e.g., "3.0", "4.0", "5.1"
+    pub convert_h265_to_h264: bool,
+    pub convert_format: bool,
+    pub target_format: String, // e.g., "mp4", "avi", "mkv"
+    pub crop: bool,
+    pub crop_width: u32,
+    pub crop_height: u32,
+    pub crop_x: u32,
+    pub crop_y: u32,
     pub rotate: bool,
     pub rotation_degrees: i32, // 90, 180, 270, -90
 }
@@ -41,6 +49,35 @@ pub struct FileInfo {
     pub path: String,
     pub name: String,
     pub file_type: String, // "image" or "video"
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct VideoInfo {
+    pub path: String,
+    pub name: String,
+    pub codec: String,
+    pub profile: String,
+    pub level: String,
+    pub width: u32,
+    pub height: u32,
+    pub framerate: f64,
+    pub bitrate: u64,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct DeviceCompatibility {
+    pub device: String,
+    pub compatible: bool,
+    pub reason: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct VideoCompatibilityResult {
+    pub path: String,
+    pub name: String,
+    pub video_info: VideoInfo,
+    pub devices: Vec<DeviceCompatibility>,
+    pub thumbnail: String, // Base64 encoded thumbnail
 }
 
 fn get_file_type(path: &PathBuf) -> Option<String> {
@@ -71,6 +108,10 @@ fn add_timestamp_to_filename(path: &PathBuf) -> PathBuf {
         format!("{}_{}.{}", stem, timestamp, ext)
     };
     path.with_file_name(new_name)
+}
+
+fn change_extension(path: &PathBuf, new_ext: &str) -> PathBuf {
+    path.with_extension(new_ext)
 }
 
 #[tauri::command]
@@ -163,70 +204,435 @@ fn scan_input_files(input_dir: String) -> Result<Vec<FileInfo>, String> {
     Ok(files)
 }
 
-fn process_image(
+#[tauri::command]
+async fn get_video_dimensions(app: AppHandle, video_path: String) -> Result<(u32, u32), String> {
+    // 使用ffprobe获取视频尺寸
+    let output = app
+        .shell()
+        .sidecar("ffprobe")
+        .map_err(|e| format!("无法找到FFprobe: {}", e))?
+        .args(&[
+            "-v", "error",
+            "-select_streams", "v:0",
+            "-show_entries", "stream=width,height",
+            "-of", "csv=p=0",
+            &video_path,
+        ])
+        .output()
+        .await
+        .map_err(|e| format!("无法执行FFprobe: {}", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("FFprobe执行失败: {}", stderr));
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let parts: Vec<&str> = stdout.trim().split(',').collect();
+
+    if parts.len() >= 2 {
+        let width = parts[0].parse::<u32>().map_err(|_| "无法解析视频宽度")?;
+        let height = parts[1].parse::<u32>().map_err(|_| "无法解析视频高度")?;
+        Ok((width, height))
+    } else {
+        Err("无法获取视频尺寸".to_string())
+    }
+}
+
+#[tauri::command]
+async fn extract_video_frame(app: AppHandle, video_path: String) -> Result<String, String> {
+    // 获取临时目录
+    let temp_dir = std::env::temp_dir();
+    let frame_path = temp_dir.join(format!("crop_preview_{}.jpg", generate_timestamp()));
+    let frame_path_str = frame_path.to_string_lossy().to_string();
+
+    // 使用ffmpeg提取第一帧
+    let output = app
+        .shell()
+        .sidecar("ffmpeg")
+        .map_err(|e| format!("无法找到FFmpeg: {}", e))?
+        .args(&[
+            "-i", &video_path,
+            "-vframes", "1",
+            "-q:v", "2",
+            "-y",
+            &frame_path_str,
+        ])
+        .output()
+        .await
+        .map_err(|e| format!("无法执行FFmpeg: {}", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("提取视频帧失败: {}", stderr));
+    }
+
+    // 读取图片文件并转换为Base64
+    let image_data = std::fs::read(&frame_path)
+        .map_err(|e| format!("读取帧图片失败: {}", e))?;
+
+    // 删除临时文件
+    let _ = std::fs::remove_file(&frame_path);
+
+    // 返回Base64数据URL
+    use base64::{Engine as _, engine::general_purpose::STANDARD};
+    let base64_data = STANDARD.encode(&image_data);
+    Ok(format!("data:image/jpeg;base64,{}", base64_data))
+}
+
+// 检查设备兼容性
+fn check_device_compatibility(info: &VideoInfo) -> Vec<DeviceCompatibility> {
+    let mut results = Vec::new();
+    let codec = info.codec.to_lowercase();
+
+    // 解析level为数字
+    let level_num: f64 = info.level.parse().unwrap_or(0.0);
+
+    // RK3399 兼容性检查
+    // H.264: 4K@30fps, Level 5.1
+    // H.265: 4K@60fps, Level 5.1
+    // VP9: 4K@30fps
+    let rk3399 = {
+        let mut compatible = true;
+        let mut reason = String::from("兼容");
+
+        if codec.contains("h264") || codec.contains("avc") {
+            if info.width > 4096 || info.height > 2160 {
+                compatible = false;
+                reason = format!("分辨率 {}x{} 超过 4K 限制", info.width, info.height);
+            } else if level_num > 5.1 {
+                compatible = false;
+                reason = format!("Level {} 超过 5.1 限制", info.level);
+            } else if info.width > 1920 && info.framerate > 30.0 {
+                compatible = false;
+                reason = format!("4K@{}fps 超过 4K@30fps 限制", info.framerate as u32);
+            }
+        } else if codec.contains("h265") || codec.contains("hevc") {
+            if info.width > 4096 || info.height > 2160 {
+                compatible = false;
+                reason = format!("分辨率 {}x{} 超过 4K 限制", info.width, info.height);
+            } else if level_num > 5.1 {
+                compatible = false;
+                reason = format!("Level {} 超过 5.1 限制", info.level);
+            }
+        } else if codec.contains("vp9") {
+            if info.width > 4096 || info.height > 2160 {
+                compatible = false;
+                reason = format!("分辨率 {}x{} 超过 4K 限制", info.width, info.height);
+            } else if info.framerate > 30.0 {
+                compatible = false;
+                reason = format!("VP9 {}fps 超过 30fps 限制", info.framerate as u32);
+            }
+        } else if codec.contains("av1") {
+            compatible = false;
+            reason = String::from("不支持 AV1 编码");
+        } else {
+            compatible = false;
+            reason = format!("不支持 {} 编码", info.codec);
+        }
+
+        DeviceCompatibility {
+            device: "RK3399".to_string(),
+            compatible,
+            reason,
+        }
+    };
+    results.push(rk3399);
+
+    // RK3566 兼容性检查
+    // H.264: 4K@30fps, Level 5.1
+    // H.265: 4K@60fps, Level 5.1
+    // VP9: 4K@60fps
+    let rk3566 = {
+        let mut compatible = true;
+        let mut reason = String::from("兼容");
+
+        if codec.contains("h264") || codec.contains("avc") {
+            if info.width > 4096 || info.height > 2160 {
+                compatible = false;
+                reason = format!("分辨率 {}x{} 超过 4K 限制", info.width, info.height);
+            } else if level_num > 5.1 {
+                compatible = false;
+                reason = format!("Level {} 超过 5.1 限制", info.level);
+            } else if info.width > 1920 && info.framerate > 30.0 {
+                compatible = false;
+                reason = format!("4K@{}fps 超过 4K@30fps 限制", info.framerate as u32);
+            }
+        } else if codec.contains("h265") || codec.contains("hevc") {
+            if info.width > 4096 || info.height > 2160 {
+                compatible = false;
+                reason = format!("分辨率 {}x{} 超过 4K 限制", info.width, info.height);
+            } else if level_num > 5.1 {
+                compatible = false;
+                reason = format!("Level {} 超过 5.1 限制", info.level);
+            }
+        } else if codec.contains("vp9") {
+            if info.width > 4096 || info.height > 2160 {
+                compatible = false;
+                reason = format!("分辨率 {}x{} 超过 4K 限制", info.width, info.height);
+            }
+        } else if codec.contains("av1") {
+            compatible = false;
+            reason = String::from("不支持 AV1 编码");
+        } else {
+            compatible = false;
+            reason = format!("不支持 {} 编码", info.codec);
+        }
+
+        DeviceCompatibility {
+            device: "RK3566".to_string(),
+            compatible,
+            reason,
+        }
+    };
+    results.push(rk3566);
+
+    // RK3588 兼容性检查
+    // H.264: 8K@30fps, Level 6.0
+    // H.265: 8K@60fps, Level 6.1
+    // VP9: 8K@30fps
+    // AV1: 8K@30fps
+    let rk3588 = {
+        let mut compatible = true;
+        let mut reason = String::from("兼容");
+
+        if codec.contains("h264") || codec.contains("avc") {
+            if info.width > 7680 || info.height > 4320 {
+                compatible = false;
+                reason = format!("分辨率 {}x{} 超过 8K 限制", info.width, info.height);
+            } else if level_num > 6.0 {
+                compatible = false;
+                reason = format!("Level {} 超过 6.0 限制", info.level);
+            } else if info.width > 4096 && info.framerate > 30.0 {
+                compatible = false;
+                reason = format!("8K@{}fps 超过 8K@30fps 限制", info.framerate as u32);
+            }
+        } else if codec.contains("h265") || codec.contains("hevc") {
+            if info.width > 7680 || info.height > 4320 {
+                compatible = false;
+                reason = format!("分辨率 {}x{} 超过 8K 限制", info.width, info.height);
+            } else if level_num > 6.1 {
+                compatible = false;
+                reason = format!("Level {} 超过 6.1 限制", info.level);
+            }
+        } else if codec.contains("vp9") {
+            if info.width > 7680 || info.height > 4320 {
+                compatible = false;
+                reason = format!("分辨率 {}x{} 超过 8K 限制", info.width, info.height);
+            } else if info.framerate > 30.0 {
+                compatible = false;
+                reason = format!("VP9 {}fps 超过 30fps 限制", info.framerate as u32);
+            }
+        } else if codec.contains("av1") {
+            if info.width > 7680 || info.height > 4320 {
+                compatible = false;
+                reason = format!("分辨率 {}x{} 超过 8K 限制", info.width, info.height);
+            } else if info.framerate > 30.0 {
+                compatible = false;
+                reason = format!("AV1 {}fps 超过 30fps 限制", info.framerate as u32);
+            }
+        } else {
+            compatible = false;
+            reason = format!("不支持 {} 编码", info.codec);
+        }
+
+        DeviceCompatibility {
+            device: "RK3588".to_string(),
+            compatible,
+            reason,
+        }
+    };
+    results.push(rk3588);
+
+    results
+}
+
+#[tauri::command]
+async fn detect_video_compatibility(app: AppHandle, input_dir: String) -> Result<Vec<VideoCompatibilityResult>, String> {
+    let files = scan_input_files(input_dir)?;
+    let video_files: Vec<_> = files.into_iter().filter(|f| f.file_type == "video").collect();
+
+    if video_files.is_empty() {
+        return Err("没有找到视频文件".to_string());
+    }
+
+    let mut results = Vec::new();
+
+    for file in video_files {
+        // 使用ffprobe获取详细视频信息
+        let output = app
+            .shell()
+            .sidecar("ffprobe")
+            .map_err(|e| format!("无法找到FFprobe: {}", e))?
+            .args(&[
+                "-v", "error",
+                "-select_streams", "v:0",
+                "-show_entries", "stream=codec_name,profile,level,width,height,r_frame_rate,bit_rate",
+                "-of", "json",
+                &file.path,
+            ])
+            .output()
+            .await
+            .map_err(|e| format!("无法执行FFprobe: {}", e))?;
+
+        if !output.status.success() {
+            continue;
+        }
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let json: serde_json::Value = serde_json::from_str(&stdout).unwrap_or_default();
+
+        if let Some(streams) = json.get("streams").and_then(|s| s.as_array()) {
+            if let Some(stream) = streams.first() {
+                let codec = stream.get("codec_name").and_then(|v| v.as_str()).unwrap_or("unknown").to_string();
+                let profile = stream.get("profile").and_then(|v| v.as_str()).unwrap_or("unknown").to_string();
+                let level = stream.get("level").and_then(|v| v.as_i64()).unwrap_or(0);
+                let level_str = if level > 0 { format!("{:.1}", level as f64 / 10.0) } else { "unknown".to_string() };
+                let width = stream.get("width").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
+                let height = stream.get("height").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
+
+                // 解析帧率 (格式如 "30/1" 或 "30000/1001")
+                let framerate_str = stream.get("r_frame_rate").and_then(|v| v.as_str()).unwrap_or("0/1");
+                let framerate: f64 = {
+                    let parts: Vec<&str> = framerate_str.split('/').collect();
+                    if parts.len() == 2 {
+                        let num: f64 = parts[0].parse().unwrap_or(0.0);
+                        let den: f64 = parts[1].parse().unwrap_or(1.0);
+                        if den > 0.0 { num / den } else { 0.0 }
+                    } else {
+                        framerate_str.parse().unwrap_or(0.0)
+                    }
+                };
+
+                let bitrate = stream.get("bit_rate").and_then(|v| v.as_str()).and_then(|s| s.parse().ok()).unwrap_or(0u64);
+
+                let video_info = VideoInfo {
+                    path: file.path.clone(),
+                    name: file.name.clone(),
+                    codec,
+                    profile,
+                    level: level_str,
+                    width,
+                    height,
+                    framerate,
+                    bitrate,
+                };
+
+                let devices = check_device_compatibility(&video_info);
+
+                // 提取缩略图
+                let thumbnail = {
+                    let temp_dir = std::env::temp_dir();
+                    let thumb_path = temp_dir.join(format!("thumb_{}.jpg", generate_timestamp()));
+                    let thumb_path_str = thumb_path.to_string_lossy().to_string();
+
+                    // 使用ffmpeg提取缩略图 (缩小尺寸以节省空间)
+                    let thumb_output = app
+                        .shell()
+                        .sidecar("ffmpeg")
+                        .ok()
+                        .map(|cmd| cmd.args(&[
+                            "-i", &file.path,
+                            "-vframes", "1",
+                            "-vf", "scale=120:-1",
+                            "-q:v", "5",
+                            "-y",
+                            &thumb_path_str,
+                        ]));
+
+                    let mut thumb_base64 = String::new();
+                    if let Some(cmd) = thumb_output {
+                        if let Ok(output) = cmd.output().await {
+                            if output.status.success() {
+                                if let Ok(image_data) = std::fs::read(&thumb_path) {
+                                    use base64::{Engine as _, engine::general_purpose::STANDARD};
+                                    thumb_base64 = format!("data:image/jpeg;base64,{}", STANDARD.encode(&image_data));
+                                }
+                                let _ = std::fs::remove_file(&thumb_path);
+                            }
+                        }
+                    }
+                    thumb_base64
+                };
+
+                results.push(VideoCompatibilityResult {
+                    path: file.path,
+                    name: file.name,
+                    video_info,
+                    devices,
+                    thumbnail,
+                });
+            }
+        }
+    }
+
+    Ok(results)
+}
+
+async fn process_image(
+    app: &AppHandle,
     input_path: &str,
     output_path: &str,
     options: &ProcessOptions,
 ) -> Result<(), String> {
-    let mut img = image::open(input_path).map_err(|e| format!("无法打开图片: {}", e))?;
+    let mut args: Vec<&str> = vec!["-i", input_path, "-y"];
+
+    // 视频滤镜（FFmpeg处理图片也用-vf）
+    let mut filters: Vec<String> = Vec::new();
 
     // 旋转
     if options.rotate {
-        img = match options.rotation_degrees {
-            90 | -270 => image::DynamicImage::ImageRgba8(image::imageops::rotate90(&img.to_rgba8())),
-            180 | -180 => image::DynamicImage::ImageRgba8(image::imageops::rotate180(&img.to_rgba8())),
-            270 | -90 => image::DynamicImage::ImageRgba8(image::imageops::rotate270(&img.to_rgba8())),
-            _ => img,
-        };
+        match options.rotation_degrees {
+            90 | -270 => filters.push("transpose=1".to_string()),
+            180 | -180 => filters.push("transpose=1,transpose=1".to_string()),
+            270 | -90 => filters.push("transpose=2".to_string()),
+            _ => {}
+        }
     }
 
     // 调整分辨率（独立选项）
     if options.reduce_resolution && options.target_width > 0 && options.target_height > 0 {
-        img = img.resize(
-            options.target_width,
-            options.target_height,
-            image::imageops::FilterType::Lanczos3,
-        );
+        filters.push(format!("scale={}:{}", options.target_width, options.target_height));
     }
 
     // 压缩时降低分辨率
     if options.compress && options.compress_resize && options.compress_width > 0 && options.compress_height > 0 {
-        img = img.resize(
-            options.compress_width,
-            options.compress_height,
-            image::imageops::FilterType::Lanczos3,
-        );
+        filters.push(format!("scale={}:{}", options.compress_width, options.compress_height));
     }
 
-    // 保存（压缩质量通过格式处理）
-    let output_path = PathBuf::from(output_path);
-    let ext = output_path
-        .extension()
-        .and_then(|e| e.to_str())
-        .unwrap_or("jpg")
-        .to_lowercase();
+    let vf_arg: String;
+    if !filters.is_empty() {
+        vf_arg = filters.join(",");
+        args.push("-vf");
+        args.push(&vf_arg);
+    }
 
-    match ext.as_str() {
-        "jpg" | "jpeg" => {
-            let quality = if options.compress {
-                options.compress_quality.min(100).max(1) as u8
-            } else {
-                90
-            };
-            let mut file = std::fs::File::create(&output_path)
-                .map_err(|e| format!("无法创建输出文件: {}", e))?;
-            let encoder = image::codecs::jpeg::JpegEncoder::new_with_quality(&mut file, quality);
-            img.write_with_encoder(encoder)
-                .map_err(|e| format!("无法编码图片: {}", e))?;
-        }
-        "png" => {
-            img.save(&output_path)
-                .map_err(|e| format!("无法保存图片: {}", e))?;
-        }
-        _ => {
-            img.save(&output_path)
-                .map_err(|e| format!("无法保存图片: {}", e))?;
-        }
+    // JPEG质量设置（FFmpeg的q:v范围是2-31，2最好，31最差）
+    // 用户输入1-100，需要转换
+    let quality_str: String;
+    if options.compress {
+        // 将1-100转换为31-2（反向）
+        let q = 2 + ((100 - options.compress_quality) as f32 * 29.0 / 99.0) as u32;
+        quality_str = q.to_string();
+        args.push("-q:v");
+        args.push(&quality_str);
+    }
+
+    args.push(output_path);
+
+    // 使用sidecar调用ffmpeg
+    let output = app
+        .shell()
+        .sidecar("ffmpeg")
+        .map_err(|e| format!("无法找到FFmpeg: {}", e))?
+        .args(&args)
+        .output()
+        .await
+        .map_err(|e| format!("无法执行FFmpeg: {}", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("FFmpeg处理失败: {}", stderr));
     }
 
     Ok(())
@@ -242,6 +648,14 @@ async fn process_video(
 
     // 视频滤镜
     let mut video_filters: Vec<String> = Vec::new();
+
+    // 裁剪（先裁剪，再缩放）
+    if options.crop && options.crop_width > 0 && options.crop_height > 0 {
+        video_filters.push(format!(
+            "crop={}:{}:{}:{}",
+            options.crop_width, options.crop_height, options.crop_x, options.crop_y
+        ));
+    }
 
     // 调整分辨率（独立选项）
     if options.reduce_resolution && options.target_width > 0 && options.target_height > 0 {
@@ -278,12 +692,18 @@ async fn process_video(
         args.push(&bitrate);
     }
 
-    // Profile 等级
-    let profile: String;
-    if options.reduce_profile && !options.target_profile.is_empty() {
-        profile = options.target_profile.clone();
-        args.push("-profile:v");
-        args.push(&profile);
+    // Level 等级
+    let level: String;
+    if options.reduce_level && !options.target_level.is_empty() {
+        level = options.target_level.clone();
+        args.push("-level:v");
+        args.push(&level);
+    }
+
+    // H.265 转 H.264
+    if options.convert_h265_to_h264 {
+        args.push("-c:v");
+        args.push("libx264");
     }
 
     // 压缩（使用CRF）
@@ -363,8 +783,16 @@ async fn process_files(
         }
 
         let result = match file.file_type.as_str() {
-            "image" => process_image(&file.path, &output_path.to_string_lossy(), &options),
-            "video" => process_video(&app, &file.path, &output_path.to_string_lossy(), &options).await,
+            "image" => process_image(&app, &file.path, &output_path.to_string_lossy(), &options).await,
+            "video" => {
+                // 如果启用格式转换，更改输出文件扩展名
+                let final_output_path = if options.convert_format && !options.target_format.is_empty() {
+                    change_extension(&output_path, &options.target_format)
+                } else {
+                    output_path.clone()
+                };
+                process_video(&app, &file.path, &final_output_path.to_string_lossy(), &options).await
+            },
             _ => Err("不支持的文件类型".to_string()),
         };
 
@@ -437,6 +865,9 @@ pub fn run() {
             set_custom_dirs,
             get_custom_dirs,
             scan_input_files,
+            get_video_dimensions,
+            extract_video_frame,
+            detect_video_compatibility,
             process_files,
             open_folder,
         ])
