@@ -3,7 +3,6 @@ import { ref, onMounted, computed } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
-import { convertFileSrc } from "@tauri-apps/api/core";
 
 interface FileInfo {
   path: string;
@@ -119,10 +118,10 @@ const imageCount = computed(
 const videoCount = computed(
   () => files.value.filter((f) => f.file_type === "video").length
 );
-const progressPercent = computed(() => {
-  if (!progress.value) return 0;
-  return Math.round((progress.value.current / progress.value.total) * 100);
-});
+// const progressPercent = computed(() => {
+//   if (!progress.value) return 0;
+//   return Math.round((progress.value.current / progress.value.total) * 100);
+// });
 
 // 裁剪预览状态
 const cropPreviewVisible = ref(false);
@@ -185,8 +184,12 @@ async function openCropPreview() {
     if (options.value.crop_height > cropVideoHeight.value) {
       options.value.crop_height = cropVideoHeight.value;
     }
-    options.value.crop_x = Math.floor((cropVideoWidth.value - options.value.crop_width) / 2);
-    options.value.crop_y = Math.floor((cropVideoHeight.value - options.value.crop_height) / 2);
+    options.value.crop_x = Math.floor(
+      (cropVideoWidth.value - options.value.crop_width) / 2
+    );
+    options.value.crop_y = Math.floor(
+      (cropVideoHeight.value - options.value.crop_height) / 2
+    );
 
     cropPreviewVisible.value = true;
   } catch (e) {
@@ -234,16 +237,26 @@ function startResize(e: MouseEvent, handle: string) {
 function handleMouseMove(e: MouseEvent) {
   if (!isDragging.value && !isResizing.value) return;
 
-  const deltaX = Math.round((e.clientX - dragStartX.value) / previewScale.value);
-  const deltaY = Math.round((e.clientY - dragStartY.value) / previewScale.value);
+  const deltaX = Math.round(
+    (e.clientX - dragStartX.value) / previewScale.value
+  );
+  const deltaY = Math.round(
+    (e.clientY - dragStartY.value) / previewScale.value
+  );
 
   if (isDragging.value) {
     let newX = startCropX.value + deltaX;
     let newY = startCropY.value + deltaY;
 
     // 边界限制
-    newX = Math.max(0, Math.min(newX, cropVideoWidth.value - options.value.crop_width));
-    newY = Math.max(0, Math.min(newY, cropVideoHeight.value - options.value.crop_height));
+    newX = Math.max(
+      0,
+      Math.min(newX, cropVideoWidth.value - options.value.crop_width)
+    );
+    newY = Math.max(
+      0,
+      Math.min(newY, cropVideoHeight.value - options.value.crop_height)
+    );
 
     options.value.crop_x = newX;
     options.value.crop_y = newY;
@@ -255,21 +268,39 @@ function handleMouseMove(e: MouseEvent) {
 
     const handle = resizeHandle.value;
 
-    if (handle.includes('e')) {
-      newW = Math.max(100, Math.min(startCropW.value + deltaX, cropVideoWidth.value - startCropX.value));
+    if (handle.includes("e")) {
+      newW = Math.max(
+        100,
+        Math.min(
+          startCropW.value + deltaX,
+          cropVideoWidth.value - startCropX.value
+        )
+      );
     }
-    if (handle.includes('w')) {
+    if (handle.includes("w")) {
       const maxDelta = startCropX.value;
-      const clampedDelta = Math.max(-maxDelta, Math.min(deltaX, startCropW.value - 100));
+      const clampedDelta = Math.max(
+        -maxDelta,
+        Math.min(deltaX, startCropW.value - 100)
+      );
       newX = startCropX.value + clampedDelta;
       newW = startCropW.value - clampedDelta;
     }
-    if (handle.includes('s')) {
-      newH = Math.max(100, Math.min(startCropH.value + deltaY, cropVideoHeight.value - startCropY.value));
+    if (handle.includes("s")) {
+      newH = Math.max(
+        100,
+        Math.min(
+          startCropH.value + deltaY,
+          cropVideoHeight.value - startCropY.value
+        )
+      );
     }
-    if (handle.includes('n')) {
+    if (handle.includes("n")) {
       const maxDelta = startCropY.value;
-      const clampedDelta = Math.max(-maxDelta, Math.min(deltaY, startCropH.value - 100));
+      const clampedDelta = Math.max(
+        -maxDelta,
+        Math.min(deltaY, startCropH.value - 100)
+      );
       newY = startCropY.value + clampedDelta;
       newH = startCropH.value - clampedDelta;
     }
@@ -365,9 +396,12 @@ async function detectCompatibility() {
   compatibilityResults.value = [];
 
   try {
-    const results = await invoke<VideoCompatibilityResult[]>("detect_video_compatibility", {
-      inputDir: inputDir.value,
-    });
+    const results = await invoke<VideoCompatibilityResult[]>(
+      "detect_video_compatibility",
+      {
+        inputDir: inputDir.value,
+      }
+    );
     compatibilityResults.value = results;
     showCompatibilityModal.value = true;
   } catch (e) {
@@ -464,7 +498,13 @@ async function openFolder(path: string) {
               <span class="stat-label">总计</span>
               <span class="stat-value">{{ files.length }}</span>
             </div>
-            <button class="refresh-btn" @click="scanFiles" :disabled="isProcessing">刷新</button>
+            <button
+              class="refresh-btn"
+              @click="scanFiles"
+              :disabled="isProcessing"
+            >
+              刷新
+            </button>
           </div>
           <button
             class="detect-btn"
@@ -501,18 +541,37 @@ async function openFolder(path: string) {
             </div>
             <div v-if="options.compress" class="compress-mode">
               <label class="radio-label">
-                <input type="radio" :value="false" v-model="options.compress_resize" />
+                <input
+                  type="radio"
+                  :value="false"
+                  v-model="options.compress_resize"
+                />
                 仅压缩质量（保持原分辨率）
               </label>
               <label class="radio-label">
-                <input type="radio" :value="true" v-model="options.compress_resize" />
+                <input
+                  type="radio"
+                  :value="true"
+                  v-model="options.compress_resize"
+                />
                 压缩质量 + 降低分辨率
               </label>
-              <div v-if="options.compress_resize" class="option-detail compress-size">
+              <div
+                v-if="options.compress_resize"
+                class="option-detail compress-size"
+              >
                 <label>宽:</label>
-                <input type="number" v-model.number="options.compress_width" min="1" />
+                <input
+                  type="number"
+                  v-model.number="options.compress_width"
+                  min="1"
+                />
                 <label>高:</label>
-                <input type="number" v-model.number="options.compress_height" min="1" />
+                <input
+                  type="number"
+                  v-model.number="options.compress_height"
+                  min="1"
+                />
               </div>
             </div>
           </div>
@@ -565,7 +624,11 @@ async function openFolder(path: string) {
             <div v-if="options.crop" class="option-detail crop-info">
               <span>{{ options.crop_width }} x {{ options.crop_height }}</span>
               <span>位置: ({{ options.crop_x }}, {{ options.crop_y }})</span>
-              <button class="crop-btn" @click="openCropPreview" :disabled="videoFiles.length === 0">
+              <button
+                class="crop-btn"
+                @click="openCropPreview"
+                :disabled="videoFiles.length === 0"
+              >
                 设置裁剪区域
               </button>
             </div>
@@ -663,8 +726,13 @@ async function openFolder(path: string) {
     <!-- 进度显示 -->
     <section class="section" v-if="isProcessing && progress">
       <div class="processing-status">
-        <span class="processing-text">正在处理第 {{ progress.current }} 个文件，共 {{ progress.total }} 个</span>
-        <span class="processing-file" v-if="progress.current_file">{{ progress.current_file }}</span>
+        <span class="processing-text"
+          >正在处理第 {{ progress.current }} 个文件，共
+          {{ progress.total }} 个</span
+        >
+        <span class="processing-file" v-if="progress.current_file">{{
+          progress.current_file
+        }}</span>
       </div>
     </section>
 
@@ -675,7 +743,13 @@ async function openFolder(path: string) {
     </section>
 
     <!-- 裁剪预览弹窗 -->
-    <div class="crop-modal" v-if="cropPreviewVisible" @mousemove="handleMouseMove" @mouseup="handleMouseUp" @mouseleave="handleMouseUp">
+    <div
+      class="crop-modal"
+      v-if="cropPreviewVisible"
+      @mousemove="handleMouseMove"
+      @mouseup="handleMouseUp"
+      @mouseleave="handleMouseUp"
+    >
       <div class="crop-modal-content">
         <h3>设置裁剪区域</h3>
         <p class="crop-hint">拖拽移动裁剪框，拖拽边角调整大小</p>
@@ -685,7 +759,7 @@ async function openFolder(path: string) {
             :src="cropFrameImage"
             :style="{
               width: cropVideoWidth * previewScale + 'px',
-              height: cropVideoHeight * previewScale + 'px'
+              height: cropVideoHeight * previewScale + 'px',
             }"
             draggable="false"
           />
@@ -693,25 +767,43 @@ async function openFolder(path: string) {
           <!-- 裁剪区域遮罩 -->
           <div class="crop-overlay">
             <!-- 上方遮罩 -->
-            <div class="crop-mask crop-mask-top" :style="{
-              height: options.crop_y * previewScale + 'px'
-            }"></div>
+            <div
+              class="crop-mask crop-mask-top"
+              :style="{
+                height: options.crop_y * previewScale + 'px',
+              }"
+            ></div>
             <!-- 下方遮罩 -->
-            <div class="crop-mask crop-mask-bottom" :style="{
-              height: (cropVideoHeight - options.crop_y - options.crop_height) * previewScale + 'px'
-            }"></div>
+            <div
+              class="crop-mask crop-mask-bottom"
+              :style="{
+                height:
+                  (cropVideoHeight - options.crop_y - options.crop_height) *
+                    previewScale +
+                  'px',
+              }"
+            ></div>
             <!-- 左侧遮罩 -->
-            <div class="crop-mask crop-mask-left" :style="{
-              top: options.crop_y * previewScale + 'px',
-              height: options.crop_height * previewScale + 'px',
-              width: options.crop_x * previewScale + 'px'
-            }"></div>
+            <div
+              class="crop-mask crop-mask-left"
+              :style="{
+                top: options.crop_y * previewScale + 'px',
+                height: options.crop_height * previewScale + 'px',
+                width: options.crop_x * previewScale + 'px',
+              }"
+            ></div>
             <!-- 右侧遮罩 -->
-            <div class="crop-mask crop-mask-right" :style="{
-              top: options.crop_y * previewScale + 'px',
-              height: options.crop_height * previewScale + 'px',
-              width: (cropVideoWidth - options.crop_x - options.crop_width) * previewScale + 'px'
-            }"></div>
+            <div
+              class="crop-mask crop-mask-right"
+              :style="{
+                top: options.crop_y * previewScale + 'px',
+                height: options.crop_height * previewScale + 'px',
+                width:
+                  (cropVideoWidth - options.crop_x - options.crop_width) *
+                    previewScale +
+                  'px',
+              }"
+            ></div>
           </div>
 
           <!-- 裁剪选择框 -->
@@ -722,22 +814,48 @@ async function openFolder(path: string) {
               left: options.crop_x * previewScale + 'px',
               top: options.crop_y * previewScale + 'px',
               width: options.crop_width * previewScale + 'px',
-              height: options.crop_height * previewScale + 'px'
+              height: options.crop_height * previewScale + 'px',
             }"
             @mousedown="startDrag"
           >
             <!-- 调整大小的手柄 -->
-            <div class="resize-handle resize-n" @mousedown.stop="startResize($event, 'n')"></div>
-            <div class="resize-handle resize-s" @mousedown.stop="startResize($event, 's')"></div>
-            <div class="resize-handle resize-e" @mousedown.stop="startResize($event, 'e')"></div>
-            <div class="resize-handle resize-w" @mousedown.stop="startResize($event, 'w')"></div>
-            <div class="resize-handle resize-ne" @mousedown.stop="startResize($event, 'ne')"></div>
-            <div class="resize-handle resize-nw" @mousedown.stop="startResize($event, 'nw')"></div>
-            <div class="resize-handle resize-se" @mousedown.stop="startResize($event, 'se')"></div>
-            <div class="resize-handle resize-sw" @mousedown.stop="startResize($event, 'sw')"></div>
+            <div
+              class="resize-handle resize-n"
+              @mousedown.stop="startResize($event, 'n')"
+            ></div>
+            <div
+              class="resize-handle resize-s"
+              @mousedown.stop="startResize($event, 's')"
+            ></div>
+            <div
+              class="resize-handle resize-e"
+              @mousedown.stop="startResize($event, 'e')"
+            ></div>
+            <div
+              class="resize-handle resize-w"
+              @mousedown.stop="startResize($event, 'w')"
+            ></div>
+            <div
+              class="resize-handle resize-ne"
+              @mousedown.stop="startResize($event, 'ne')"
+            ></div>
+            <div
+              class="resize-handle resize-nw"
+              @mousedown.stop="startResize($event, 'nw')"
+            ></div>
+            <div
+              class="resize-handle resize-se"
+              @mousedown.stop="startResize($event, 'se')"
+            ></div>
+            <div
+              class="resize-handle resize-sw"
+              @mousedown.stop="startResize($event, 'sw')"
+            ></div>
 
             <!-- 尺寸显示 -->
-            <div class="crop-size-label">{{ options.crop_width }} x {{ options.crop_height }}</div>
+            <div class="crop-size-label">
+              {{ options.crop_width }} x {{ options.crop_height }}
+            </div>
           </div>
         </div>
 
@@ -745,19 +863,39 @@ async function openFolder(path: string) {
         <div class="crop-inputs">
           <div class="crop-input-group">
             <label>宽度:</label>
-            <input type="number" v-model.number="options.crop_width" min="100" :max="cropVideoWidth" />
+            <input
+              type="number"
+              v-model.number="options.crop_width"
+              min="100"
+              :max="cropVideoWidth"
+            />
           </div>
           <div class="crop-input-group">
             <label>高度:</label>
-            <input type="number" v-model.number="options.crop_height" min="100" :max="cropVideoHeight" />
+            <input
+              type="number"
+              v-model.number="options.crop_height"
+              min="100"
+              :max="cropVideoHeight"
+            />
           </div>
           <div class="crop-input-group">
             <label>X:</label>
-            <input type="number" v-model.number="options.crop_x" min="0" :max="cropVideoWidth - options.crop_width" />
+            <input
+              type="number"
+              v-model.number="options.crop_x"
+              min="0"
+              :max="cropVideoWidth - options.crop_width"
+            />
           </div>
           <div class="crop-input-group">
             <label>Y:</label>
-            <input type="number" v-model.number="options.crop_y" min="0" :max="cropVideoHeight - options.crop_height" />
+            <input
+              type="number"
+              v-model.number="options.crop_y"
+              min="0"
+              :max="cropVideoHeight - options.crop_height"
+            />
           </div>
         </div>
 
@@ -781,20 +919,47 @@ async function openFolder(path: string) {
         <div class="compat-summary">
           <div class="compat-summary-item">
             <span class="device-name">RK3399</span>
-            <span :class="['compat-count', getIncompatibleCount('RK3399') > 0 ? 'has-issues' : 'all-good']">
-              {{ getIncompatibleCount('RK3399') > 0 ? `${getIncompatibleCount('RK3399')} 个不兼容` : '全部兼容' }}
+            <span
+              :class="[
+                'compat-count',
+                getIncompatibleCount('RK3399') > 0 ? 'has-issues' : 'all-good',
+              ]"
+            >
+              {{
+                getIncompatibleCount("RK3399") > 0
+                  ? `${getIncompatibleCount("RK3399")} 个不兼容`
+                  : "全部兼容"
+              }}
             </span>
           </div>
           <div class="compat-summary-item">
             <span class="device-name">RK3566</span>
-            <span :class="['compat-count', getIncompatibleCount('RK3566') > 0 ? 'has-issues' : 'all-good']">
-              {{ getIncompatibleCount('RK3566') > 0 ? `${getIncompatibleCount('RK3566')} 个不兼容` : '全部兼容' }}
+            <span
+              :class="[
+                'compat-count',
+                getIncompatibleCount('RK3566') > 0 ? 'has-issues' : 'all-good',
+              ]"
+            >
+              {{
+                getIncompatibleCount("RK3566") > 0
+                  ? `${getIncompatibleCount("RK3566")} 个不兼容`
+                  : "全部兼容"
+              }}
             </span>
           </div>
           <div class="compat-summary-item">
             <span class="device-name">RK3588</span>
-            <span :class="['compat-count', getIncompatibleCount('RK3588') > 0 ? 'has-issues' : 'all-good']">
-              {{ getIncompatibleCount('RK3588') > 0 ? `${getIncompatibleCount('RK3588')} 个不兼容` : '全部兼容' }}
+            <span
+              :class="[
+                'compat-count',
+                getIncompatibleCount('RK3588') > 0 ? 'has-issues' : 'all-good',
+              ]"
+            >
+              {{
+                getIncompatibleCount("RK3588") > 0
+                  ? `${getIncompatibleCount("RK3588")} 个不兼容`
+                  : "全部兼容"
+              }}
             </span>
           </div>
         </div>
@@ -818,8 +983,8 @@ async function openFolder(path: string) {
                 <span class="video-specs">
                   {{ result.video_info.codec.toUpperCase() }} |
                   {{ result.video_info.width }}x{{ result.video_info.height }} |
-                  {{ Math.round(result.video_info.framerate) }}fps |
-                  Level {{ result.video_info.level }}
+                  {{ Math.round(result.video_info.framerate) }}fps | Level
+                  {{ result.video_info.level }}
                 </span>
               </div>
             </div>
@@ -827,18 +992,25 @@ async function openFolder(path: string) {
               <span
                 v-for="device in result.devices"
                 :key="device.device"
-                :class="['device-badge', device.compatible ? 'compatible' : 'incompatible']"
+                :class="[
+                  'device-badge',
+                  device.compatible ? 'compatible' : 'incompatible',
+                ]"
                 :title="device.reason"
               >
                 {{ device.device }}
-                <span class="device-status">{{ device.compatible ? '✓' : '✗' }}</span>
+                <span class="device-status">{{
+                  device.compatible ? "✓" : "✗"
+                }}</span>
               </span>
             </div>
           </div>
         </div>
 
         <div class="compat-modal-actions">
-          <button class="primary-btn" @click="closeCompatibilityModal">关闭</button>
+          <button class="primary-btn" @click="closeCompatibilityModal">
+            关闭
+          </button>
         </div>
       </div>
     </div>
@@ -1219,7 +1391,7 @@ button:disabled {
 }
 
 .crop-area::before {
-  content: '';
+  content: "";
   position: absolute;
   top: 33.33%;
   left: 0;
@@ -1229,7 +1401,7 @@ button:disabled {
 }
 
 .crop-area::after {
-  content: '';
+  content: "";
   position: absolute;
   top: 66.66%;
   left: 0;
