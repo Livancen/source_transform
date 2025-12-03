@@ -575,7 +575,18 @@ async fn process_image(
     output_path: &str,
     options: &ProcessOptions,
 ) -> Result<(), String> {
-    let mut args: Vec<&str> = vec!["-i", input_path, "-y"];
+    // 获取输出文件扩展名，用于选择合适的编码参数
+    let output_ext = std::path::Path::new(output_path)
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.to_lowercase())
+        .unwrap_or_default();
+
+    let mut args: Vec<String> = vec!["-i".to_string(), input_path.to_string()];
+
+    // 保留元数据（包括可能的ICC Profile）
+    args.push("-map_metadata".to_string());
+    args.push("0".to_string());
 
     // 视频滤镜（FFmpeg处理图片也用-vf）
     let mut filters: Vec<String> = Vec::new();
@@ -590,42 +601,113 @@ async fn process_image(
         }
     }
 
-    // 调整分辨率（独立选项）
+    // 调整分辨率（独立选项）- 使用高质量缩放并保持色彩范围
     if options.reduce_resolution && options.target_width > 0 && options.target_height > 0 {
-        filters.push(format!("scale={}:{}", options.target_width, options.target_height));
+        filters.push(format!(
+            "scale={}:{}:flags=lanczos:in_range=full:out_range=full",
+            options.target_width, options.target_height
+        ));
     }
 
-    // 压缩时降低分辨率
+    // 压缩时降低分辨率 - 使用高质量缩放并保持色彩范围
     if options.compress && options.compress_resize && options.compress_width > 0 && options.compress_height > 0 {
-        filters.push(format!("scale={}:{}", options.compress_width, options.compress_height));
+        filters.push(format!(
+            "scale={}:{}:flags=lanczos:in_range=full:out_range=full",
+            options.compress_width, options.compress_height
+        ));
     }
 
-    let vf_arg: String;
     if !filters.is_empty() {
-        vf_arg = filters.join(",");
-        args.push("-vf");
-        args.push(&vf_arg);
+        let vf_arg = filters.join(",");
+        args.push("-vf".to_string());
+        args.push(vf_arg);
     }
 
-    // JPEG质量设置（FFmpeg的q:v范围是2-31，2最好，31最差）
-    // 用户输入1-100，需要转换
-    let quality_str: String;
-    if options.compress {
-        // 将1-100转换为31-2（反向）
-        let q = 2 + ((100 - options.compress_quality) as f32 * 29.0 / 99.0) as u32;
-        quality_str = q.to_string();
-        args.push("-q:v");
-        args.push(&quality_str);
+    // 根据输出格式设置编码参数，保持色彩准确性
+    match output_ext.as_str() {
+        "jpg" | "jpeg" => {
+            // JPEG: 使用 mjpeg 编码器，保持完整色彩范围
+            args.push("-c:v".to_string());
+            args.push("mjpeg".to_string());
+            args.push("-pix_fmt".to_string());
+            args.push("yuvj444p".to_string()); // 使用4:4:4避免色度子采样
+            args.push("-color_range".to_string());
+            args.push("pc".to_string()); // pc = full range (0-255)
+
+            // 质量设置
+            if options.compress {
+                let q = 2 + ((100 - options.compress_quality) as f32 * 29.0 / 99.0) as u32;
+                args.push("-q:v".to_string());
+                args.push(q.to_string());
+            }
+        }
+        "png" => {
+            // PNG: 无损格式，保持RGB色彩空间
+            args.push("-c:v".to_string());
+            args.push("png".to_string());
+            args.push("-pix_fmt".to_string());
+            args.push("rgb24".to_string());
+        }
+        "webp" => {
+            // WebP: 支持有损和无损
+            args.push("-c:v".to_string());
+            args.push("libwebp".to_string());
+
+            if options.compress {
+                // WebP 质量范围是 0-100
+                args.push("-quality".to_string());
+                args.push(options.compress_quality.to_string());
+            } else {
+                // 无损模式
+                args.push("-lossless".to_string());
+                args.push("1".to_string());
+            }
+        }
+        "bmp" => {
+            // BMP: 无损，使用BGR色彩空间
+            args.push("-c:v".to_string());
+            args.push("bmp".to_string());
+            args.push("-pix_fmt".to_string());
+            args.push("bgr24".to_string());
+        }
+        "tiff" | "tif" => {
+            // TIFF: 无损，保持RGB
+            args.push("-c:v".to_string());
+            args.push("tiff".to_string());
+            args.push("-pix_fmt".to_string());
+            args.push("rgb24".to_string());
+        }
+        "gif" => {
+            // GIF: 256色限制，使用调色板生成以获得最佳效果
+            // 注意：GIF 的色彩损失是格式本身的限制
+            args.push("-c:v".to_string());
+            args.push("gif".to_string());
+        }
+        _ => {
+            // 其他格式：使用默认设置但尝试保持色彩范围
+            args.push("-color_range".to_string());
+            args.push("pc".to_string());
+
+            if options.compress {
+                let q = 2 + ((100 - options.compress_quality) as f32 * 29.0 / 99.0) as u32;
+                args.push("-q:v".to_string());
+                args.push(q.to_string());
+            }
+        }
     }
 
-    args.push(output_path);
+    args.push("-y".to_string());
+    args.push(output_path.to_string());
+
+    // 转换为 &str 引用
+    let args_ref: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
 
     // 使用sidecar调用ffmpeg
     let output = app
         .shell()
         .sidecar("ffmpeg")
         .map_err(|e| format!("无法找到FFmpeg: {}", e))?
-        .args(&args)
+        .args(&args_ref)
         .output()
         .await
         .map_err(|e| format!("无法执行FFmpeg: {}", e))?;

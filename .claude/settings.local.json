@@ -2,7 +2,11 @@
   "permissions": {
     "allow": [
       "Bash(npm install)",
-      "Bash(npx tauri:*)"
+      "Bash(npx tauri:*)",
+      "Bash(cd:*)",
+      "Bash(dir:*)",
+      "Bash(cat:*)",
+      "Bash(cargo check:*)"
     ],
     "deny": [],
     "ask": []
