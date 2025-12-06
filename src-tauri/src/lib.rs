@@ -80,6 +80,38 @@ pub struct VideoCompatibilityResult {
     pub thumbnail: String, // Base64 encoded thumbnail
 }
 
+// 图片信息结构体
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ImageInfo {
+    pub path: String,
+    pub name: String,
+    pub codec: String,         // 编码格式，如 mjpeg, png
+    pub pix_fmt: String,       // 像素格式，如 yuvj420p, gbrap, rgb24
+    pub color_space: String,   // 色彩空间，如 bt709, bt470bg
+    pub color_range: String,   // 色彩范围，如 pc (full), tv (limited)
+    pub width: u32,
+    pub height: u32,
+}
+
+// 图片兼容性问题
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ImageCompatibilityIssue {
+    pub issue_type: String,    // 问题类型：pix_fmt, color_space, resolution
+    pub severity: String,      // 严重程度：error, warning, info
+    pub description: String,   // 问题描述
+}
+
+// 图片兼容性检测结果
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ImageCompatibilityResult {
+    pub path: String,
+    pub name: String,
+    pub image_info: ImageInfo,
+    pub compatible: bool,          // 是否完全兼容
+    pub issues: Vec<ImageCompatibilityIssue>,  // 兼容性问题列表
+    pub thumbnail: String,         // Base64 encoded thumbnail
+}
+
 fn get_file_type(path: &PathBuf) -> Option<String> {
     let ext = path.extension()?.to_str()?.to_lowercase();
     if IMAGE_EXTENSIONS.contains(&ext.as_str()) {
@@ -96,18 +128,6 @@ fn generate_timestamp() -> String {
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default();
     format!("{}", now.as_millis())
-}
-
-fn add_timestamp_to_filename(path: &PathBuf) -> PathBuf {
-    let stem = path.file_stem().unwrap_or_default().to_string_lossy();
-    let ext = path.extension().unwrap_or_default().to_string_lossy();
-    let timestamp = generate_timestamp();
-    let new_name = if ext.is_empty() {
-        format!("{}_{}", stem, timestamp)
-    } else {
-        format!("{}_{}.{}", stem, timestamp, ext)
-    };
-    path.with_file_name(new_name)
 }
 
 fn change_extension(path: &PathBuf, new_ext: &str) -> PathBuf {
@@ -569,71 +589,241 @@ async fn detect_video_compatibility(app: AppHandle, input_dir: String) -> Result
     Ok(results)
 }
 
+// 检查图片兼容性
+fn check_image_compatibility(info: &ImageInfo) -> (bool, Vec<ImageCompatibilityIssue>) {
+    let mut issues = Vec::new();
+    let pix_fmt = info.pix_fmt.to_lowercase();
+    let color_space = info.color_space.to_lowercase();
+
+    // 检查像素格式兼容性
+    // gbrap, gbrp 等非标准格式可能导致色彩问题
+    let problematic_pix_fmts = ["gbrap", "gbrp", "gbrap16", "gbrp16"];
+    if problematic_pix_fmts.iter().any(|fmt| pix_fmt.contains(fmt)) {
+        issues.push(ImageCompatibilityIssue {
+            issue_type: "pix_fmt".to_string(),
+            severity: "error".to_string(),
+            description: format!(
+                "像素格式 {} 可能导致压缩后色彩失真（红色变紫色）",
+                info.pix_fmt
+            ),
+        });
+    }
+
+    // 检查色彩空间兼容性
+    // bt470bg 等非标准色彩空间可能导致色彩转换问题
+    let problematic_color_spaces = ["bt470bg", "bt470m", "smpte170m", "smpte240m"];
+    if problematic_color_spaces.iter().any(|cs| color_space.contains(cs)) {
+        issues.push(ImageCompatibilityIssue {
+            issue_type: "color_space".to_string(),
+            severity: "warning".to_string(),
+            description: format!(
+                "色彩空间 {} 可能导致色彩转换偏差",
+                info.color_space
+            ),
+        });
+    }
+
+    // 检查 gbrap + bt470bg 组合（已知会导致严重色彩问题）
+    if pix_fmt.contains("gbrap") && color_space.contains("bt470bg") {
+        // 移除之前的警告，添加更严重的错误
+        issues.retain(|i| i.issue_type != "pix_fmt" && i.issue_type != "color_space");
+        issues.push(ImageCompatibilityIssue {
+            issue_type: "pix_fmt_colorspace".to_string(),
+            severity: "error".to_string(),
+            description: format!(
+                "像素格式 {} + 色彩空间 {} 组合会导致严重色彩失真，建议使用其他工具处理",
+                info.pix_fmt, info.color_space
+            ),
+        });
+    }
+
+    // 检查分辨率（超大图片可能处理缓慢）
+    if info.width > 8000 || info.height > 8000 {
+        issues.push(ImageCompatibilityIssue {
+            issue_type: "resolution".to_string(),
+            severity: "warning".to_string(),
+            description: format!(
+                "分辨率 {}x{} 过大，处理可能较慢",
+                info.width, info.height
+            ),
+        });
+    }
+
+    // 检查是否有 alpha 通道（压缩为 JPEG 时会丢失）
+    if pix_fmt.contains("a") && (pix_fmt.contains("rgba") || pix_fmt.contains("gbrap") || pix_fmt.contains("yuva")) {
+        issues.push(ImageCompatibilityIssue {
+            issue_type: "alpha".to_string(),
+            severity: "info".to_string(),
+            description: "图片包含透明通道，压缩为 JPEG 时会丢失透明度".to_string(),
+        });
+    }
+
+    let compatible = !issues.iter().any(|i| i.severity == "error");
+    (compatible, issues)
+}
+
+#[tauri::command]
+async fn detect_image_compatibility(app: AppHandle, input_dir: String) -> Result<Vec<ImageCompatibilityResult>, String> {
+    let files = scan_input_files(input_dir)?;
+    let image_files: Vec<_> = files.into_iter().filter(|f| f.file_type == "image").collect();
+
+    if image_files.is_empty() {
+        return Err("没有找到图片文件".to_string());
+    }
+
+    let mut results = Vec::new();
+
+    for file in image_files {
+        // 使用 ffprobe 获取详细图片信息
+        let output = app
+            .shell()
+            .sidecar("ffprobe")
+            .map_err(|e| format!("无法找到FFprobe: {}", e))?
+            .args(&[
+                "-v", "error",
+                "-select_streams", "v:0",
+                "-show_entries", "stream=codec_name,pix_fmt,color_space,color_range,width,height",
+                "-of", "json",
+                &file.path,
+            ])
+            .output()
+            .await
+            .map_err(|e| format!("无法执行FFprobe: {}", e))?;
+
+        if !output.status.success() {
+            continue;
+        }
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let json: serde_json::Value = serde_json::from_str(&stdout).unwrap_or_default();
+
+        if let Some(streams) = json.get("streams").and_then(|s| s.as_array()) {
+            if let Some(stream) = streams.first() {
+                let codec = stream.get("codec_name").and_then(|v| v.as_str()).unwrap_or("unknown").to_string();
+                let pix_fmt = stream.get("pix_fmt").and_then(|v| v.as_str()).unwrap_or("unknown").to_string();
+                let color_space = stream.get("color_space").and_then(|v| v.as_str()).unwrap_or("unknown").to_string();
+                let color_range = stream.get("color_range").and_then(|v| v.as_str()).unwrap_or("unknown").to_string();
+                let width = stream.get("width").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
+                let height = stream.get("height").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
+
+                let image_info = ImageInfo {
+                    path: file.path.clone(),
+                    name: file.name.clone(),
+                    codec,
+                    pix_fmt,
+                    color_space,
+                    color_range,
+                    width,
+                    height,
+                };
+
+                let (compatible, issues) = check_image_compatibility(&image_info);
+
+                // 生成缩略图
+                let thumbnail = {
+                    let temp_dir = std::env::temp_dir();
+                    let thumb_path = temp_dir.join(format!("thumb_img_{}.jpg", generate_timestamp()));
+                    let thumb_path_str = thumb_path.to_string_lossy().to_string();
+
+                    let thumb_output = app
+                        .shell()
+                        .sidecar("ffmpeg")
+                        .ok()
+                        .map(|cmd| cmd.args(&[
+                            "-i", &file.path,
+                            "-vf", "scale=120:-1",
+                            "-q:v", "5",
+                            "-y",
+                            &thumb_path_str,
+                        ]));
+
+                    let mut thumb_base64 = String::new();
+                    if let Some(cmd) = thumb_output {
+                        if let Ok(output) = cmd.output().await {
+                            if output.status.success() {
+                                if let Ok(image_data) = std::fs::read(&thumb_path) {
+                                    use base64::{Engine as _, engine::general_purpose::STANDARD};
+                                    thumb_base64 = format!("data:image/jpeg;base64,{}", STANDARD.encode(&image_data));
+                                }
+                                let _ = std::fs::remove_file(&thumb_path);
+                            }
+                        }
+                    }
+                    thumb_base64
+                };
+
+                results.push(ImageCompatibilityResult {
+                    path: file.path,
+                    name: file.name,
+                    image_info,
+                    compatible,
+                    issues,
+                    thumbnail,
+                });
+            }
+        }
+    }
+
+    Ok(results)
+}
+
 async fn process_image(
     app: &AppHandle,
     input_path: &str,
     output_path: &str,
     options: &ProcessOptions,
 ) -> Result<(), String> {
-    let mut args: Vec<String> = vec!["-i".to_string(), input_path.to_string()];
-
-    // 视频滤镜（FFmpeg处理图片也用-vf）
-    let mut filters: Vec<String> = Vec::new();
-
-    // 使用 colormatrix 滤镜修正色彩矩阵
-    filters.push("colormatrix=bt601:bt709".to_string());
+    // 使用 ImageMagick 处理图片，避免 FFmpeg 的颜色转换问题
+    let mut args: Vec<String> = vec![input_path.to_string()];
 
     // 旋转
     if options.rotate {
+        args.push("-rotate".to_string());
         match options.rotation_degrees {
-            90 | -270 => filters.push("transpose=1".to_string()),
-            180 | -180 => filters.push("transpose=1,transpose=1".to_string()),
-            270 | -90 => filters.push("transpose=2".to_string()),
+            90 | -270 => args.push("90".to_string()),
+            180 | -180 => args.push("180".to_string()),
+            270 | -90 => args.push("270".to_string()),
             _ => {}
         }
     }
 
     // 调整分辨率（独立选项）
     if options.reduce_resolution && options.target_width > 0 && options.target_height > 0 {
-        filters.push(format!("scale={}:{}", options.target_width, options.target_height));
+        args.push("-resize".to_string());
+        args.push(format!("{}x{}!", options.target_width, options.target_height));
     }
 
     // 压缩时降低分辨率
     if options.compress && options.compress_resize && options.compress_width > 0 && options.compress_height > 0 {
-        filters.push(format!("scale={}:{}", options.compress_width, options.compress_height));
+        args.push("-resize".to_string());
+        args.push(format!("{}x{}!", options.compress_width, options.compress_height));
     }
-
-    // 始终应用滤镜（至少有colorspace）
-    let vf_arg = filters.join(",");
-    args.push("-vf".to_string());
-    args.push(vf_arg);
 
     // 质量设置（仅压缩时）
     if options.compress {
-        let q = 2 + ((100 - options.compress_quality) as f32 * 29.0 / 99.0) as u32;
-        args.push("-q:v".to_string());
-        args.push(q.to_string());
+        args.push("-quality".to_string());
+        args.push(options.compress_quality.to_string());
     }
 
-    args.push("-y".to_string());
+    // 输出文件
     args.push(output_path.to_string());
 
     // 转换为 &str 引用
     let args_ref: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
 
-    // 使用sidecar调用ffmpeg
+    // 使用 sidecar 调用 ImageMagick
     let output = app
         .shell()
-        .sidecar("ffmpeg")
-        .map_err(|e| format!("无法找到FFmpeg: {}", e))?
+        .sidecar("magick")
+        .map_err(|e| format!("无法找到ImageMagick: {}", e))?
         .args(&args_ref)
         .output()
         .await
-        .map_err(|e| format!("无法执行FFmpeg: {}", e))?;
+        .map_err(|e| format!("无法执行ImageMagick: {}", e))?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("FFmpeg处理失败: {}", stderr));
+        return Err(format!("ImageMagick处理失败: {}", stderr));
     }
 
     Ok(())
@@ -768,15 +958,12 @@ async fn process_files(
         };
         let _ = app.emit("process-progress", &progress);
 
-        // 构建输出路径
+        // 构建输出路径（直接使用原文件名，已存在则覆盖）
         let input_path = PathBuf::from(&file.path);
         let relative_path = input_path
             .strip_prefix(&input_dir)
             .unwrap_or(&input_path);
         let output_path = PathBuf::from(&output_dir).join(relative_path);
-
-        // 添加时间戳到文件名，防止重名覆盖
-        let output_path = add_timestamp_to_filename(&output_path);
 
         // 确保输出文件的父目录存在
         if let Some(parent) = output_path.parent() {
@@ -869,6 +1056,7 @@ pub fn run() {
             get_video_dimensions,
             extract_video_frame,
             detect_video_compatibility,
+            detect_image_compatibility,
             process_files,
             open_folder,
         ])

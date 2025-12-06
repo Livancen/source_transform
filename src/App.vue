@@ -43,6 +43,33 @@ interface VideoCompatibilityResult {
   thumbnail: string;
 }
 
+// 图片兼容性检测相关接口
+interface ImageInfo {
+  path: string;
+  name: string;
+  codec: string;
+  pix_fmt: string;
+  color_space: string;
+  color_range: string;
+  width: number;
+  height: number;
+}
+
+interface ImageCompatibilityIssue {
+  issue_type: string;
+  severity: string;  // error, warning, info
+  description: string;
+}
+
+interface ImageCompatibilityResult {
+  path: string;
+  name: string;
+  image_info: ImageInfo;
+  compatible: boolean;
+  issues: ImageCompatibilityIssue[];
+  thumbnail: string;
+}
+
 interface ProcessOptions {
   compress: boolean;
   compress_quality: number;
@@ -106,9 +133,10 @@ const isProcessing = ref(false);
 const progress = ref<ProcessProgress | null>(null);
 const resultMessage = ref("");
 
-// 兼容性检测状态
+// 兼容性检测状态（图片+视频统一检测）
 const isDetecting = ref(false);
 const compatibilityResults = ref<VideoCompatibilityResult[]>([]);
+const imageCompatibilityResults = ref<ImageCompatibilityResult[]>([]);
 const showCompatibilityModal = ref(false);
 
 // 计算属性
@@ -385,24 +413,39 @@ async function scanFiles() {
   }
 }
 
-// 检测兼容性
+// 检测兼容性（图片+视频统一检测）
 async function detectCompatibility() {
   if (!inputDir.value) {
     resultMessage.value = "请先选择输入目录";
     return;
   }
 
+  if (files.value.length === 0) {
+    resultMessage.value = "目录中没有可检测的文件";
+    return;
+  }
+
   isDetecting.value = true;
   compatibilityResults.value = [];
+  imageCompatibilityResults.value = [];
 
   try {
-    const results = await invoke<VideoCompatibilityResult[]>(
-      "detect_video_compatibility",
-      {
-        inputDir: inputDir.value,
-      }
-    );
-    compatibilityResults.value = results;
+    // 并行检测视频和图片
+    const [videoResults, imageResults] = await Promise.all([
+      videoCount.value > 0
+        ? invoke<VideoCompatibilityResult[]>("detect_video_compatibility", {
+            inputDir: inputDir.value,
+          })
+        : Promise.resolve([]),
+      imageCount.value > 0
+        ? invoke<ImageCompatibilityResult[]>("detect_image_compatibility", {
+            inputDir: inputDir.value,
+          })
+        : Promise.resolve([]),
+    ]);
+
+    compatibilityResults.value = videoResults;
+    imageCompatibilityResults.value = imageResults;
     showCompatibilityModal.value = true;
   } catch (e) {
     resultMessage.value = `检测失败: ${e}`;
@@ -414,6 +457,25 @@ async function detectCompatibility() {
 // 关闭兼容性弹窗
 function closeCompatibilityModal() {
   showCompatibilityModal.value = false;
+}
+
+// 获取有问题的图片数量
+function getProblematicImageCount(): number {
+  return imageCompatibilityResults.value.filter((r) => !r.compatible).length;
+}
+
+// 获取问题严重程度的样式类
+function getSeverityClass(severity: string): string {
+  switch (severity) {
+    case "error":
+      return "severity-error";
+    case "warning":
+      return "severity-warning";
+    case "info":
+      return "severity-info";
+    default:
+      return "";
+  }
 }
 
 // 获取不兼容的文件数量
@@ -509,7 +571,7 @@ async function openFolder(path: string) {
           <button
             class="detect-btn"
             @click="detectCompatibility"
-            :disabled="isDetecting || videoCount === 0"
+            :disabled="isDetecting || files.length === 0"
           >
             {{ isDetecting ? "检测中..." : "兼容性检测" }}
           </button>
@@ -910,101 +972,178 @@ async function openFolder(path: string) {
       </div>
     </div>
 
-    <!-- 兼容性检测结果弹窗 -->
+    <!-- 兼容性检测结果弹窗（统一显示图片和视频） -->
     <div class="compat-modal" v-if="showCompatibilityModal">
       <div class="compat-modal-content">
         <h3>兼容性检测结果</h3>
 
-        <!-- 统计摘要 -->
-        <div class="compat-summary">
-          <div class="compat-summary-item">
-            <span class="device-name">RK3399</span>
-            <span
-              :class="[
-                'compat-count',
-                getIncompatibleCount('RK3399') > 0 ? 'has-issues' : 'all-good',
-              ]"
-            >
-              {{
-                getIncompatibleCount("RK3399") > 0
-                  ? `${getIncompatibleCount("RK3399")} 个不兼容`
-                  : "全部兼容"
-              }}
-            </span>
-          </div>
-          <div class="compat-summary-item">
-            <span class="device-name">RK3566</span>
-            <span
-              :class="[
-                'compat-count',
-                getIncompatibleCount('RK3566') > 0 ? 'has-issues' : 'all-good',
-              ]"
-            >
-              {{
-                getIncompatibleCount("RK3566") > 0
-                  ? `${getIncompatibleCount("RK3566")} 个不兼容`
-                  : "全部兼容"
-              }}
-            </span>
-          </div>
-          <div class="compat-summary-item">
-            <span class="device-name">RK3588</span>
-            <span
-              :class="[
-                'compat-count',
-                getIncompatibleCount('RK3588') > 0 ? 'has-issues' : 'all-good',
-              ]"
-            >
-              {{
-                getIncompatibleCount("RK3588") > 0
-                  ? `${getIncompatibleCount("RK3588")} 个不兼容`
-                  : "全部兼容"
-              }}
-            </span>
-          </div>
-        </div>
-
-        <!-- 详细结果列表 -->
-        <div class="compat-results">
-          <div
-            class="compat-item"
-            v-for="result in compatibilityResults"
-            :key="result.path"
-          >
-            <div class="compat-file-info">
-              <img
-                v-if="result.thumbnail"
-                :src="result.thumbnail"
-                class="video-thumbnail"
-                alt="缩略图"
-              />
-              <div class="file-details">
-                <span class="file-name">{{ result.name }}</span>
-                <span class="video-specs">
-                  {{ result.video_info.codec.toUpperCase() }} |
-                  {{ result.video_info.width }}x{{ result.video_info.height }} |
-                  {{ Math.round(result.video_info.framerate) }}fps | Level
-                  {{ result.video_info.level }}
-                </span>
-              </div>
-            </div>
-            <div class="compat-devices">
+        <!-- 视频兼容性统计 -->
+        <div class="compat-section" v-if="compatibilityResults.length > 0">
+          <h4 class="section-title">视频 ({{ compatibilityResults.length }})</h4>
+          <div class="compat-summary">
+            <div class="compat-summary-item">
+              <span class="device-name">RK3399</span>
               <span
-                v-for="device in result.devices"
-                :key="device.device"
                 :class="[
-                  'device-badge',
-                  device.compatible ? 'compatible' : 'incompatible',
+                  'compat-count',
+                  getIncompatibleCount('RK3399') > 0 ? 'has-issues' : 'all-good',
                 ]"
-                :title="device.reason"
               >
-                {{ device.device }}
-                <span class="device-status">{{
-                  device.compatible ? "✓" : "✗"
-                }}</span>
+                {{
+                  getIncompatibleCount("RK3399") > 0
+                    ? `${getIncompatibleCount("RK3399")} 个不兼容`
+                    : "全部兼容"
+                }}
+              </span>
+            </div>
+            <div class="compat-summary-item">
+              <span class="device-name">RK3566</span>
+              <span
+                :class="[
+                  'compat-count',
+                  getIncompatibleCount('RK3566') > 0 ? 'has-issues' : 'all-good',
+                ]"
+              >
+                {{
+                  getIncompatibleCount("RK3566") > 0
+                    ? `${getIncompatibleCount("RK3566")} 个不兼容`
+                    : "全部兼容"
+                }}
+              </span>
+            </div>
+            <div class="compat-summary-item">
+              <span class="device-name">RK3588</span>
+              <span
+                :class="[
+                  'compat-count',
+                  getIncompatibleCount('RK3588') > 0 ? 'has-issues' : 'all-good',
+                ]"
+              >
+                {{
+                  getIncompatibleCount("RK3588") > 0
+                    ? `${getIncompatibleCount("RK3588")} 个不兼容`
+                    : "全部兼容"
+                }}
               </span>
             </div>
           </div>
+
+          <!-- 视频详细结果列表 -->
+          <div class="compat-results">
+            <div
+              class="compat-item"
+              v-for="result in compatibilityResults"
+              :key="result.path"
+            >
+              <div class="compat-file-info">
+                <img
+                  v-if="result.thumbnail"
+                  :src="result.thumbnail"
+                  class="video-thumbnail"
+                  alt="缩略图"
+                />
+                <div class="file-details">
+                  <span class="file-name">{{ result.name }}</span>
+                  <span class="video-specs">
+                    {{ result.video_info.codec.toUpperCase() }} |
+                    {{ result.video_info.width }}x{{ result.video_info.height }} |
+                    {{ Math.round(result.video_info.framerate) }}fps | Level
+                    {{ result.video_info.level }}
+                  </span>
+                </div>
+              </div>
+              <div class="compat-devices">
+                <span
+                  v-for="device in result.devices"
+                  :key="device.device"
+                  :class="[
+                    'device-badge',
+                    device.compatible ? 'compatible' : 'incompatible',
+                  ]"
+                  :title="device.reason"
+                >
+                  {{ device.device }}
+                  <span class="device-status">{{
+                    device.compatible ? "✓" : "✗"
+                  }}</span>
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 图片兼容性统计 -->
+        <div class="compat-section" v-if="imageCompatibilityResults.length > 0">
+          <h4 class="section-title">图片 ({{ imageCompatibilityResults.length }})</h4>
+          <div class="compat-summary">
+            <div class="compat-summary-item">
+              <span class="device-name">状态</span>
+              <span
+                :class="[
+                  'compat-count',
+                  getProblematicImageCount() > 0 ? 'has-issues' : 'all-good',
+                ]"
+              >
+                {{
+                  getProblematicImageCount() > 0
+                    ? `${getProblematicImageCount()} 个有问题`
+                    : "全部正常"
+                }}
+              </span>
+            </div>
+          </div>
+
+          <!-- 图片详细结果列表 -->
+          <div class="compat-results">
+            <div
+              class="compat-item"
+              v-for="result in imageCompatibilityResults"
+              :key="result.path"
+            >
+              <div class="compat-file-info">
+                <img
+                  v-if="result.thumbnail"
+                  :src="result.thumbnail"
+                  class="video-thumbnail"
+                  alt="缩略图"
+                />
+                <div class="file-details">
+                  <span class="file-name">{{ result.name }}</span>
+                  <span class="video-specs">
+                    {{ result.image_info.codec.toUpperCase() }} |
+                    {{ result.image_info.width }}x{{ result.image_info.height }} |
+                    {{ result.image_info.pix_fmt }}
+                    <template v-if="result.image_info.color_space !== 'unknown'">
+                      | {{ result.image_info.color_space }}
+                    </template>
+                  </span>
+                </div>
+              </div>
+              <div class="compat-devices">
+                <span
+                  v-if="result.compatible"
+                  class="device-badge compatible"
+                >
+                  正常 ✓
+                </span>
+                <template v-else>
+                  <span
+                    v-for="(issue, idx) in result.issues"
+                    :key="idx"
+                    :class="['device-badge', 'incompatible', getSeverityClass(issue.severity)]"
+                    :title="issue.description"
+                  >
+                    {{ issue.severity === 'error' ? '错误' : issue.severity === 'warning' ? '警告' : '提示' }}
+                  </span>
+                </template>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 无结果提示 -->
+        <div v-if="compatibilityResults.length === 0 && imageCompatibilityResults.length === 0" class="no-results">
+          没有检测到任何文件
         </div>
 
         <div class="compat-modal-actions">
@@ -1695,6 +1834,34 @@ button:disabled {
   padding: 8px 20px;
 }
 
+/* 兼容性检测分区样式 */
+.compat-section {
+  margin-bottom: 20px;
+  padding-bottom: 15px;
+  border-bottom: 1px solid #eee;
+}
+
+.compat-section:last-of-type {
+  border-bottom: none;
+  margin-bottom: 0;
+}
+
+.section-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #333;
+  margin-bottom: 10px;
+  padding-bottom: 5px;
+  border-bottom: 2px solid #17a2b8;
+  display: inline-block;
+}
+
+.no-results {
+  text-align: center;
+  padding: 30px;
+  color: #666;
+}
+
 @media (prefers-color-scheme: dark) {
   :root {
     color: #f6f6f6;
@@ -1778,6 +1945,18 @@ button:disabled {
 
   .compat-summary {
     background: #333;
+  }
+
+  .compat-section {
+    border-bottom-color: #444;
+  }
+
+  .section-title {
+    color: #f6f6f6;
+  }
+
+  .no-results {
+    color: #aaa;
   }
 
   .compat-results {
