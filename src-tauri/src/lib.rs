@@ -34,6 +34,9 @@ pub struct ProcessOptions {
     pub crop_y: u32,
     pub rotate: bool,
     pub rotation_degrees: i32, // 90, 180, 270, -90
+    pub mute: bool,            // 视频静音（去除音频）
+    pub change_framerate: bool, // 调整帧率
+    pub target_framerate: f32,  // 目标帧率
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -868,6 +871,11 @@ async fn process_video(
         }
     }
 
+    // 调整帧率（降帧/升帧）
+    if options.change_framerate && options.target_framerate > 0.0 {
+        video_filters.push(format!("fps={}", options.target_framerate));
+    }
+
     let vf_arg: String;
     if !video_filters.is_empty() {
         vf_arg = video_filters.join(",");
@@ -904,6 +912,11 @@ async fn process_video(
         crf_str = crf.to_string();
         args.push("-crf");
         args.push(&crf_str);
+    }
+
+    // 视频静音（去除音频）
+    if options.mute {
+        args.push("-an");
     }
 
     args.push(output_path);
