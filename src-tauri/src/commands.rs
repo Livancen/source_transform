@@ -311,44 +311,59 @@ pub async fn crop_videos_by_ratios(
     let mut current = 0;
 
     for file in &video_files {
-        // 获取视频尺寸
-        let dim_output = app
+        // 获取视频信息（尺寸、编码、profile、level、像素格式、帧率、色彩参数）
+        let info_output = app
             .shell()
             .sidecar("ffprobe")
             .map_err(|e| format!("无法找到FFprobe: {}", e))?
             .args(&[
                 "-v", "error",
                 "-select_streams", "v:0",
-                "-show_entries", "stream=width,height",
-                "-of", "csv=p=0",
+                "-show_entries", "stream=width,height,codec_name,profile,level,pix_fmt,r_frame_rate,color_space,color_range,color_primaries,color_trc,sample_aspect_ratio",
+                "-of", "json",
                 &file.path,
             ])
             .output()
             .await
             .map_err(|e| format!("无法执行FFprobe: {}", e))?;
 
-        if !dim_output.status.success() {
+        if !info_output.status.success() {
             for ratio in &ratios {
                 current += 1;
-                errors.push(format!("{} ({}): 无法获取视频尺寸", file.name, ratio));
+                errors.push(format!("{} ({}): 无法获取视频信息", file.name, ratio));
                 error_count += 1;
             }
             continue;
         }
 
-        let stdout = String::from_utf8_lossy(&dim_output.stdout);
-        let parts: Vec<&str> = stdout.trim().split(',').collect();
-        if parts.len() < 2 {
-            for ratio in &ratios {
-                current += 1;
-                errors.push(format!("{} ({}): 无法解析视频尺寸", file.name, ratio));
-                error_count += 1;
-            }
-            continue;
-        }
+        let info_str = String::from_utf8_lossy(&info_output.stdout);
+        let info_json: serde_json::Value = serde_json::from_str(&info_str).unwrap_or_default();
 
-        let width: u32 = parts[0].parse().unwrap_or(0);
-        let height: u32 = parts[1].parse().unwrap_or(0);
+        let stream = match info_json.get("streams").and_then(|s| s.as_array()).and_then(|a| a.first()) {
+            Some(s) => s,
+            None => {
+                for ratio in &ratios {
+                    current += 1;
+                    errors.push(format!("{} ({}): 无法解析视频流", file.name, ratio));
+                    error_count += 1;
+                }
+                continue;
+            }
+        };
+
+        let width = stream.get("width").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
+        let height = stream.get("height").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
+        let codec = stream.get("codec_name").and_then(|v| v.as_str()).unwrap_or("");
+        let profile = stream.get("profile").and_then(|v| v.as_str()).unwrap_or("");
+        let level = stream.get("level").and_then(|v| v.as_f64()).unwrap_or(0.0);
+        let pix_fmt = stream.get("pix_fmt").and_then(|v| v.as_str()).unwrap_or("");
+        let fps_str = stream.get("r_frame_rate").and_then(|v| v.as_str()).unwrap_or("");
+        let color_space = stream.get("color_space").and_then(|v| v.as_str()).unwrap_or("");
+        let color_range = stream.get("color_range").and_then(|v| v.as_str()).unwrap_or("");
+        let color_primaries = stream.get("color_primaries").and_then(|v| v.as_str()).unwrap_or("");
+        let color_trc = stream.get("color_trc").and_then(|v| v.as_str()).unwrap_or("");
+        let sar = stream.get("sample_aspect_ratio").and_then(|v| v.as_str()).unwrap_or("");
+
         if width == 0 || height == 0 {
             for ratio in &ratios {
                 current += 1;
@@ -415,17 +430,70 @@ pub async fn crop_videos_by_ratios(
             let output_path = PathBuf::from(&output_dir).join(&output_filename);
 
             let crop_filter = format!("crop={}:{}:{}:{}", crop_w, crop_h, crop_x, crop_y);
+            let level_str = format!("{:.1}", level / 10.0);
+            let mut args: Vec<String> = vec![
+                "-i".into(), file.path.clone(),
+                "-vf".into(), crop_filter,
+            ];
+
+            // 保留原始编码参数
+            if codec == "h264" || codec == "avc" || codec == "h265" || codec == "hevc" {
+                if !profile.is_empty() {
+                    args.push("-profile:v".into());
+                    args.push(profile.to_string());
+                }
+                if level > 0.0 {
+                    args.push("-level:v".into());
+                    args.push(level_str);
+                }
+            }
+
+            // 保留像素格式
+            if !pix_fmt.is_empty() {
+                args.push("-pix_fmt".into());
+                args.push(pix_fmt.to_string());
+            }
+
+            // 保留帧率
+            if !fps_str.is_empty() && fps_str != "0/0" {
+                args.push("-r".into());
+                args.push(fps_str.to_string());
+            }
+
+            // 保留色彩参数
+            if !color_space.is_empty() && color_space != "unknown" {
+                args.push("-colorspace".into());
+                args.push(color_space.to_string());
+            }
+            if !color_range.is_empty() && color_range != "unknown" {
+                args.push("-color_range".into());
+                args.push(color_range.to_string());
+            }
+            if !color_primaries.is_empty() && color_primaries != "unknown" {
+                args.push("-color_primaries".into());
+                args.push(color_primaries.to_string());
+            }
+            if !color_trc.is_empty() && color_trc != "unknown" {
+                args.push("-color_trc".into());
+                args.push(color_trc.to_string());
+            }
+
+            // 保留 SAR（样本宽高比）
+            if !sar.is_empty() && sar != "0:1" && sar != "N/A" {
+                args.push("-sar".into());
+                args.push(sar.to_string());
+            }
+
+            args.push("-y".into());
+            args.push(output_path.to_string_lossy().to_string());
+
+            let args_ref: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
 
             let result = app
                 .shell()
                 .sidecar("ffmpeg")
                 .map_err(|e| format!("无法找到FFmpeg: {}", e))?
-                .args(&[
-                    "-i", &file.path,
-                    "-vf", &crop_filter,
-                    "-y",
-                    &output_path.to_string_lossy(),
-                ])
+                .args(&args_ref)
                 .output()
                 .await
                 .map_err(|e| format!("无法执行FFmpeg: {}", e));
