@@ -16,8 +16,7 @@ defineProps<{
   >
     <div class="flex flex-col items-center gap-8px">
       <span class="text-14px color-#333"
-        >正在处理第 {{ progress.current }} 个文件，共
-        {{ progress.total }} 个</span
+        >正在处理第 {{ progress.current }}/{{ progress.total }} 个</span
       >
     </div>
   </section>

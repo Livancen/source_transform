@@ -18,6 +18,7 @@ pub fn run() {
             commands::get_video_dimensions,
             commands::extract_video_frame,
             commands::process_files,
+            commands::crop_videos_by_ratios,
             commands::open_folder,
         ])
         .run(tauri::generate_context!())

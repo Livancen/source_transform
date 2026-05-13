@@ -4,26 +4,49 @@ import type { ProcessOptions, FileInfo } from "../types";
 defineProps<{
   options: ProcessOptions;
   videoFiles: FileInfo[];
+  enableRatioCrop: boolean;
+  ratios: string[];
+  newRatio: string;
+  ratioError: string;
 }>();
 
 const emit = defineEmits<{
   openCropPreview: [];
+  "update:enableRatioCrop": [value: boolean];
+  "update:newRatio": [value: string];
+  addRatio: [];
+  removeRatio: [index: number];
 }>();
 </script>
 
 <template>
-  <section class="bg-white rounded-8px p-15px mb-15px shadow-sm dark:bg-#2d2d2d">
-    <h2 class="text-16px mb-10px color-#555 border-b border-b-#ddd border-b-solid pb-5px dark:color-#ccc dark:border-b-#444">处理选项</h2>
+  <section
+    class="bg-white rounded-8px p-15px mb-15px shadow-sm dark:bg-#2d2d2d"
+  >
+    <h2
+      class="text-16px mb-10px color-#555 border-b border-b-#ddd border-b-solid pb-5px dark:color-#ccc dark:border-b-#444"
+    >
+      处理选项
+    </h2>
     <div class="flex gap-15px">
       <!-- 左列 -->
       <div class="flex-1">
         <!-- 压缩 -->
-        <div class="mb-10px last:mb-0 p-10px bg-#f9f9f9 rounded-4px dark:bg-#333">
+        <div
+          class="mb-10px last:mb-0 p-10px bg-#f9f9f9 rounded-4px dark:bg-#333"
+        >
           <label class="flex items-center gap-8px cursor-pointer font-500">
-            <input type="checkbox" v-model="options.compress" class="w-18px h-18px" />
+            <input
+              type="checkbox"
+              v-model="options.compress"
+              class="w-18px h-18px"
+            />
             启用压缩
           </label>
-          <div v-if="options.compress" class="mt-10px pl-26px flex items-center gap-10px flex-wrap">
+          <div
+            v-if="options.compress"
+            class="mt-10px pl-26px flex items-center gap-10px flex-wrap"
+          >
             <label class="color-#666 dark:color-#aaa">质量:</label>
             <input
               type="range"
@@ -35,7 +58,9 @@ const emit = defineEmits<{
             <span>{{ options.compress_quality }}</span>
           </div>
           <div v-if="options.compress" class="mt-10px pl-26px">
-            <label class="flex items-center gap-6px cursor-pointer text-13px mb-6px">
+            <label
+              class="flex items-center gap-6px cursor-pointer text-13px mb-6px"
+            >
               <input
                 type="radio"
                 :value="false"
@@ -44,7 +69,9 @@ const emit = defineEmits<{
               />
               仅压缩质量（保持原分辨率）
             </label>
-            <label class="flex items-center gap-6px cursor-pointer text-13px mb-6px">
+            <label
+              class="flex items-center gap-6px cursor-pointer text-13px mb-6px"
+            >
               <input
                 type="radio"
                 :value="true"
@@ -76,12 +103,21 @@ const emit = defineEmits<{
         </div>
 
         <!-- 降低分辨率 -->
-        <div class="mb-10px last:mb-0 p-10px bg-#f9f9f9 rounded-4px dark:bg-#333">
+        <div
+          class="mb-10px last:mb-0 p-10px bg-#f9f9f9 rounded-4px dark:bg-#333"
+        >
           <label class="flex items-center gap-8px cursor-pointer font-500">
-            <input type="checkbox" v-model="options.reduce_resolution" class="w-18px h-18px" />
+            <input
+              type="checkbox"
+              v-model="options.reduce_resolution"
+              class="w-18px h-18px"
+            />
             降低分辨率
           </label>
-          <div v-if="options.reduce_resolution" class="mt-10px pl-26px flex items-center gap-10px flex-wrap">
+          <div
+            v-if="options.reduce_resolution"
+            class="mt-10px pl-26px flex items-center gap-10px flex-wrap"
+          >
             <label class="color-#666 dark:color-#aaa">宽:</label>
             <input
               type="number"
@@ -100,14 +136,26 @@ const emit = defineEmits<{
         </div>
 
         <!-- 旋转 -->
-        <div class="mb-10px last:mb-0 p-10px bg-#f9f9f9 rounded-4px dark:bg-#333">
+        <div
+          class="mb-10px last:mb-0 p-10px bg-#f9f9f9 rounded-4px dark:bg-#333"
+        >
           <label class="flex items-center gap-8px cursor-pointer font-500">
-            <input type="checkbox" v-model="options.rotate" class="w-18px h-18px" />
+            <input
+              type="checkbox"
+              v-model="options.rotate"
+              class="w-18px h-18px"
+            />
             旋转
           </label>
-          <div v-if="options.rotate" class="mt-10px pl-26px flex items-center gap-10px flex-wrap">
+          <div
+            v-if="options.rotate"
+            class="mt-10px pl-26px flex items-center gap-10px flex-wrap"
+          >
             <label class="color-#666 dark:color-#aaa">角度:</label>
-            <select v-model.number="options.rotation_degrees" class="p-5px-10px border border-#ddd rounded-4px dark:bg-#444 dark:border-#555 dark:color-#f6f6f6">
+            <select
+              v-model.number="options.rotation_degrees"
+              class="p-5px-10px border border-#ddd rounded-4px dark:bg-#444 dark:border-#555 dark:color-#f6f6f6"
+            >
               <option :value="90">顺时针 90°</option>
               <option :value="180">180°</option>
               <option :value="270">顺时针 270°</option>
@@ -117,20 +165,35 @@ const emit = defineEmits<{
         </div>
 
         <!-- 视频静音 -->
-        <div class="mb-10px last:mb-0 p-10px bg-#f9f9f9 rounded-4px dark:bg-#333">
+        <div
+          class="mb-10px last:mb-0 p-10px bg-#f9f9f9 rounded-4px dark:bg-#333"
+        >
           <label class="flex items-center gap-8px cursor-pointer font-500">
-            <input type="checkbox" v-model="options.mute" class="w-18px h-18px" />
+            <input
+              type="checkbox"
+              v-model="options.mute"
+              class="w-18px h-18px"
+            />
             视频静音（去除音频）
           </label>
         </div>
 
         <!-- 调整帧率 -->
-        <div class="mb-10px last:mb-0 p-10px bg-#f9f9f9 rounded-4px dark:bg-#333">
+        <div
+          class="mb-10px last:mb-0 p-10px bg-#f9f9f9 rounded-4px dark:bg-#333"
+        >
           <label class="flex items-center gap-8px cursor-pointer font-500">
-            <input type="checkbox" v-model="options.change_framerate" class="w-18px h-18px" />
+            <input
+              type="checkbox"
+              v-model="options.change_framerate"
+              class="w-18px h-18px"
+            />
             调整帧率
           </label>
-          <div v-if="options.change_framerate" class="mt-10px pl-26px flex items-center gap-10px flex-wrap">
+          <div
+            v-if="options.change_framerate"
+            class="mt-10px pl-26px flex items-center gap-10px flex-wrap"
+          >
             <label class="color-#666 dark:color-#aaa">目标帧率:</label>
             <input
               type="number"
@@ -145,14 +208,27 @@ const emit = defineEmits<{
         </div>
 
         <!-- 裁剪 (仅视频) -->
-        <div class="mb-10px last:mb-0 p-10px bg-#f9f9f9 rounded-4px dark:bg-#333">
+        <div
+          class="mb-10px last:mb-0 p-10px bg-#f9f9f9 rounded-4px dark:bg-#333"
+        >
           <label class="flex items-center gap-8px cursor-pointer font-500">
-            <input type="checkbox" v-model="options.crop" class="w-18px h-18px" />
+            <input
+              type="checkbox"
+              v-model="options.crop"
+              class="w-18px h-18px"
+            />
             裁剪 (视频)
           </label>
-          <div v-if="options.crop" class="mt-10px pl-26px flex flex-col items-start gap-5px">
-            <span class="text-12px color-#666 dark:color-#aaa">{{ options.crop_width }} x {{ options.crop_height }}</span>
-            <span class="text-12px color-#666 dark:color-#aaa">位置: ({{ options.crop_x }}, {{ options.crop_y }})</span>
+          <div
+            v-if="options.crop"
+            class="mt-10px pl-26px flex flex-col items-start gap-5px"
+          >
+            <span class="text-12px color-#666 dark:color-#aaa"
+              >{{ options.crop_width }} x {{ options.crop_height }}</span
+            >
+            <span class="text-12px color-#666 dark:color-#aaa"
+              >位置: ({{ options.crop_x }}, {{ options.crop_y }})</span
+            >
             <button
               class="mt-5px p-4px-12px text-12px"
               @click="emit('openCropPreview')"
@@ -167,14 +243,26 @@ const emit = defineEmits<{
       <!-- 右列 -->
       <div class="flex-1">
         <!-- 降低码率 (仅视频) -->
-        <div class="mb-10px last:mb-0 p-10px bg-#f9f9f9 rounded-4px dark:bg-#333">
+        <div
+          class="mb-10px last:mb-0 p-10px bg-#f9f9f9 rounded-4px dark:bg-#333"
+        >
           <label class="flex items-center gap-8px cursor-pointer font-500">
-            <input type="checkbox" v-model="options.reduce_bitrate" class="w-18px h-18px" />
+            <input
+              type="checkbox"
+              v-model="options.reduce_bitrate"
+              class="w-18px h-18px"
+            />
             降低码率 (视频)
           </label>
-          <div v-if="options.reduce_bitrate" class="mt-10px pl-26px flex items-center gap-10px flex-wrap">
+          <div
+            v-if="options.reduce_bitrate"
+            class="mt-10px pl-26px flex items-center gap-10px flex-wrap"
+          >
             <label class="color-#666 dark:color-#aaa">码率:</label>
-            <select v-model="options.target_bitrate" class="p-5px-10px border border-#ddd rounded-4px dark:bg-#444 dark:border-#555 dark:color-#f6f6f6">
+            <select
+              v-model="options.target_bitrate"
+              class="p-5px-10px border border-#ddd rounded-4px dark:bg-#444 dark:border-#555 dark:color-#f6f6f6"
+            >
               <option value="200k">200 Kbps</option>
               <option value="500k">500 Kbps</option>
               <option value="800k">800 Kbps</option>
@@ -191,20 +279,35 @@ const emit = defineEmits<{
         </div>
 
         <!-- 降低Level等级 (仅视频) -->
-        <div class="mb-10px last:mb-0 p-10px bg-#f9f9f9 rounded-4px dark:bg-#333">
+        <div
+          class="mb-10px last:mb-0 p-10px bg-#f9f9f9 rounded-4px dark:bg-#333"
+        >
           <label class="flex items-center gap-8px cursor-pointer font-500">
-            <input type="checkbox" v-model="options.reduce_level" class="w-18px h-18px" />
+            <input
+              type="checkbox"
+              v-model="options.reduce_level"
+              class="w-18px h-18px"
+            />
             降低Level (视频)
           </label>
-          <div v-if="options.reduce_level" class="mt-10px pl-26px flex items-center gap-10px flex-wrap">
+          <div
+            v-if="options.reduce_level"
+            class="mt-10px pl-26px flex items-center gap-10px flex-wrap"
+          >
             <label class="color-#666 dark:color-#aaa">Profile:</label>
-            <select v-model="options.target_profile" class="p-5px-10px border border-#ddd rounded-4px dark:bg-#444 dark:border-#555 dark:color-#f6f6f6">
+            <select
+              v-model="options.target_profile"
+              class="p-5px-10px border border-#ddd rounded-4px dark:bg-#444 dark:border-#555 dark:color-#f6f6f6"
+            >
               <option value="baseline">Baseline</option>
               <option value="main">Main</option>
               <option value="high">High</option>
             </select>
             <label class="color-#666 dark:color-#aaa">Level:</label>
-            <select v-model="options.target_level" class="p-5px-10px border border-#ddd rounded-4px dark:bg-#444 dark:border-#555 dark:color-#f6f6f6">
+            <select
+              v-model="options.target_level"
+              class="p-5px-10px border border-#ddd rounded-4px dark:bg-#444 dark:border-#555 dark:color-#f6f6f6"
+            >
               <option value="3.0">3.0 (SD 480p)</option>
               <option value="3.1">3.1 (720p@30fps)</option>
               <option value="4.0">4.0 (1080p@30fps)</option>
@@ -218,22 +321,40 @@ const emit = defineEmits<{
         </div>
 
         <!-- H.265转H.264 (仅视频) -->
-        <div class="mb-10px last:mb-0 p-10px bg-#f9f9f9 rounded-4px dark:bg-#333">
+        <div
+          class="mb-10px last:mb-0 p-10px bg-#f9f9f9 rounded-4px dark:bg-#333"
+        >
           <label class="flex items-center gap-8px cursor-pointer font-500">
-            <input type="checkbox" v-model="options.convert_h265_to_h264" class="w-18px h-18px" />
+            <input
+              type="checkbox"
+              v-model="options.convert_h265_to_h264"
+              class="w-18px h-18px"
+            />
             H.265 转 H.264 (视频)
           </label>
         </div>
 
         <!-- 视频格式转换 -->
-        <div class="mb-10px last:mb-0 p-10px bg-#f9f9f9 rounded-4px dark:bg-#333">
+        <div
+          class="mb-10px last:mb-0 p-10px bg-#f9f9f9 rounded-4px dark:bg-#333"
+        >
           <label class="flex items-center gap-8px cursor-pointer font-500">
-            <input type="checkbox" v-model="options.convert_format" class="w-18px h-18px" />
+            <input
+              type="checkbox"
+              v-model="options.convert_format"
+              class="w-18px h-18px"
+            />
             格式转换 (视频)
           </label>
-          <div v-if="options.convert_format" class="mt-10px pl-26px flex items-center gap-10px flex-wrap">
+          <div
+            v-if="options.convert_format"
+            class="mt-10px pl-26px flex items-center gap-10px flex-wrap"
+          >
             <label class="color-#666 dark:color-#aaa">目标格式:</label>
-            <select v-model="options.target_format" class="p-5px-10px border border-#ddd rounded-4px dark:bg-#444 dark:border-#555 dark:color-#f6f6f6">
+            <select
+              v-model="options.target_format"
+              class="p-5px-10px border border-#ddd rounded-4px dark:bg-#444 dark:border-#555 dark:color-#f6f6f6"
+            >
               <option value="mp4">MP4</option>
               <option value="avi">AVI</option>
               <option value="mkv">MKV</option>
@@ -241,6 +362,65 @@ const emit = defineEmits<{
               <option value="webm">WebM</option>
               <option value="flv">FLV</option>
             </select>
+          </div>
+        </div>
+
+        <!-- 比例裁剪配置 (仅视频) -->
+        <div
+          class="mb-10px last:mb-0 p-10px bg-#f9f9f9 rounded-4px dark:bg-#333"
+        >
+          <label class="flex items-center gap-8px cursor-pointer font-500">
+            <input
+              type="checkbox"
+              :checked="enableRatioCrop"
+              @change="
+                emit(
+                  'update:enableRatioCrop',
+                  ($event.target as HTMLInputElement).checked,
+                )
+              "
+              class="w-18px h-18px"
+            />
+            比例裁剪 (视频)
+          </label>
+          <div v-if="enableRatioCrop" class="mt-10px pl-26px">
+            <div class="flex items-center gap-6px mb-8px">
+              <input
+                :value="newRatio"
+                @input="
+                  emit(
+                    'update:newRatio',
+                    ($event.target as HTMLInputElement).value,
+                  )
+                "
+                type="text"
+                placeholder="输入比例 如 1:1"
+                class="flex-1 p-4px border border-#ddd rounded-4px text-13px dark:bg-#444 dark:border-#555 dark:color-#f6f6f6"
+                @keyup.enter="emit('addRatio')"
+              />
+              <button class="p-4px-10px text-12px" @click="emit('addRatio')">
+                添加
+              </button>
+            </div>
+            <p v-if="ratioError" class="text-12px color-red mb-6px">
+              {{ ratioError }}
+            </p>
+            <div class="flex flex-wrap gap-4px" v-if="ratios.length > 0">
+              <span
+                v-for="(r, i) in ratios"
+                :key="r"
+                class="inline-flex items-center gap-3px px-6px py-2px bg-#e9ecef rounded-4px text-12px dark:bg-#555"
+              >
+                {{ r }}
+                <button
+                  class="p-0! bg-transparent! color-#999 hover:color-#333 text-13px leading-none"
+                  @click="emit('removeRatio', i)"
+                >
+                  ×
+                </button>
+              </span>
+            </div>
+            <p v-else class="text-11px color-#999">暂无比例，请添加</p>
           </div>
         </div>
       </div>

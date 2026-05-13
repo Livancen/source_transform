@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from "vue";
+import { ref, onMounted, computed, watch } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
@@ -55,6 +55,13 @@ const isProcessing = ref(false);
 const progress = ref<ProcessProgress | null>(null);
 const resultMessage = ref("");
 
+// 比例裁剪
+const RATIO_STORAGE_KEY = "aspect-ratio-crop-ratios";
+const enableRatioCrop = ref(false);
+const ratios = ref<string[]>([]);
+const newRatio = ref("");
+const ratioError = ref("");
+
 // 计算属性
 const imageCount = computed(
   () => files.value.filter((f) => f.file_type === "image").length,
@@ -65,6 +72,24 @@ const videoCount = computed(
 const videoFiles = computed(() =>
   files.value.filter((f) => f.file_type === "video"),
 );
+
+// 比例管理
+function addRatio() {
+  ratioError.value = "";
+  const val = newRatio.value.trim();
+  if (!val) { ratioError.value = "请输入比例"; return; }
+  const parts = val.split(":");
+  if (parts.length !== 2 || !Number(parts[0]) || !Number(parts[1])) {
+    ratioError.value = "格式错误，应为 W:H 如 1:1"; return;
+  }
+  if (ratios.value.includes(val)) { ratioError.value = "该比例已存在"; return; }
+  ratios.value.push(val);
+  newRatio.value = "";
+}
+
+function removeRatio(i: number) {
+  ratios.value.splice(i, 1);
+}
 
 // 裁剪逻辑
 const {
@@ -86,6 +111,9 @@ const {
 
 // 初始化
 onMounted(async () => {
+  const saved = localStorage.getItem(RATIO_STORAGE_KEY);
+  if (saved) { try { ratios.value = JSON.parse(saved); } catch { /* ignore */ } }
+
   try {
     const dirs = await invoke<[string, string]>("get_custom_dirs");
     inputDir.value = dirs[0];
@@ -98,7 +126,15 @@ onMounted(async () => {
   await listen<ProcessProgress>("process-progress", (event) => {
     progress.value = event.payload;
   });
+  await listen<ProcessProgress>("crop-progress", (event) => {
+    progress.value = event.payload;
+  });
 });
+
+// 保存比例到 localStorage
+watch(ratios, (val) => {
+  localStorage.setItem(RATIO_STORAGE_KEY, JSON.stringify(val));
+}, { deep: true });
 
 // 选择输入目录
 async function selectInputDir() {
@@ -161,18 +197,35 @@ async function startProcess() {
   progress.value = null;
   resultMessage.value = "";
 
+  const messages: string[] = [];
+
   try {
     const result = await invoke<string>("process_files", {
       inputDir: inputDir.value,
       outputDir: outputDir.value,
       options: options.value,
     });
-    resultMessage.value = result;
+    messages.push(result);
   } catch (e) {
-    resultMessage.value = `处理失败: ${e}`;
-  } finally {
-    isProcessing.value = false;
+    messages.push(`处理失败: ${e}`);
   }
+
+  // 如果启用了比例裁剪且配置了比例，自动执行比例裁剪
+  if (enableRatioCrop.value && ratios.value.length > 0) {
+    try {
+      const cropResult = await invoke<string>("crop_videos_by_ratios", {
+        inputDir: inputDir.value,
+        outputDir: outputDir.value,
+        ratios: ratios.value,
+      });
+      messages.push(`\n比例裁剪:\n${cropResult}`);
+    } catch (e) {
+      messages.push(`\n比例裁剪失败: ${e}`);
+    }
+  }
+
+  resultMessage.value = messages.join("");
+  isProcessing.value = false;
 }
 
 // 打开文件夹
@@ -187,7 +240,7 @@ async function openFolder(path: string) {
 
 <template>
   <main
-    class="w-full h-full box-border p-12px font-sans text-14px bg-[#ddd]"
+    class="w-full h-full overflow-auto box-border p-12px font-sans text-14px bg-[#ddd]"
     @contextmenu.prevent
   >
     <div class="flex gap-15px">
@@ -217,7 +270,15 @@ async function openFolder(path: string) {
     <ProcessingOptions
       :options="options"
       :video-files="videoFiles"
+      :enable-ratio-crop="enableRatioCrop"
+      :ratios="ratios"
+      :new-ratio="newRatio"
+      :ratio-error="ratioError"
       @open-crop-preview="openCropPreview"
+      @update:enable-ratio-crop="enableRatioCrop = $event"
+      @update:new-ratio="newRatio = $event"
+      @add-ratio="addRatio"
+      @remove-ratio="removeRatio"
     />
 
     <CropPreviewModal

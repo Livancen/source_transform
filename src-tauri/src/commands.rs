@@ -285,6 +285,188 @@ pub async fn process_files(
 }
 
 #[tauri::command]
+pub async fn crop_videos_by_ratios(
+    app: AppHandle,
+    input_dir: String,
+    output_dir: String,
+    ratios: Vec<String>,
+) -> Result<String, String> {
+    if ratios.is_empty() {
+        return Err("请至少添加一个比例".to_string());
+    }
+
+    std::fs::create_dir_all(&output_dir).map_err(|e| e.to_string())?;
+
+    let files = scan_input_files(input_dir.clone())?;
+    let video_files: Vec<_> = files.into_iter().filter(|f| f.file_type == "video").collect();
+
+    if video_files.is_empty() {
+        return Err("输入目录中没有找到视频文件".to_string());
+    }
+
+    let total = video_files.len() * ratios.len();
+    let mut success_count = 0;
+    let mut error_count = 0;
+    let mut errors: Vec<String> = Vec::new();
+    let mut current = 0;
+
+    for file in &video_files {
+        // 获取视频尺寸
+        let dim_output = app
+            .shell()
+            .sidecar("ffprobe")
+            .map_err(|e| format!("无法找到FFprobe: {}", e))?
+            .args(&[
+                "-v", "error",
+                "-select_streams", "v:0",
+                "-show_entries", "stream=width,height",
+                "-of", "csv=p=0",
+                &file.path,
+            ])
+            .output()
+            .await
+            .map_err(|e| format!("无法执行FFprobe: {}", e))?;
+
+        if !dim_output.status.success() {
+            for ratio in &ratios {
+                current += 1;
+                errors.push(format!("{} ({}): 无法获取视频尺寸", file.name, ratio));
+                error_count += 1;
+            }
+            continue;
+        }
+
+        let stdout = String::from_utf8_lossy(&dim_output.stdout);
+        let parts: Vec<&str> = stdout.trim().split(',').collect();
+        if parts.len() < 2 {
+            for ratio in &ratios {
+                current += 1;
+                errors.push(format!("{} ({}): 无法解析视频尺寸", file.name, ratio));
+                error_count += 1;
+            }
+            continue;
+        }
+
+        let width: u32 = parts[0].parse().unwrap_or(0);
+        let height: u32 = parts[1].parse().unwrap_or(0);
+        if width == 0 || height == 0 {
+            for ratio in &ratios {
+                current += 1;
+                errors.push(format!("{} ({}): 视频尺寸无效", file.name, ratio));
+                error_count += 1;
+            }
+            continue;
+        }
+
+        for ratio in &ratios {
+            current += 1;
+
+            // 发送进度事件
+            let progress = ProcessProgress {
+                current,
+                total,
+                current_file: format!("{} ({})", file.name, ratio),
+                status: "processing".to_string(),
+            };
+            let _ = app.emit("crop-progress", &progress);
+
+            // 解析比例 "W:H"
+            let ratio_parts: Vec<&str> = ratio.split(':').collect();
+            if ratio_parts.len() != 2 {
+                errors.push(format!("{} ({}): 比例格式无效", file.name, ratio));
+                error_count += 1;
+                continue;
+            }
+
+            let rw: f64 = ratio_parts[0].parse().unwrap_or(0.0);
+            let rh: f64 = ratio_parts[1].parse().unwrap_or(0.0);
+            if rw <= 0.0 || rh <= 0.0 {
+                errors.push(format!("{} ({}): 比例值无效", file.name, ratio));
+                error_count += 1;
+                continue;
+            }
+
+            let target_ratio = rw / rh;
+            let video_ratio = width as f64 / height as f64;
+
+            // object-fit: cover 裁剪算法
+            let (crop_w, crop_h, crop_x, crop_y) = if target_ratio < video_ratio {
+                // 目标更窄，以高度为基准裁剪宽度
+                let ch = height;
+                let cw = (height as f64 * target_ratio) as u32;
+                let cx = (width - cw) / 2;
+                (cw, ch, cx, 0u32)
+            } else {
+                // 目标更宽，以宽度为基准裁剪高度
+                let cw = width;
+                let ch = (width as f64 / target_ratio) as u32;
+                let cy = (height - ch) / 2;
+                (cw, ch, 0u32, cy)
+            };
+
+            // 构建输出文件名: name_ratio.mp4
+            let file_stem = PathBuf::from(&file.name)
+                .file_stem()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_string();
+            let ratio_filename = ratio.replace(':', "-");
+            let output_filename = format!("{}_{}.mp4", file_stem, ratio_filename);
+            let output_path = PathBuf::from(&output_dir).join(&output_filename);
+
+            let crop_filter = format!("crop={}:{}:{}:{}", crop_w, crop_h, crop_x, crop_y);
+
+            let result = app
+                .shell()
+                .sidecar("ffmpeg")
+                .map_err(|e| format!("无法找到FFmpeg: {}", e))?
+                .args(&[
+                    "-i", &file.path,
+                    "-vf", &crop_filter,
+                    "-y",
+                    &output_path.to_string_lossy(),
+                ])
+                .output()
+                .await
+                .map_err(|e| format!("无法执行FFmpeg: {}", e));
+
+            match result {
+                Ok(output) if output.status.success() => success_count += 1,
+                Ok(output) => {
+                    let stderr = String::from_utf8_lossy(&output.stderr);
+                    errors.push(format!("{} ({}): {}", file.name, ratio, stderr));
+                    error_count += 1;
+                }
+                Err(e) => {
+                    errors.push(format!("{} ({}): {}", file.name, ratio, e));
+                    error_count += 1;
+                }
+            }
+        }
+    }
+
+    // 发送完成事件
+    let progress = ProcessProgress {
+        current: total,
+        total,
+        current_file: "".to_string(),
+        status: "completed".to_string(),
+    };
+    let _ = app.emit("crop-progress", &progress);
+
+    if error_count > 0 {
+        Ok(format!(
+            "裁剪完成: {} 成功, {} 失败\n失败详情:\n{}",
+            success_count,
+            error_count,
+            errors.join("\n")
+        ))
+    } else {
+        Ok(format!("全部裁剪完成: {} 个文件", success_count))
+    }
+}
+
+#[tauri::command]
 pub fn open_folder(path: String) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
