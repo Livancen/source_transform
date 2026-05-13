@@ -24,6 +24,7 @@ pub struct ProcessOptions {
     pub target_bitrate: String, // e.g., "1M", "500k"
     pub reduce_level: bool,
     pub target_level: String, // e.g., "3.0", "4.0", "5.1"
+    pub target_profile: String, // e.g., "baseline", "main", "high"
     pub convert_h265_to_h264: bool,
     pub convert_format: bool,
     pub target_format: String, // e.g., "mp4", "avi", "mkv"
@@ -899,6 +900,14 @@ async fn process_video(
         args.push(&level);
     }
 
+    // Profile
+    let profile: String;
+    if options.reduce_level && !options.target_profile.is_empty() {
+        profile = options.target_profile.clone();
+        args.push("-profile:v");
+        args.push(&profile);
+    }
+
     // H.265 转 H.264
     if options.convert_h265_to_h264 {
         args.push("-c:v");
@@ -914,9 +923,10 @@ async fn process_video(
         args.push(&crf_str);
     }
 
-    // 视频静音（去除音频）
+    // 视频静音（去除音轨）
     if options.mute {
-        args.push("-an");
+        args.push("-map");
+        args.push("0:v");
     }
 
     args.push(output_path);

@@ -56,6 +56,7 @@ interface ProcessOptions {
   target_bitrate: string;
   reduce_level: boolean;
   target_level: string;
+  target_profile: string;
   convert_h265_to_h264: boolean;
   convert_format: boolean;
   target_format: string;
@@ -92,6 +93,7 @@ const options = ref<ProcessOptions>({
   target_bitrate: "2M",
   reduce_level: false,
   target_level: "4.0",
+  target_profile: "high",
   convert_h265_to_h264: false,
   convert_format: false,
   target_format: "mp4",
@@ -706,6 +708,12 @@ async function openFolder(path: string) {
               降低Level (视频)
             </label>
             <div v-if="options.reduce_level" class="option-detail">
+              <label>Profile:</label>
+              <select v-model="options.target_profile">
+                <option value="baseline">Baseline</option>
+                <option value="main">Main</option>
+                <option value="high">High</option>
+              </select>
               <label>Level:</label>
               <select v-model="options.target_level">
                 <option value="3.0">3.0 (SD 480p)</option>
