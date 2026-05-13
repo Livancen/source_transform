@@ -208,18 +208,7 @@ async function startProcess() {
 
   const messages: string[] = [];
 
-  try {
-    const result = await invoke<string>("process_files", {
-      inputDir: inputDir.value,
-      outputDir: outputDir.value,
-      options: options.value,
-    });
-    messages.push(result);
-  } catch (e) {
-    messages.push(`处理失败: ${e}`);
-  }
-
-  // 如果启用了比例裁剪且配置了比例，自动执行比例裁剪
+  // 比例裁剪模式：仅裁剪视频，不处理其他文件
   if (enableRatioCrop.value && ratios.value.length > 0) {
     try {
       const cropResult = await invoke<string>("crop_videos_by_ratios", {
@@ -227,9 +216,21 @@ async function startProcess() {
         outputDir: outputDir.value,
         ratios: ratios.value,
       });
-      messages.push(`\n比例裁剪:\n${cropResult}`);
+      messages.push(cropResult);
     } catch (e) {
-      messages.push(`\n比例裁剪失败: ${e}`);
+      messages.push(`比例裁剪失败: ${e}`);
+    }
+  } else {
+    // 常规处理模式
+    try {
+      const result = await invoke<string>("process_files", {
+        inputDir: inputDir.value,
+        outputDir: outputDir.value,
+        options: options.value,
+      });
+      messages.push(result);
+    } catch (e) {
+      messages.push(`处理失败: ${e}`);
     }
   }
 
