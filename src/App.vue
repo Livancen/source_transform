@@ -203,14 +203,14 @@ async function openFolder(path: string) {
         :video-count="videoCount"
         :total-count="files.length"
         :is-processing="isProcessing"
+        :files-length="files.length"
         @refresh="scanFiles"
+        @start-process="startProcess"
       />
       <ProcessingActions
         :is-processing="isProcessing"
         :progress="progress"
         :result-message="resultMessage"
-        :files-length="files.length"
-        @start-process="startProcess"
       />
     </div>
     <div class="h-15px"></div>

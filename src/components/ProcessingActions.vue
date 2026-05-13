@@ -5,18 +5,13 @@ defineProps<{
   isProcessing: boolean;
   progress: ProcessProgress | null;
   resultMessage: string;
-  filesLength: number;
-}>();
-
-const emit = defineEmits<{
-  startProcess: [];
 }>();
 </script>
 
 <template>
   <!-- 进度显示 -->
   <section
-    class="bg-white rounded-8px p-15px shadow-sm dark:bg-#2d2d2d"
+    class="bg-white rounded-8px p-15px shadow-sm dark:bg-#2d2d2d w-[160px]"
     v-if="isProcessing && progress"
   >
     <div class="flex flex-col items-center gap-8px">
@@ -24,17 +19,12 @@ const emit = defineEmits<{
         >正在处理第 {{ progress.current }} 个文件，共
         {{ progress.total }} 个</span
       >
-      <!-- <span
-        class="text-12px color-#666 max-w-full overflow-hidden text-ellipsis whitespace-nowrap"
-        v-if="progress.current_file"
-        >{{ progress.current_file }}</span
-      > -->
     </div>
   </section>
 
   <!-- 结果消息 -->
   <section
-    class="bg-white rounded-8px p-15px shadow-sm dark:bg-#2d2d2d"
+    class="bg-white rounded-8px p-15px shadow-sm dark:bg-#2d2d2d w-[160px]"
     v-if="resultMessage"
   >
     <h2

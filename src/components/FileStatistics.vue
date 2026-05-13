@@ -4,10 +4,12 @@ defineProps<{
   videoCount: number;
   totalCount: number;
   isProcessing: boolean;
+  filesLength: number;
 }>();
 
 const emit = defineEmits<{
   refresh: [];
+  startProcess: [];
 }>();
 </script>
 
@@ -51,14 +53,12 @@ const emit = defineEmits<{
         </button>
       </div>
     </div>
-    <section class="bg-white rounded-8px shadow-sm mt-12px dark:bg-#2d2d2d">
-      <button
-        class="w-full p-4px text-16px bg-#007bff hover:not-disabled:bg-#0056b3"
-        @click="emit('startProcess')"
-        :disabled="isProcessing || filesLength === 0"
-      >
-        {{ isProcessing ? "处理中..." : "开始处理" }}
-      </button>
-    </section>
+    <button
+      class="w-full p-4px text-16px bg-#007bff hover:not-disabled:bg-#0056b3 mt-12px"
+      @click="emit('startProcess')"
+      :disabled="isProcessing || filesLength === 0"
+    >
+      {{ isProcessing ? "处理中..." : "开始处理" }}
+    </button>
   </section>
 </template>
