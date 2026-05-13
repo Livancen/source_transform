@@ -17,32 +17,6 @@ interface ProcessProgress {
   status: string;
 }
 
-interface VideoInfo {
-  path: string;
-  name: string;
-  codec: string;
-  profile: string;
-  level: string;
-  width: number;
-  height: number;
-  framerate: number;
-  bitrate: number;
-}
-
-interface DeviceCompatibility {
-  device: string;
-  compatible: boolean;
-  reason: string;
-}
-
-interface VideoCompatibilityResult {
-  path: string;
-  name: string;
-  video_info: VideoInfo;
-  devices: DeviceCompatibility[];
-  thumbnail: string;
-}
-
 interface ProcessOptions {
   compress: boolean;
   compress_quality: number;
@@ -113,11 +87,6 @@ const options = ref<ProcessOptions>({
 const isProcessing = ref(false);
 const progress = ref<ProcessProgress | null>(null);
 const resultMessage = ref("");
-
-// 兼容性检测状态（仅视频）
-const isDetecting = ref(false);
-const compatibilityResults = ref<VideoCompatibilityResult[]>([]);
-const showCompatibilityModal = ref(false);
 
 // 计算属性
 const imageCount = computed(
@@ -393,49 +362,6 @@ async function scanFiles() {
   }
 }
 
-// 检测兼容性（仅视频）
-async function detectCompatibility() {
-  if (!inputDir.value) {
-    resultMessage.value = "请先选择输入目录";
-    return;
-  }
-
-  if (videoCount.value === 0) {
-    resultMessage.value = "目录中没有可检测的视频文件";
-    return;
-  }
-
-  isDetecting.value = true;
-  compatibilityResults.value = [];
-
-  try {
-    const results = await invoke<VideoCompatibilityResult[]>(
-      "detect_video_compatibility",
-      {
-        inputDir: inputDir.value,
-      }
-    );
-    compatibilityResults.value = results;
-    showCompatibilityModal.value = true;
-  } catch (e) {
-    resultMessage.value = `检测失败: ${e}`;
-  } finally {
-    isDetecting.value = false;
-  }
-}
-
-// 关闭兼容性弹窗
-function closeCompatibilityModal() {
-  showCompatibilityModal.value = false;
-}
-
-// 获取不兼容的文件数量
-function getIncompatibleCount(device: string): number {
-  return compatibilityResults.value.filter(
-    (r) => !r.devices.find((d) => d.device === device)?.compatible
-  ).length;
-}
-
 // 开始处理
 async function startProcess() {
   if (files.value.length === 0) {
@@ -519,13 +445,6 @@ async function openFolder(path: string) {
               刷新
             </button>
           </div>
-          <button
-            class="detect-btn"
-            @click="detectCompatibility"
-            :disabled="isDetecting || videoCount === 0"
-          >
-            {{ isDetecting ? "检测中..." : "兼容性检测" }}
-          </button>
         </div>
       </section>
     </div>
@@ -956,110 +875,6 @@ async function openFolder(path: string) {
       </div>
     </div>
 
-    <!-- 兼容性检测结果弹窗（仅视频） -->
-    <div class="compat-modal" v-if="showCompatibilityModal">
-      <div class="compat-modal-content">
-        <h3>视频兼容性检测结果</h3>
-
-        <!-- 视频兼容性统计 -->
-        <div class="compat-summary">
-          <div class="compat-summary-item">
-            <span class="device-name">RK3399</span>
-            <span
-              :class="[
-                'compat-count',
-                getIncompatibleCount('RK3399') > 0 ? 'has-issues' : 'all-good',
-              ]"
-            >
-              {{
-                getIncompatibleCount("RK3399") > 0
-                  ? `${getIncompatibleCount("RK3399")} 个不兼容`
-                  : "全部兼容"
-              }}
-            </span>
-          </div>
-          <div class="compat-summary-item">
-            <span class="device-name">RK3566</span>
-            <span
-              :class="[
-                'compat-count',
-                getIncompatibleCount('RK3566') > 0 ? 'has-issues' : 'all-good',
-              ]"
-            >
-              {{
-                getIncompatibleCount("RK3566") > 0
-                  ? `${getIncompatibleCount("RK3566")} 个不兼容`
-                  : "全部兼容"
-              }}
-            </span>
-          </div>
-          <div class="compat-summary-item">
-            <span class="device-name">RK3588</span>
-            <span
-              :class="[
-                'compat-count',
-                getIncompatibleCount('RK3588') > 0 ? 'has-issues' : 'all-good',
-              ]"
-            >
-              {{
-                getIncompatibleCount("RK3588") > 0
-                  ? `${getIncompatibleCount("RK3588")} 个不兼容`
-                  : "全部兼容"
-              }}
-            </span>
-          </div>
-        </div>
-
-        <!-- 视频详细结果列表 -->
-        <div class="compat-results">
-          <div
-            class="compat-item"
-            v-for="result in compatibilityResults"
-            :key="result.path"
-          >
-            <div class="compat-file-info">
-              <img
-                v-if="result.thumbnail"
-                :src="result.thumbnail"
-                class="video-thumbnail"
-                alt="缩略图"
-              />
-              <div class="file-details">
-                <span class="file-name">{{ result.name }}</span>
-                <span class="video-specs">
-                  {{ result.video_info.codec.toUpperCase() }} |
-                  {{ result.video_info.width }}x{{ result.video_info.height }} |
-                  {{ Math.round(result.video_info.framerate) }}fps | Level
-                  {{ result.video_info.level }}
-                </span>
-              </div>
-            </div>
-            <div class="compat-devices">
-              <span
-                v-for="device in result.devices"
-                :key="device.device"
-                :class="[
-                  'device-badge',
-                  device.compatible ? 'compatible' : 'incompatible',
-                ]"
-                :title="device.reason"
-              >
-                {{ device.device }}
-                <span class="device-status">{{
-                  device.compatible ? "✓" : "✗"
-                }}</span>
-              </span>
-            </div>
-          </div>
-        </div>
-
-        <div class="compat-modal-actions">
-          <button class="primary-btn" @click="closeCompatibilityModal">
-            关闭
-          </button>
-        </div>
-      </div>
-    </div>
   </main>
 </template>
 
@@ -1571,204 +1386,6 @@ button:disabled {
   padding: 8px 20px;
 }
 
-/* 检测按钮 */
-.detect-btn {
-  width: 100%;
-  margin-top: 8px;
-  padding: 6px 12px;
-  font-size: 12px;
-  background: #17a2b8;
-}
-
-.detect-btn:hover:not(:disabled) {
-  background: #138496;
-}
-
-/* 兼容性检测弹窗 */
-.compat-modal {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background: rgba(0, 0, 0, 0.7);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-}
-
-.compat-modal-content {
-  background: #fff;
-  border-radius: 8px;
-  padding: 20px;
-  max-width: 700px;
-  width: 90%;
-  max-height: 80%;
-  overflow: auto;
-}
-
-.compat-modal-content h3 {
-  margin-bottom: 15px;
-  font-size: 18px;
-}
-
-.compat-summary {
-  display: flex;
-  gap: 15px;
-  margin-bottom: 20px;
-  padding: 15px;
-  background: #f8f9fa;
-  border-radius: 6px;
-}
-
-.compat-summary-item {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 5px;
-}
-
-.device-name {
-  font-weight: 600;
-  font-size: 14px;
-}
-
-.compat-count {
-  font-size: 12px;
-  padding: 2px 8px;
-  border-radius: 10px;
-}
-
-.compat-count.all-good {
-  background: #d4edda;
-  color: #155724;
-}
-
-.compat-count.has-issues {
-  background: #f8d7da;
-  color: #721c24;
-}
-
-.compat-results {
-  max-height: 400px;
-  overflow-y: auto;
-  border: 1px solid #ddd;
-  border-radius: 6px;
-}
-
-.compat-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 10px 15px;
-  border-bottom: 1px solid #eee;
-}
-
-.compat-item:last-child {
-  border-bottom: none;
-}
-
-.compat-file-info {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.video-thumbnail {
-  width: 60px;
-  height: 45px;
-  object-fit: cover;
-  border-radius: 4px;
-  flex-shrink: 0;
-}
-
-.file-details {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.file-name {
-  font-weight: 500;
-  font-size: 13px;
-}
-
-.video-specs {
-  font-size: 11px;
-  color: #666;
-}
-
-.compat-devices {
-  display: flex;
-  gap: 8px;
-}
-
-.device-badge {
-  display: flex;
-  align-items: center;
-  gap: 3px;
-  padding: 3px 8px;
-  border-radius: 4px;
-  font-size: 11px;
-  font-weight: 500;
-  cursor: help;
-}
-
-.device-badge.compatible {
-  background: #d4edda;
-  color: #155724;
-}
-
-.device-badge.incompatible {
-  background: #f8d7da;
-  color: #721c24;
-}
-
-.device-status {
-  font-weight: bold;
-}
-
-.compat-modal-actions {
-  display: flex;
-  justify-content: flex-end;
-  margin-top: 15px;
-}
-
-.compat-modal-actions .primary-btn {
-  width: auto;
-  padding: 8px 20px;
-}
-
-/* 兼容性检测分区样式 */
-.compat-section {
-  margin-bottom: 20px;
-  padding-bottom: 15px;
-  border-bottom: 1px solid #eee;
-}
-
-.compat-section:last-of-type {
-  border-bottom: none;
-  margin-bottom: 0;
-}
-
-.section-title {
-  font-size: 14px;
-  font-weight: 600;
-  color: #333;
-  margin-bottom: 10px;
-  padding-bottom: 5px;
-  border-bottom: 2px solid #17a2b8;
-  display: inline-block;
-}
-
-.no-results {
-  text-align: center;
-  padding: 30px;
-  color: #666;
-}
-
 @media (prefers-color-scheme: dark) {
   :root {
     color: #f6f6f6;
@@ -1845,37 +1462,5 @@ button:disabled {
     color: #888;
   }
 
-  .compat-modal-content {
-    background: #2d2d2d;
-    color: #f6f6f6;
-  }
-
-  .compat-summary {
-    background: #333;
-  }
-
-  .compat-section {
-    border-bottom-color: #444;
-  }
-
-  .section-title {
-    color: #f6f6f6;
-  }
-
-  .no-results {
-    color: #aaa;
-  }
-
-  .compat-results {
-    border-color: #444;
-  }
-
-  .compat-item {
-    border-bottom-color: #444;
-  }
-
-  .video-specs {
-    color: #aaa;
-  }
 }
 </style>
