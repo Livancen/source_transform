@@ -199,39 +199,75 @@ pub fn start_server(input_dir: String) -> Result<String, String> {
 }
 
 fn extract_file_from_multipart(body: &[u8], boundary: &str) -> Option<(String, Vec<u8>)> {
-    let body_str = String::from_utf8_lossy(body);
-    let parts: Vec<&str> = body_str.split(&format!("--{}", boundary)).collect();
+    let boundary_delim = format!("--{}", boundary).into_bytes();
+    let header_sep = b"\r\n\r\n";
 
-    for part in &parts {
-        if part.is_empty() || part.trim() == "--" {
-            continue;
-        }
+    // 按 boundary 分割
+    let mut start = 0;
+    while start < body.len() {
+        // 查找下一个 boundary
+        let boundary_pos = find_subsequence(&body[start..], &boundary_delim)?;
+        let part_start = start + boundary_pos + boundary_delim.len();
 
-        if let Some(header_end) = part.find("\r\n\r\n") {
-            let headers = &part[..header_end];
-            let body_content = &part[header_end + 4..];
+        // 跳过 \r\n
+        let part_start = if body[part_start..].starts_with(b"\r\n") {
+            part_start + 2
+        } else {
+            part_start
+        };
 
-            if headers.contains("filename=") {
-                let mut filename = String::new();
-                if let Some(start) = headers.find("filename=\"") {
-                    let rest = &headers[start + 10..];
-                    if let Some(end) = rest.find('"') {
-                        filename = rest[..end].to_string();
-                    }
-                }
+        // 查找 header 和 body 的分界 \r\n\r\n
+        let header_end = find_subsequence(&body[part_start..], header_sep)?;
+        let headers = &body[part_start..part_start + header_end];
+        let content_start = part_start + header_end + 4;
 
-                let data = if body_content.ends_with("\r\n") {
-                    &body_content[..body_content.len() - 2]
+        // 检查是否是文件字段
+        let headers_str = String::from_utf8_lossy(headers);
+        if headers_str.contains("filename=\"") {
+            // 提取文件名
+            let filename = if let Some(s) = headers_str.find("filename=\"") {
+                let rest = &headers_str[s + 10..];
+                if let Some(e) = rest.find('"') {
+                    rest[..e].to_string()
                 } else {
-                    body_content
+                    String::new()
+                }
+            } else {
+                String::new()
+            };
+
+            if !filename.is_empty() {
+                // 查找下一个 boundary 作为内容结束
+                let content_end = find_subsequence(&body[content_start..], &boundary_delim)
+                    .map(|p| content_start + p)
+                    .unwrap_or(body.len());
+
+                // 去掉末尾的 \r\n
+                let data = if content_end > content_start + 2
+                    && &body[content_end - 2..content_end] == b"\r\n"
+                {
+                    &body[content_start..content_end - 2]
+                } else {
+                    &body[content_start..content_end]
                 };
 
-                if !filename.is_empty() {
-                    return Some((filename, data.as_bytes().to_vec()));
-                }
+                return Some((filename, data.to_vec()));
             }
+        }
+
+        // 移动到下一个 part
+        let next_boundary = find_subsequence(&body[content_start..], &boundary_delim);
+        match next_boundary {
+            Some(p) => start = content_start + p,
+            None => break,
         }
     }
 
     None
+}
+
+fn find_subsequence(haystack: &[u8], needle: &[u8]) -> Option<usize> {
+    haystack
+        .windows(needle.len())
+        .position(|window| window == needle)
 }
