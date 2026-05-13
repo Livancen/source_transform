@@ -205,20 +205,19 @@ async function openFolder(path: string) {
         :is-processing="isProcessing"
         @refresh="scanFiles"
       />
+      <ProcessingActions
+        :is-processing="isProcessing"
+        :progress="progress"
+        :result-message="resultMessage"
+        :files-length="files.length"
+        @start-process="startProcess"
+      />
     </div>
     <div class="h-15px"></div>
     <ProcessingOptions
       :options="options"
       :video-files="videoFiles"
       @open-crop-preview="openCropPreview"
-    />
-
-    <ProcessingActions
-      :is-processing="isProcessing"
-      :progress="progress"
-      :result-message="resultMessage"
-      :files-length="files.length"
-      @start-process="startProcess"
     />
 
     <CropPreviewModal
@@ -248,6 +247,7 @@ body,
 #app {
   width: 100%;
   height: 100%;
+  user-select: none;
 }
 button {
   padding: 8px 16px;
