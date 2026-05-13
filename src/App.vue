@@ -57,13 +57,13 @@ const resultMessage = ref("");
 
 // 计算属性
 const imageCount = computed(
-  () => files.value.filter((f) => f.file_type === "image").length
+  () => files.value.filter((f) => f.file_type === "image").length,
 );
 const videoCount = computed(
-  () => files.value.filter((f) => f.file_type === "video").length
+  () => files.value.filter((f) => f.file_type === "video").length,
 );
 const videoFiles = computed(() =>
-  files.value.filter((f) => f.file_type === "video")
+  files.value.filter((f) => f.file_type === "video"),
 );
 
 // 裁剪逻辑
@@ -186,8 +186,11 @@ async function openFolder(path: string) {
 </script>
 
 <template>
-  <main class="container" @contextmenu.prevent>
-    <div class="top-row">
+  <main
+    class="w-full h-full box-border p-12px font-sans text-14px color-#0f0f0f bg-#f6f6f6 select-none dark:color-#f6f6f6 dark:bg-#1a1a1a"
+    @contextmenu.prevent
+  >
+    <div class="flex gap-15px">
       <DirectorySettings
         :input-dir="inputDir"
         :output-dir="outputDir"
@@ -203,7 +206,7 @@ async function openFolder(path: string) {
         @refresh="scanFiles"
       />
     </div>
-
+    <div class="h-15px"></div>
     <ProcessingOptions
       :options="options"
       :video-files="videoFiles"
@@ -237,340 +240,29 @@ async function openFolder(path: string) {
 
 <style>
 * {
-  margin: 0;
   padding: 0;
+  margin: 0;
 }
-:root {
-  font-family: Inter, Avenir, Helvetica, Arial, sans-serif;
-  font-size: 14px;
-  line-height: 1.5;
-  font-weight: 400;
-  color: #0f0f0f;
-  background-color: #f6f6f6;
-  user-select: none;
-  -webkit-user-select: none;
+html,
+body,
+#app {
+  width: 100%;
+  height: 100%;
 }
-
-.container {
-  max-width: 900px;
-  margin: 0 auto;
-  padding: 10px;
-}
-
-.top-row {
-  display: flex;
-  gap: 15px;
-}
-
-.dir-section {
-  flex: 1;
-  margin-bottom: 0;
-}
-
-.stats-section {
-  width: 200px;
-  flex-shrink: 0;
-  margin-bottom: 0;
-  display: flex;
-  flex-direction: column;
-}
-
-.stats {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  flex: 1;
-}
-
-.stat-item {
-  display: flex;
-  justify-content: space-between;
-  padding: 4px 8px;
-  background: #e9ecef;
-  border-radius: 4px;
-}
-
-.stat-row-last {
-  display: flex;
-  gap: 8px;
-}
-
-.stat-row-last .stat-item {
-  flex: 1;
-}
-
-.refresh-btn {
-  flex: 1;
-  padding: 4px 8px;
-  font-size: 12px;
-}
-
-.stat-label {
-  color: #666;
-}
-
-.stat-value {
-  font-weight: 600;
-}
-
-h2 {
-  font-size: 16px;
-  margin-bottom: 10px;
-  color: #555;
-  border-bottom: 1px solid #ddd;
-  padding-bottom: 5px;
-}
-
-.section {
-  background: #fff;
-  border-radius: 8px;
-  padding: 15px;
-  margin-bottom: 15px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-}
-
-.dir-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 10px;
-}
-
-.dir-row label {
-  width: 40px;
-  flex-shrink: 0;
-}
-
-.dir-row input {
-  flex: 1;
-  padding: 8px;
-  border: 1px solid #ddd;
-  border-radius: 4px;
-  background: #f9f9f9;
-}
-
-.options-grid {
-  display: flex;
-  gap: 15px;
-}
-
-.options-column {
-  flex: 1;
-}
-
-.option-group {
-  margin-bottom: 10px;
-  padding: 10px;
-  background: #f9f9f9;
-  border-radius: 4px;
-}
-
-.option-group:last-child {
-  margin-bottom: 0;
-}
-
-.checkbox-label {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  cursor: pointer;
-  font-weight: 500;
-}
-
-.checkbox-label.sub-option {
-  font-weight: 400;
-  font-size: 13px;
-}
-
-.compress-mode {
-  margin-top: 10px;
-  padding-left: 26px;
-}
-
-.radio-label {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  cursor: pointer;
-  font-size: 13px;
-  margin-bottom: 6px;
-}
-
-.radio-label input[type="radio"] {
-  width: 14px;
-  height: 14px;
-}
-
-.compress-size {
-  margin-top: 8px;
-  padding-left: 20px;
-}
-
-.checkbox-label input[type="checkbox"] {
-  width: 18px;
-  height: 18px;
-}
-
-.option-detail {
-  margin-top: 10px;
-  padding-left: 26px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.option-detail label {
-  color: #666;
-}
-
-.option-detail input[type="number"] {
-  width: 100px;
-  padding: 5px;
-  border: 1px solid #ddd;
-  border-radius: 4px;
-}
-
-.option-detail input[type="range"] {
-  width: 150px;
-}
-
-.option-detail select {
-  padding: 5px 10px;
-  border: 1px solid #ddd;
-  border-radius: 4px;
-}
-
 button {
   padding: 8px 16px;
   border: none;
   border-radius: 4px;
   cursor: pointer;
-  background: #6c757d;
+  background: #20b42c;
   color: white;
   transition: background 0.2s;
 }
-
 button:hover:not(:disabled) {
   background: #5a6268;
 }
-
 button:disabled {
   opacity: 0.6;
   cursor: not-allowed;
-}
-
-.primary-btn {
-  width: 100%;
-  padding: 12px;
-  font-size: 16px;
-  background: #007bff;
-}
-
-.primary-btn:hover:not(:disabled) {
-  background: #0056b3;
-}
-
-.processing-status {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-}
-
-.processing-text {
-  font-size: 14px;
-  color: #333;
-}
-
-.processing-file {
-  font-size: 12px;
-  color: #666;
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.result-message {
-  background: #f8f9fa;
-  padding: 10px;
-  border-radius: 4px;
-  white-space: pre-wrap;
-  font-family: monospace;
-  font-size: 12px;
-  max-height: 200px;
-  overflow-y: auto;
-}
-
-.crop-info {
-  flex-direction: column;
-  align-items: flex-start !important;
-  gap: 5px !important;
-}
-
-.crop-info span {
-  font-size: 12px;
-  color: #666;
-}
-
-.crop-btn {
-  margin-top: 5px;
-  padding: 4px 12px !important;
-  font-size: 12px;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    color: #f6f6f6;
-    background-color: #1a1a1a;
-  }
-
-  .section {
-    background: #2d2d2d;
-  }
-
-  h2 {
-    color: #ccc;
-    border-bottom-color: #444;
-  }
-
-  .dir-row input {
-    background: #333;
-    border-color: #444;
-    color: #f6f6f6;
-  }
-
-  .stat-item {
-    background: #444;
-  }
-
-  .stat-label {
-    color: #aaa;
-  }
-
-  .option-group {
-    background: #333;
-  }
-
-  .option-detail label {
-    color: #aaa;
-  }
-
-  .option-detail input,
-  .option-detail select {
-    background: #444;
-    border-color: #555;
-    color: #f6f6f6;
-  }
-
-  .result-message {
-    background: #333;
-    color: #f6f6f6;
-  }
-
-  .crop-info span {
-    color: #aaa;
-  }
 }
 </style>
