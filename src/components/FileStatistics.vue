@@ -21,17 +21,19 @@ const emit = defineEmits<{
       文件统计
     </h2>
     <div class="flex flex-col gap-8px flex-1">
-      <div
-        class="flex justify-between p-4px bg-#e9ecef rounded-4px dark:bg-#444"
-      >
-        <span class="color-#666 dark:color-#aaa">图片</span>
-        <span class="font-600">{{ imageCount }}</span>
-      </div>
-      <div
-        class="flex justify-between p-4px bg-#e9ecef rounded-4px dark:bg-#444"
-      >
-        <span class="color-#666 dark:color-#aaa">视频</span>
-        <span class="font-600">{{ videoCount }}</span>
+      <div class="flex items-center gap-8px">
+        <div
+          class="flex flex-1 justify-between p-4px bg-#e9ecef rounded-4px dark:bg-#444"
+        >
+          <span class="color-#666 dark:color-#aaa">图片</span>
+          <span class="font-600">{{ imageCount }}</span>
+        </div>
+        <div
+          class="flex flex-1 justify-between p-4px bg-#e9ecef rounded-4px dark:bg-#444"
+        >
+          <span class="color-#666 dark:color-#aaa">视频</span>
+          <span class="font-600">{{ videoCount }}</span>
+        </div>
       </div>
       <div class="flex gap-8px">
         <div
@@ -49,5 +51,14 @@ const emit = defineEmits<{
         </button>
       </div>
     </div>
+    <section class="bg-white rounded-8px shadow-sm mt-12px dark:bg-#2d2d2d">
+      <button
+        class="w-full p-4px text-16px bg-#007bff hover:not-disabled:bg-#0056b3"
+        @click="emit('startProcess')"
+        :disabled="isProcessing || filesLength === 0"
+      >
+        {{ isProcessing ? "处理中..." : "开始处理" }}
+      </button>
+    </section>
   </section>
 </template>
