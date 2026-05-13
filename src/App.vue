@@ -187,7 +187,7 @@ async function openFolder(path: string) {
 
 <template>
   <main
-    class="w-full h-full box-border p-12px font-sans text-14px color-#0f0f0f bg-#f6f6f6 select-none dark:color-#f6f6f6 dark:bg-#1a1a1a"
+    class="w-full h-full box-border p-12px font-sans text-14px bg-[#ddd]"
     @contextmenu.prevent
   >
     <div class="flex gap-15px">
