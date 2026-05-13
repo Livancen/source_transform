@@ -419,14 +419,45 @@ pub async fn crop_videos_by_ratios(
                 (cw, ch, 0u32, cy)
             };
 
-            // 构建输出文件名: name_ratio.mp4
+            // 构建输出文件名
             let file_stem = PathBuf::from(&file.name)
                 .file_stem()
                 .unwrap_or_default()
                 .to_string_lossy()
                 .to_string();
-            let ratio_filename = ratio.replace(':', "-");
-            let output_filename = format!("{}_{}.mp4", file_stem, ratio_filename);
+            let ratio_dash = ratio.replace(':', "-");
+            let ratio_value = rw / rh;
+            let ratio_value_str = format!("{:.2}", ratio_value);
+
+            // 日期 YYMMDD
+            let now = chrono::Local::now();
+            let date_str = now.format("%y%m%d").to_string();
+
+            // 比例范围枚举匹配
+            let range_enum: &[(&str, f64, f64)] = &[
+                ("0.94～1.05", 0.94, 1.05),
+                ("1.29～1.41", 1.29, 1.41),
+                ("1.11～1.25", 1.11, 1.25),
+                ("1.67～1.83", 1.67, 1.83),
+                ("2.00～3.00", 2.00, 3.00),
+                ("0.44～0.50", 0.44, 0.50),
+                ("0.30～0.43", 0.30, 0.43),
+                ("0.63～0.71", 0.63, 0.71),
+                ("0.75～0.83", 0.75, 0.83),
+                ("0.84～0.94", 0.84, 0.94),
+                ("0.53～0.60", 0.53, 0.60),
+            ];
+
+            let matched_range = range_enum.iter().find(|(_, lo, hi)| {
+                ratio_value >= *lo && ratio_value <= *hi
+            });
+
+            let output_filename = if let Some((range_name, _, _)) = matched_range {
+                format!("{}-{}({})-({})-({}).mp4", file_stem, ratio_dash, ratio_value_str, range_name, date_str)
+            } else {
+                format!("{}-{}({})-({}).mp4", file_stem, ratio_dash, ratio_value_str, date_str)
+            };
+
             let output_path = PathBuf::from(&output_dir).join(&output_filename);
 
             let crop_filter = format!("crop={}:{}:{}:{}", crop_w, crop_h, crop_x, crop_y);
