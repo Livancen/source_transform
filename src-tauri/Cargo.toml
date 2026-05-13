@@ -28,4 +28,5 @@ serde_json = "1"
 tokio = { version = "1", features = ["full"] }
 walkdir = "2"
 base64 = "0.22"
+tiny_http = "0.12"
 

@@ -491,3 +491,8 @@ pub fn open_folder(path: String) -> Result<(), String> {
     }
     Ok(())
 }
+
+#[tauri::command]
+pub fn start_upload_server(input_dir: String) -> Result<String, String> {
+    crate::upload_server::start_server(input_dir)
+}

@@ -1,6 +1,7 @@
 mod types;
 mod process;
 mod commands;
+mod upload_server;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -20,6 +21,7 @@ pub fn run() {
             commands::process_files,
             commands::crop_videos_by_ratios,
             commands::open_folder,
+            commands::start_upload_server,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

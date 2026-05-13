@@ -55,6 +55,9 @@ const isProcessing = ref(false);
 const progress = ref<ProcessProgress | null>(null);
 const resultMessage = ref("");
 
+// 上传服务器
+const uploadUrl = ref("");
+
 // 比例裁剪
 const RATIO_STORAGE_KEY = "aspect-ratio-crop-ratios";
 const enableRatioCrop = ref(false);
@@ -119,6 +122,12 @@ onMounted(async () => {
     inputDir.value = dirs[0];
     outputDir.value = dirs[1];
     await scanFiles();
+
+    // 启动上传服务器
+    const url = await invoke<string>("start_upload_server", {
+      inputDir: inputDir.value,
+    });
+    uploadUrl.value = url;
   } catch (e) {
     console.error("初始化失败:", e);
   }
@@ -247,6 +256,7 @@ async function openFolder(path: string) {
       <DirectorySettings
         :input-dir="inputDir"
         :output-dir="outputDir"
+        :upload-url="uploadUrl"
         @select-input="selectInputDir"
         @select-output="selectOutputDir"
         @open-folder="openFolder"
