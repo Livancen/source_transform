@@ -12,6 +12,7 @@ import FileStatistics from "./components/FileStatistics.vue";
 import ProcessingOptions from "./components/ProcessingOptions.vue";
 import ProcessingActions from "./components/ProcessingActions.vue";
 import CropPreviewModal from "./components/CropPreviewModal.vue";
+import VideoMergeModal from "./components/VideoMergeModal.vue";
 
 // 目录状态
 const inputDir = ref("");
@@ -54,6 +55,7 @@ const options = ref<ProcessOptions>({
 const isProcessing = ref(false);
 const progress = ref<ProcessProgress | null>(null);
 const resultMessage = ref("");
+const videoMergeVisible = ref(false);
 
 // 上传服务器
 const uploadUrl = ref("");
@@ -92,6 +94,18 @@ function addRatio() {
 
 function removeRatio(i: number) {
   ratios.value.splice(i, 1);
+}
+
+function openVideoMerge() {
+  if (!outputDir.value) {
+    resultMessage.value = "请先选择输出目录";
+    return;
+  }
+  videoMergeVisible.value = true;
+}
+
+function handleVideoMergeCompleted(message: string) {
+  resultMessage.value = message;
 }
 
 // 裁剪逻辑
@@ -290,6 +304,7 @@ async function openFolder(path: string) {
       @update:new-ratio="newRatio = $event"
       @add-ratio="addRatio"
       @remove-ratio="removeRatio"
+      @open-video-merge="openVideoMerge"
     />
 
     <CropPreviewModal
@@ -305,6 +320,13 @@ async function openFolder(path: string) {
       @start-resize="startResize"
       @mouse-move="handleMouseMove"
       @mouse-up="handleMouseUp"
+    />
+
+    <VideoMergeModal
+      :visible="videoMergeVisible"
+      :output-dir="outputDir"
+      @close="videoMergeVisible = false"
+      @completed="handleVideoMergeCompleted"
     />
   </main>
 </template>

@@ -6,7 +6,7 @@ use tauri_plugin_shell::ShellExt;
 use walkdir::WalkDir;
 
 use crate::process::{process_image, process_video};
-use crate::types::{FileInfo, ProcessOptions, ProcessProgress, IMAGE_EXTENSIONS, VIDEO_EXTENSIONS};
+use crate::types::{FileInfo, ProcessOptions, ProcessProgress, VideoMergeOptions, IMAGE_EXTENSIONS, VIDEO_EXTENSIONS};
 
 fn get_file_type(path: &PathBuf) -> Option<String> {
     let ext = path.extension()?.to_str()?.to_lowercase();
@@ -562,6 +562,104 @@ pub async fn crop_videos_by_ratios(
         ))
     } else {
         Ok(format!("全部裁剪完成: {} 个文件", success_count))
+    }
+}
+
+#[tauri::command]
+pub async fn merge_videos(app: AppHandle, options: VideoMergeOptions) -> Result<String, String> {
+    validate_merge_options(&options)?;
+
+    if let Some(parent) = PathBuf::from(&options.output_path).parent() {
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+
+    let first = &options.slots[0];
+    let second = &options.slots[1];
+    let stack_filter = if options.layout == "vertical" { "vstack" } else { "hstack" };
+
+    let mut filter = format!(
+        "[0:v]scale={}:{}[v0];[1:v]scale={}:{}[v1];[v0][v1]{}=inputs=2:shortest=1[v]",
+        first.width,
+        first.height,
+        second.width,
+        second.height,
+        stack_filter,
+    );
+
+    let output_label = if let (Some(width), Some(height)) = (options.output_width, options.output_height) {
+        filter.push_str(&format!(";[v]scale={}:{}[outv]", width, height));
+        "[outv]"
+    } else {
+        "[v]"
+    };
+
+    let output = app
+        .shell()
+        .sidecar("ffmpeg")
+        .map_err(|e| format!("无法找到FFmpeg: {}", e))?
+        .args(&[
+            "-i",
+            &first.path,
+            "-i",
+            &second.path,
+            "-filter_complex",
+            &filter,
+            "-map",
+            output_label,
+            "-an",
+            "-c:v",
+            "libx264",
+            "-pix_fmt",
+            "yuv420p",
+            "-y",
+            &options.output_path,
+        ])
+        .output()
+        .await
+        .map_err(|e| format!("无法执行FFmpeg: {}", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("视频拼接失败: {}", stderr));
+    }
+
+    Ok(format!("视频拼接完成: {}", options.output_path))
+}
+
+fn validate_merge_options(options: &VideoMergeOptions) -> Result<(), String> {
+    if options.output_path.trim().is_empty() {
+        return Err("输出路径不能为空".to_string());
+    }
+
+    for (index, slot) in options.slots.iter().enumerate() {
+        if slot.path.trim().is_empty() {
+            return Err(format!("请为第 {} 个坑位选择视频", index + 1));
+        }
+        if slot.width == 0 || slot.height == 0 {
+            return Err(format!("第 {} 个坑位尺寸无效", index + 1));
+        }
+        if !PathBuf::from(&slot.path).is_file() {
+            return Err(format!("第 {} 个视频不存在", index + 1));
+        }
+    }
+
+    match options.layout.as_str() {
+        "vertical" if options.slots[0].width != options.slots[1].width => {
+            Err("上下拼接时两个坑位宽度必须一致".to_string())
+        }
+        "horizontal" if options.slots[0].height != options.slots[1].height => {
+            Err("左右拼接时两个坑位高度必须一致".to_string())
+        }
+        "vertical" | "horizontal" => {
+            if options.output_width.is_some() != options.output_height.is_some() {
+                return Err("输出宽高必须同时填写".to_string());
+            }
+            if matches!(options.output_width, Some(0)) || matches!(options.output_height, Some(0)) {
+                return Err("输出分辨率无效".to_string());
+            }
+            Ok(())
+        }
+        _ => Err("拼接布局无效".to_string()),
     }
 }
 

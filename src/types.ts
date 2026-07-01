@@ -39,3 +39,20 @@ export interface ProcessOptions {
   change_framerate: boolean;
   target_framerate: number;
 }
+
+export type VideoMergeLayout = "vertical" | "horizontal";
+
+export interface VideoMergeSlot {
+  path: string;
+  name: string;
+  width: number;
+  height: number;
+}
+
+export interface VideoMergeOptions {
+  layout: VideoMergeLayout;
+  slots: [VideoMergeSlot, VideoMergeSlot];
+  output_width?: number;
+  output_height?: number;
+  output_path: string;
+}

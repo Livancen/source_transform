@@ -12,6 +12,7 @@ defineProps<{
 
 const emit = defineEmits<{
   openCropPreview: [];
+  openVideoMerge: [];
   "update:enableRatioCrop": [value: boolean];
   "update:newRatio": [value: string];
   addRatio: [];
@@ -423,6 +424,20 @@ const emit = defineEmits<{
             <p v-else class="text-11px color-#999">暂无比例，请添加</p>
           </div>
         </div>
+      </div>
+    </div>
+
+    <div class="mt-15px p-10px bg-#f9f9f9 rounded-4px dark:bg-#333">
+      <div class="flex items-center justify-between gap-10px">
+        <div>
+          <div class="font-500 mb-4px">视频拼接</div>
+          <div class="text-12px color-#666 dark:color-#aaa">
+            选择两个视频，按上下或左右布局合成为一个无音轨 MP4
+          </div>
+        </div>
+        <button class="shrink-0 bg-#007bff hover:not-disabled:bg-#0056b3" @click="emit('openVideoMerge')">
+          打开拼接工具
+        </button>
       </div>
     </div>
   </section>

@@ -48,3 +48,20 @@ pub struct FileInfo {
     pub name: String,
     pub file_type: String, // "image" or "video"
 }
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct VideoMergeSlot {
+    pub path: String,
+    pub name: String,
+    pub width: u32,
+    pub height: u32,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct VideoMergeOptions {
+    pub layout: String, // "vertical" or "horizontal"
+    pub slots: [VideoMergeSlot; 2],
+    pub output_width: Option<u32>,
+    pub output_height: Option<u32>,
+    pub output_path: String,
+}
