@@ -4,6 +4,11 @@ import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import type { VideoMergeLayout, VideoMergeOptions, VideoMergeSlot } from "../types";
 
+type MergeSlotState = VideoMergeSlot & {
+  previewImage: string;
+  isLoadingPreview: boolean;
+};
+
 const props = defineProps<{
   visible: boolean;
   outputDir: string;
@@ -19,9 +24,9 @@ const videoFilters = [
 ];
 
 const layout = ref<VideoMergeLayout>("vertical");
-const slots = reactive<[VideoMergeSlot, VideoMergeSlot]>([
-  { path: "", name: "", width: 1080, height: 960 },
-  { path: "", name: "", width: 1080, height: 960 },
+const slots = reactive<[MergeSlotState, MergeSlotState]>([
+  { path: "", name: "", width: 1080, height: 960, previewImage: "", isLoadingPreview: false },
+  { path: "", name: "", width: 1080, height: 960, previewImage: "", isLoadingPreview: false },
 ]);
 const outputWidth = ref<number | null>(null);
 const outputHeight = ref<number | null>(null);
@@ -68,11 +73,25 @@ async function selectVideo(index: number) {
 
   slots[index].path = selected;
   slots[index].name = selected.split(/[\\/]/).pop() || selected;
+  slots[index].previewImage = "";
+  slots[index].isLoadingPreview = true;
+
+  try {
+    slots[index].previewImage = await invoke<string>("extract_video_frame", {
+      videoPath: selected,
+    });
+  } catch (e) {
+    statusMessage.value = `视频 ${index + 1} 预览生成失败: ${e}`;
+  } finally {
+    slots[index].isLoadingPreview = false;
+  }
 }
 
 function clearVideo(index: number) {
   slots[index].path = "";
   slots[index].name = "";
+  slots[index].previewImage = "";
+  slots[index].isLoadingPreview = false;
 }
 
 function updateSlotWidth(index: number, value: number) {
@@ -110,8 +129,18 @@ async function startMerge() {
   const options: VideoMergeOptions = {
     layout: layout.value,
     slots: [
-      { ...slots[0], width: normalizeSize(slots[0].width), height: normalizeSize(slots[0].height) },
-      { ...slots[1], width: normalizeSize(slots[1].width), height: normalizeSize(slots[1].height) },
+      {
+        path: slots[0].path,
+        name: slots[0].name,
+        width: normalizeSize(slots[0].width),
+        height: normalizeSize(slots[0].height),
+      },
+      {
+        path: slots[1].path,
+        name: slots[1].name,
+        width: normalizeSize(slots[1].width),
+        height: normalizeSize(slots[1].height),
+      },
     ],
     output_path: outputPath,
   };
@@ -169,12 +198,23 @@ function formatTimestamp(date: Date) {
           class="border border-#ddd rounded-6px p-10px bg-#f8f9fa dark:bg-#333 dark:border-#444"
         >
           <button
-            class="w-full h-120px bg-#222 hover:not-disabled:bg-#333 flex flex-col items-center justify-center text-center p-10px"
+            class="relative w-full h-150px bg-#222 hover:not-disabled:bg-#333 flex flex-col items-center justify-center text-center p-0 overflow-hidden"
             :disabled="isMerging"
             @click="selectVideo(index)"
           >
-            <span class="text-14px">{{ slot.name || '点击添加视频' }}</span>
-            <span v-if="slot.path" class="text-11px color-#ccc mt-6px break-all">{{ slot.path }}</span>
+            <img
+              v-if="slot.previewImage"
+              :src="slot.previewImage"
+              class="absolute inset-0 w-full h-full object-cover"
+              draggable="false"
+            />
+            <div v-if="slot.previewImage" class="absolute inset-0 bg-black/28"></div>
+            <div class="relative z-1 px-10px max-w-full">
+              <span class="text-14px block truncate max-w-full">
+                {{ slot.isLoadingPreview ? '正在生成预览...' : slot.name || '点击添加视频' }}
+              </span>
+              <span v-if="slot.path && !slot.previewImage" class="text-11px color-#ccc mt-6px break-all block">{{ slot.path }}</span>
+            </div>
           </button>
 
           <div class="flex gap-8px mt-10px flex-wrap items-center">
