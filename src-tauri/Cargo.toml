@@ -1,6 +1,6 @@
 [package]
 name = "source_transform"
-version = "5.0.0"
+version = "5.0.1"
 description = "A Tauri App"
 authors = ["you"]
 edition = "2021"
@@ -30,4 +30,3 @@ walkdir = "2"
 base64 = "0.22"
 tiny_http = "0.12"
 chrono = "0.4"
-
