@@ -578,7 +578,7 @@ pub async fn merge_videos(app: AppHandle, options: VideoMergeOptions) -> Result<
     let stack_filter = if options.layout == "vertical" { "vstack" } else { "hstack" };
 
     let mut filter = format!(
-        "[0:v]scale={}:{}[v0];[1:v]scale={}:{}[v1];[v0][v1]{}=inputs=2:shortest=1[v]",
+        "[0:v]scale={}:{},setsar=1[v0];[1:v]scale={}:{},setsar=1[v1];[v0][v1]{}=inputs=2:shortest=1[v]",
         first.width,
         first.height,
         second.width,
@@ -587,10 +587,11 @@ pub async fn merge_videos(app: AppHandle, options: VideoMergeOptions) -> Result<
     );
 
     let output_label = if let (Some(width), Some(height)) = (options.output_width, options.output_height) {
-        filter.push_str(&format!(";[v]scale={}:{}[outv]", width, height));
+        filter.push_str(&format!(";[v]scale={}:{},setsar=1[outv]", width, height));
         "[outv]"
     } else {
-        "[v]"
+        filter.push_str(";[v]setsar=1[outv]");
+        "[outv]"
     };
 
     let output = app

@@ -2,9 +2,13 @@
 import { computed, reactive, ref, watch } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
-import type { VideoMergeLayout, VideoMergeOptions, VideoMergeSlot } from "../types";
+import type { VideoMergeLayout, VideoMergeOptions } from "../types";
 
-type MergeSlotState = VideoMergeSlot & {
+type MergeSlotState = {
+  path: string;
+  name: string;
+  width: number | null;
+  height: number | null;
   previewImage: string;
   isLoadingPreview: boolean;
 };
@@ -25,22 +29,31 @@ const videoFilters = [
 
 const layout = ref<VideoMergeLayout>("vertical");
 const slots = reactive<[MergeSlotState, MergeSlotState]>([
-  { path: "", name: "", width: 1080, height: 960, previewImage: "", isLoadingPreview: false },
-  { path: "", name: "", width: 1080, height: 960, previewImage: "", isLoadingPreview: false },
+  { path: "", name: "", width: null, height: null, previewImage: "", isLoadingPreview: false },
+  { path: "", name: "", width: null, height: null, previewImage: "", isLoadingPreview: false },
 ]);
 const outputWidth = ref<number | null>(null);
 const outputHeight = ref<number | null>(null);
 const statusMessage = ref("");
 const isMerging = ref(false);
 
-const naturalWidth = computed(() =>
-  layout.value === "vertical" ? slots[0].width : slots[0].width + slots[1].width,
-);
-const naturalHeight = computed(() =>
-  layout.value === "vertical" ? slots[0].height + slots[1].height : slots[0].height,
+const naturalWidth = computed(() => {
+  if (slots.some((slot) => slot.width == null || slot.height == null)) return null;
+  return layout.value === "vertical" ? slots[0].width! : slots[0].width! + slots[1].width!;
+});
+const naturalHeight = computed(() => {
+  if (slots.some((slot) => slot.width == null || slot.height == null)) return null;
+  return layout.value === "vertical" ? slots[0].height! + slots[1].height! : slots[0].height!;
+});
+const naturalSizeText = computed(() =>
+  naturalWidth.value == null || naturalHeight.value == null
+    ? "待选择视频"
+    : `${naturalWidth.value} x ${naturalHeight.value}`,
 );
 const canMerge = computed(() => {
-  const slotsReady = slots.every((slot) => slot.path && slot.width > 0 && slot.height > 0);
+  const slotsReady = slots.every(
+    (slot) => slot.path && slot.width != null && slot.height != null && slot.width > 0 && slot.height > 0,
+  );
   const outputEmpty = outputWidth.value == null && outputHeight.value == null;
   const outputReady =
     outputWidth.value != null &&
@@ -51,15 +64,21 @@ const canMerge = computed(() => {
 });
 
 watch(layout, () => {
-  syncRequiredDimension(0);
+  syncRequiredDimension(slots[0].path ? 0 : 1);
 });
 
 function syncRequiredDimension(changedIndex: number) {
   const otherIndex = changedIndex === 0 ? 1 : 0;
+  if (!slots[otherIndex].path) return;
+
   if (layout.value === "vertical") {
-    slots[otherIndex].width = slots[changedIndex].width;
+    if (slots[changedIndex].width != null) {
+      slots[otherIndex].width = slots[changedIndex].width;
+    }
   } else {
-    slots[otherIndex].height = slots[changedIndex].height;
+    if (slots[changedIndex].height != null) {
+      slots[otherIndex].height = slots[changedIndex].height;
+    }
   }
 }
 
@@ -74,7 +93,23 @@ async function selectVideo(index: number) {
   slots[index].path = selected;
   slots[index].name = selected.split(/[\\/]/).pop() || selected;
   slots[index].previewImage = "";
+  slots[index].width = null;
+  slots[index].height = null;
   slots[index].isLoadingPreview = true;
+  statusMessage.value = "";
+
+  try {
+    const dimensions = await invoke<[number, number]>("get_video_dimensions", {
+      videoPath: selected,
+    });
+    slots[index].width = normalizeSize(dimensions[0]);
+    slots[index].height = normalizeSize(dimensions[1]);
+    syncRequiredDimension(index);
+  } catch (e) {
+    statusMessage.value = `视频 ${index + 1} 分辨率读取失败: ${e}`;
+    slots[index].isLoadingPreview = false;
+    return;
+  }
 
   try {
     slots[index].previewImage = await invoke<string>("extract_video_frame", {
@@ -90,22 +125,32 @@ async function selectVideo(index: number) {
 function clearVideo(index: number) {
   slots[index].path = "";
   slots[index].name = "";
+  slots[index].width = null;
+  slots[index].height = null;
   slots[index].previewImage = "";
   slots[index].isLoadingPreview = false;
 }
 
-function updateSlotWidth(index: number, value: number) {
-  slots[index].width = normalizeSize(value);
+function updateSlotWidth(index: number, value: string) {
+  slots[index].width = parseOptionalSize(value);
   if (layout.value === "vertical") syncRequiredDimension(index);
 }
 
-function updateSlotHeight(index: number, value: number) {
-  slots[index].height = normalizeSize(value);
+function updateSlotHeight(index: number, value: string) {
+  slots[index].height = parseOptionalSize(value);
   if (layout.value === "horizontal") syncRequiredDimension(index);
 }
 
 function normalizeSize(value: number) {
   return Number.isFinite(value) && value > 0 ? Math.floor(value) : 1;
+}
+
+function parseOptionalSize(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+
+  const parsed = Number(trimmed);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : null;
 }
 
 function clearOutputSize() {
@@ -132,14 +177,14 @@ async function startMerge() {
       {
         path: slots[0].path,
         name: slots[0].name,
-        width: normalizeSize(slots[0].width),
-        height: normalizeSize(slots[0].height),
+        width: normalizeSize(slots[0].width!),
+        height: normalizeSize(slots[0].height!),
       },
       {
         path: slots[1].path,
         name: slots[1].name,
-        width: normalizeSize(slots[1].width),
-        height: normalizeSize(slots[1].height),
+        width: normalizeSize(slots[1].width!),
+        height: normalizeSize(slots[1].height!),
       },
     ],
     output_path: outputPath,
@@ -222,19 +267,19 @@ function formatTimestamp(date: Date) {
             <input
               type="number"
               min="1"
-              :value="slot.width"
+              :value="slot.width ?? ''"
               :disabled="isMerging"
               class="w-90px p-5px border border-#ddd rounded-4px dark:bg-#444 dark:border-#555 dark:color-#f6f6f6"
-              @input="updateSlotWidth(index, Number(($event.target as HTMLInputElement).value))"
+              @input="updateSlotWidth(index, ($event.target as HTMLInputElement).value)"
             />
             <label class="text-12px color-#666 dark:color-#aaa">高</label>
             <input
               type="number"
               min="1"
-              :value="slot.height"
+              :value="slot.height ?? ''"
               :disabled="isMerging"
               class="w-90px p-5px border border-#ddd rounded-4px dark:bg-#444 dark:border-#555 dark:color-#f6f6f6"
-              @input="updateSlotHeight(index, Number(($event.target as HTMLInputElement).value))"
+              @input="updateSlotHeight(index, ($event.target as HTMLInputElement).value)"
             />
             <button class="p-4px-10px text-12px bg-#6c757d" :disabled="isMerging || !slot.path" @click="clearVideo(index)">清除</button>
           </div>
@@ -243,7 +288,7 @@ function formatTimestamp(date: Date) {
 
       <div class="p-10px bg-#f9f9f9 rounded-4px mb-15px dark:bg-#333">
         <div class="text-13px mb-10px color-#666 dark:color-#aaa">
-          拼接后自然分辨率: {{ naturalWidth }} x {{ naturalHeight }}
+          拼接后自然分辨率: {{ naturalSizeText }}
         </div>
         <div class="flex gap-8px flex-wrap items-center">
           <label class="text-12px color-#666 dark:color-#aaa">输出宽</label>
