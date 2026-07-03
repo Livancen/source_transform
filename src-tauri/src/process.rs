@@ -75,6 +75,7 @@ pub async fn process_video(
 
     // 视频滤镜
     let mut video_filters: Vec<String> = Vec::new();
+    let mut has_scale_filter = false;
 
     // 裁剪（先裁剪，再缩放）
     if options.crop && options.crop_width > 0 && options.crop_height > 0 {
@@ -87,11 +88,13 @@ pub async fn process_video(
     // 调整分辨率（独立选项）
     if options.reduce_resolution && options.target_width > 0 && options.target_height > 0 {
         video_filters.push(format!("scale={}:{}", options.target_width, options.target_height));
+        has_scale_filter = true;
     }
 
     // 压缩时降低分辨率
     if options.compress && options.compress_resize && options.compress_width > 0 && options.compress_height > 0 {
         video_filters.push(format!("scale={}:{}", options.compress_width, options.compress_height));
+        has_scale_filter = true;
     }
 
     // 旋转
@@ -107,6 +110,10 @@ pub async fn process_video(
     // 调整帧率（降帧/升帧）
     if options.change_framerate && options.target_framerate > 0.0 {
         video_filters.push(format!("fps={}", options.target_framerate));
+    }
+
+    if has_scale_filter {
+        video_filters.push("setsar=1".to_string());
     }
 
     let vf_arg: String;
