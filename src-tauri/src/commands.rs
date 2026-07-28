@@ -319,7 +319,7 @@ pub async fn crop_videos_by_ratios(
             .args(&[
                 "-v", "error",
                 "-select_streams", "v:0",
-                "-show_entries", "stream=width,height,codec_name,profile,level,pix_fmt,r_frame_rate,color_space,color_range,color_primaries,color_trc,sample_aspect_ratio",
+                "-show_entries", "stream=width,height,color_space,color_range,color_primaries,color_trc",
                 "-of", "json",
                 &file.path,
             ])
@@ -353,16 +353,10 @@ pub async fn crop_videos_by_ratios(
 
         let width = stream.get("width").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
         let height = stream.get("height").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
-        let codec = stream.get("codec_name").and_then(|v| v.as_str()).unwrap_or("");
-        let profile = stream.get("profile").and_then(|v| v.as_str()).unwrap_or("");
-        let level = stream.get("level").and_then(|v| v.as_f64()).unwrap_or(0.0);
-        let pix_fmt = stream.get("pix_fmt").and_then(|v| v.as_str()).unwrap_or("");
-        let fps_str = stream.get("r_frame_rate").and_then(|v| v.as_str()).unwrap_or("");
         let color_space = stream.get("color_space").and_then(|v| v.as_str()).unwrap_or("");
         let color_range = stream.get("color_range").and_then(|v| v.as_str()).unwrap_or("");
         let color_primaries = stream.get("color_primaries").and_then(|v| v.as_str()).unwrap_or("");
         let color_trc = stream.get("color_trc").and_then(|v| v.as_str()).unwrap_or("");
-        let sar = stream.get("sample_aspect_ratio").and_then(|v| v.as_str()).unwrap_or("");
 
         if width == 0 || height == 0 {
             for ratio in &ratios {
@@ -404,20 +398,31 @@ pub async fn crop_videos_by_ratios(
             let target_ratio = rw / rh;
             let video_ratio = width as f64 / height as f64;
 
-            // object-fit: cover 裁剪算法
-            let (crop_w, crop_h, crop_x, crop_y) = if target_ratio < video_ratio {
+            // object-fit: cover 裁剪算法（4:2:0 要求宽高/起点均为偶数）
+            let even = |v: u32| v & !1u32;
+            let (mut crop_w, mut crop_h, mut crop_x, mut crop_y) = if target_ratio < video_ratio {
                 // 目标更窄，以高度为基准裁剪宽度
                 let ch = height;
                 let cw = (height as f64 * target_ratio) as u32;
-                let cx = (width - cw) / 2;
+                let cx = (width.saturating_sub(cw)) / 2;
                 (cw, ch, cx, 0u32)
             } else {
                 // 目标更宽，以宽度为基准裁剪高度
                 let cw = width;
                 let ch = (width as f64 / target_ratio) as u32;
-                let cy = (height - ch) / 2;
+                let cy = (height.saturating_sub(ch)) / 2;
                 (cw, ch, 0u32, cy)
             };
+            crop_w = even(crop_w).max(2);
+            crop_h = even(crop_h).max(2);
+            crop_x = even(crop_x);
+            crop_y = even(crop_y);
+            if crop_x + crop_w > width {
+                crop_x = even(width.saturating_sub(crop_w));
+            }
+            if crop_y + crop_h > height {
+                crop_y = even(height.saturating_sub(crop_h));
+            }
 
             // 构建输出文件名
             let file_stem = PathBuf::from(&file.name)
@@ -461,35 +466,19 @@ pub async fn crop_videos_by_ratios(
             let output_path = PathBuf::from(&output_dir).join(&output_filename);
 
             let crop_filter = format!("crop={}:{}:{}:{}", crop_w, crop_h, crop_x, crop_y);
-            let level_str = format!("{:.1}", level / 10.0);
+            // 强制 H.264 Main@L5.1 以下，避免 Windows 播放器对 L6 花屏；完全移除音轨
             let mut args: Vec<String> = vec![
                 "-i".into(), file.path.clone(),
                 "-vf".into(), crop_filter,
+                "-an".into(),
+                "-c:v".into(), "libx264".into(),
+                "-profile:v".into(), "main".into(),
+                "-level:v".into(), "5.1".into(),
+                "-pix_fmt".into(), "yuv420p".into(),
+                "-crf".into(), "23".into(),
+                "-preset".into(), "medium".into(),
+                "-movflags".into(), "+faststart".into(),
             ];
-
-            // 保留原始编码参数
-            if codec == "h264" || codec == "avc" || codec == "h265" || codec == "hevc" {
-                if !profile.is_empty() {
-                    args.push("-profile:v".into());
-                    args.push(profile.to_string());
-                }
-                if level > 0.0 {
-                    args.push("-level:v".into());
-                    args.push(level_str);
-                }
-            }
-
-            // 保留像素格式
-            if !pix_fmt.is_empty() {
-                args.push("-pix_fmt".into());
-                args.push(pix_fmt.to_string());
-            }
-
-            // 保留帧率
-            if !fps_str.is_empty() && fps_str != "0/0" {
-                args.push("-r".into());
-                args.push(fps_str.to_string());
-            }
 
             // 保留色彩参数
             if !color_space.is_empty() && color_space != "unknown" {
@@ -507,12 +496,6 @@ pub async fn crop_videos_by_ratios(
             if !color_trc.is_empty() && color_trc != "unknown" {
                 args.push("-color_trc".into());
                 args.push(color_trc.to_string());
-            }
-
-            // 保留 SAR（样本宽高比）
-            if !sar.is_empty() && sar != "0:1" && sar != "N/A" {
-                args.push("-sar".into());
-                args.push(sar.to_string());
             }
 
             args.push("-y".into());
