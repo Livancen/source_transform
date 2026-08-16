@@ -170,7 +170,6 @@ function handleMergeCompleted(message: string) {
     />
 
     <MergeWorkspace
-      class="flex-1"
       v-if="workMode === 'merge'"
       :output-dir="outputDir"
       :input-files="allInputFiles"
