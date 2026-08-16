@@ -28,12 +28,14 @@ const VERSION_FILES = [
   "src/constants/app.ts",
 ];
 
+// 不使用 shell，避免 Windows 下带空格的 -m 消息被拆成多个 pathspec
 function run(cmd, args, opts = {}) {
   const r = spawnSync(cmd, args, {
     cwd: root,
     encoding: "utf8",
-    shell: process.platform === "win32",
+    shell: false,
     stdio: opts.silent ? "pipe" : "inherit",
+    windowsHide: true,
     ...opts,
   });
   if (r.error) throw r.error;
@@ -48,7 +50,8 @@ function runOut(cmd, args) {
   const r = spawnSync(cmd, args, {
     cwd: root,
     encoding: "utf8",
-    shell: process.platform === "win32",
+    shell: false,
+    windowsHide: true,
   });
   if (r.error) throw r.error;
   if (r.status !== 0) {
