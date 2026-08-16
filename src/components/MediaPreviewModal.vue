@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { ref, watch } from "vue";
-import { invoke } from "@tauri-apps/api/core";
+import { ref, watch, nextTick } from "vue";
+import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import type { FileInfo } from "../types";
 import { formatFileSizeMb } from "../types";
 
@@ -14,26 +14,45 @@ const emit = defineEmits<{
 }>();
 
 const previewUrl = ref("");
+const isVideo = ref(false);
 const loading = ref(false);
 const error = ref("");
+const videoRef = ref<HTMLVideoElement | null>(null);
 
 watch(
   () => [props.visible, props.file?.path] as const,
   async ([visible, path]) => {
     if (!visible || !path || !props.file) {
       previewUrl.value = "";
+      isVideo.value = false;
       error.value = "";
       loading.value = false;
+      if (videoRef.value) {
+        videoRef.value.pause();
+        videoRef.value.removeAttribute("src");
+        videoRef.value.load();
+      }
       return;
     }
+
     loading.value = true;
     error.value = "";
     previewUrl.value = "";
+    isVideo.value = props.file.file_type === "video";
+
     try {
-      if (props.file.file_type === "video") {
-        previewUrl.value = await invoke<string>("extract_video_frame", {
-          videoPath: path,
-        });
+      if (isVideo.value) {
+        // 本地视频：asset 协议直接播放
+        previewUrl.value = convertFileSrc(path);
+        await nextTick();
+        if (videoRef.value) {
+          videoRef.value.load();
+          try {
+            await videoRef.value.play();
+          } catch {
+            // 自动播放可能被拦截，用户可手动点播放
+          }
+        }
       } else {
         previewUrl.value = await invoke<string>("load_image_preview", {
           imagePath: path,
@@ -51,6 +70,13 @@ watch(
 function onMaskClick() {
   emit("close");
 }
+
+function onClose() {
+  if (videoRef.value) {
+    videoRef.value.pause();
+  }
+  emit("close");
+}
 </script>
 
 <template>
@@ -60,7 +86,7 @@ function onMaskClick() {
     @click.self="onMaskClick"
   >
     <div
-      class="relative bg-bg1 rounded-12px border border-border shadow-xl max-w-90vw max-h-90vh w-auto flex flex-col overflow-hidden"
+      class="relative bg-bg1 rounded-12px border border-border shadow-xl max-w-90vw max-h-90vh w-auto min-w-320px flex flex-col overflow-hidden"
       @click.stop
     >
       <div
@@ -73,18 +99,15 @@ function onMaskClick() {
           <div class="text-11px color-t3 mt-2px">
             {{ file.file_type === "video" ? "视频" : "图片" }}
             · {{ formatFileSizeMb(file.size_bytes) }}
-            <span v-if="file.file_type === 'video'" class="ml-4px"
-              >（预览首帧）</span
-            >
           </div>
         </div>
         <button
           class="tb-btn shrink-0 text-20px lh-20px"
           type="button"
           title="关闭"
-          @click="emit('close')"
+          @click="onClose"
         >
-          x
+          ×
         </button>
       </div>
 
@@ -98,6 +121,15 @@ function onMaskClick() {
         >
           {{ error }}
         </div>
+        <video
+          v-else-if="isVideo && previewUrl"
+          ref="videoRef"
+          :src="previewUrl"
+          class="max-w-full max-h-[calc(90vh-100px)] outline-none"
+          controls
+          autoplay
+          playsinline
+        />
         <img
           v-else-if="previewUrl"
           :src="previewUrl"
