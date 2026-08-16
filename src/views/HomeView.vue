@@ -75,7 +75,10 @@ const {
 });
 
 const showStart = computed(
-  () => workMode.value === "image" || workMode.value === "video" || workMode.value === "ratio",
+  () =>
+    workMode.value === "image" ||
+    workMode.value === "video" ||
+    workMode.value === "ratio",
 );
 
 const listFiles = computed(() => {
@@ -165,6 +168,7 @@ function handleMergeCompleted(message: string) {
     />
 
     <MergeWorkspace
+      class="flex-1"
       v-if="workMode === 'merge'"
       :output-dir="outputDir"
       :input-files="allInputFiles"
@@ -173,6 +177,7 @@ function handleMergeCompleted(message: string) {
     />
 
     <div
+      v-if="workMode == 'image' || workMode == 'video' || workMode == 'ratio'"
       ref="panesRef"
       class="flex-1 min-h-0 grid bg-bg0"
       :style="{ gridTemplateColumns: `${leftPanePct}% 6px 1fr` }"
