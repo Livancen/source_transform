@@ -38,7 +38,7 @@ function progressPercent() {
   <header
     class="shrink-0 h-52px px-12px flex items-center gap-6px bg-bg1 border-b border-border z-20"
   >
-    <div class="flex items-center gap-4px shrink-0">
+    <!-- <div class="flex items-center gap-4px shrink-0">
       <button
         class="tb-btn"
         title="刷新文件列表"
@@ -56,11 +56,13 @@ function progressPercent() {
           <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
         </svg>
       </button>
-    </div>
+    </div> -->
 
-    <div class="w-1px h-28px bg-border mx-4px shrink-0"></div>
+    <!-- <div class="w-1px h-28px bg-border mx-4px shrink-0"></div> -->
 
-    <div class="flex items-center gap-2px shrink-0 p-2px rounded-8px bg-bg0 border border-border">
+    <div
+      class="flex items-center gap-2px shrink-0 p-2px rounded-8px bg-bg0 border border-border"
+    >
       <button
         v-for="m in modes"
         :key="m.id"
@@ -142,10 +144,5 @@ function progressPercent() {
       </svg>
       设置
     </button>
-
-    <div class="flex items-center gap-8px text-11px color-t3 shrink-0">
-      <span class="w-6px h-6px rounded-full bg-primary"></span>
-      FFmpeg 就绪
-    </div>
   </header>
 </template>
