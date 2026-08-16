@@ -81,5 +81,5 @@ jobs:
           # 产物名：source_transform_8.2.0_windows-x86_64_setup.exe
           #         source_transform_8.2.0_darwin-aarch64.dmg
           # [setup] 仅 NSIS 安装包为 _setup，其它为空
-          releaseAssetNamePattern: source_transform_[version]_[platform]-[arch][setup].[ext]
+          assetNamePattern: source_transform_[version]_[platform]-[arch][setup].[ext]
           args: ${{ matrix.args }}
