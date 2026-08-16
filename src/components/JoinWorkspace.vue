@@ -45,24 +45,33 @@ const FIT_OPTIONS: { id: JoinFit; label: string }[] = [
   { id: "fill", label: "拉伸" },
 ];
 
-const mediaKind = ref<"video" | "image">("image");
+const listFilter = ref<"all" | "image" | "video">("all");
 const canvasPresetId = ref("9:16");
 const canvasWidth = ref(1080);
 const canvasHeight = ref(1920);
 const background = ref<"#000000" | "#ffffff" | "transparent">("#000000");
+/** 拖到画布边缘时吸附 */
+const snapEnabled = ref(true);
+const SNAP_THRESHOLD = 12;
 const items = ref<JoinItem[]>([]);
 const selectedId = ref<string | null>(null);
 const statusMessage = ref("");
 const isExporting = ref(false);
 const itemPreviews = reactive<Record<string, string>>({});
 const itemNatives = reactive<Record<string, { w: number; h: number }>>({});
+/** 当前吸附到的边，用于画辅助线 */
+const snapGuides = ref<{ v: number | null; h: number | null }>({
+  v: null,
+  h: null,
+});
 
 const canvasHostRef = ref<HTMLElement | null>(null);
 const viewScale = ref(0.25);
 
-const pickerFiles = computed(() =>
-  props.inputFiles.filter((f) => f.file_type === mediaKind.value),
-);
+const pickerFiles = computed(() => {
+  if (listFilter.value === "all") return props.inputFiles;
+  return props.inputFiles.filter((f) => f.file_type === listFilter.value);
+});
 const pickerFilesRef = computed(() => pickerFiles.value);
 const { thumbs } = useFileThumbs(pickerFilesRef);
 
@@ -75,6 +84,21 @@ const sortedItems = computed(() =>
 );
 
 const usedPaths = computed(() => new Set(items.value.map((i) => i.path)));
+
+/** 含任意视频 → 输出视频；全图 → 图片 */
+const outputKind = computed<"image" | "video">(() =>
+  items.value.some((i) => i.media_kind === "video") ? "video" : "image",
+);
+
+const outputKindLabel = computed(() =>
+  items.value.length === 0
+    ? "待添加"
+    : outputKind.value === "video"
+      ? "视频 (mp4)"
+      : "图片 (png)",
+);
+
+const canUseTransparent = computed(() => outputKind.value === "image");
 
 const canExport = computed(
   () =>
@@ -123,15 +147,10 @@ watch([canvasWidth, canvasHeight], () => {
   nextTick(fitCanvasView);
 });
 
-watch(mediaKind, () => {
-  items.value = [];
-  selectedId.value = null;
-  statusMessage.value = "";
-  if (mediaKind.value === "video" && background.value === "transparent") {
+watch(outputKind, (kind) => {
+  if (kind === "video" && background.value === "transparent") {
     background.value = "#000000";
   }
-  for (const k of Object.keys(itemPreviews)) delete itemPreviews[k];
-  for (const k of Object.keys(itemNatives)) delete itemNatives[k];
 });
 
 function applyPreset(id: string) {
@@ -164,9 +183,9 @@ async function loadNativeSize(path: string, kind: "image" | "video") {
 
 async function addFile(file: FileInfo) {
   if (isExporting.value) return;
-  if (file.file_type !== mediaKind.value) {
-    statusMessage.value =
-      mediaKind.value === "video" ? "请选择视频文件" : "请选择图片文件";
+  const kind = file.file_type === "video" ? "video" : "image";
+  if (file.file_type !== "image" && file.file_type !== "video") {
+    statusMessage.value = "仅支持图片或视频";
     return;
   }
   if (items.value.length >= 6) {
@@ -181,7 +200,7 @@ async function addFile(file: FileInfo) {
 
   statusMessage.value = "";
   try {
-    const [nw, nh] = await loadNativeSize(file.path, mediaKind.value);
+    const [nw, nh] = await loadNativeSize(file.path, kind);
     const nativeW = Math.max(1, nw);
     const nativeH = Math.max(1, nh);
     const maxW = Math.floor(canvasWidth.value * 0.45);
@@ -190,13 +209,18 @@ async function addFile(file: FileInfo) {
     let h = evenDim(nativeH * scale);
     w = Math.max(2, Math.min(w, canvasWidth.value));
     h = Math.max(2, Math.min(h, canvasHeight.value));
-    const x = evenDim(Math.max(0, (canvasWidth.value - w) / 2 + items.value.length * 24));
-    const y = evenDim(Math.max(0, (canvasHeight.value - h) / 2 + items.value.length * 24));
+    const x = evenDim(
+      Math.max(0, (canvasWidth.value - w) / 2 + items.value.length * 24),
+    );
+    const y = evenDim(
+      Math.max(0, (canvasHeight.value - h) / 2 + items.value.length * 24),
+    );
     const maxZ = items.value.reduce((m, i) => Math.max(m, i.z), 0);
     const item: JoinItem = {
       id: uid(),
       path: file.path,
       name: file.name,
+      media_kind: kind,
       x,
       y,
       width: w,
@@ -207,10 +231,150 @@ async function addFile(file: FileInfo) {
     items.value.push(item);
     selectedId.value = item.id;
     itemNatives[item.id] = { w: nativeW, h: nativeH };
-    itemPreviews[item.id] = await loadPreview(file.path, mediaKind.value);
+    itemPreviews[item.id] = await loadPreview(file.path, kind);
   } catch (e) {
     statusMessage.value = `添加失败: ${e}`;
   }
+}
+
+function snapValue(
+  value: number,
+  targets: number[],
+  threshold: number,
+): { value: number; guide: number | null } {
+  let best = value;
+  let guide: number | null = null;
+  let bestDist = threshold + 1;
+  for (const t of targets) {
+    const d = Math.abs(value - t);
+    if (d <= threshold && d < bestDist) {
+      bestDist = d;
+      best = t;
+      guide = t;
+    }
+  }
+  return { value: best, guide };
+}
+
+/** 移动时吸附画布边缘（左/中/右，上/中/下） */
+function applyMoveSnap(item: JoinItem, x: number, y: number) {
+  if (!snapEnabled.value) {
+    snapGuides.value = { v: null, h: null };
+    item.x = Math.floor(x);
+    item.y = Math.floor(y);
+    return;
+  }
+  const thr = SNAP_THRESHOLD;
+  const cw = canvasWidth.value;
+  const ch = canvasHeight.value;
+  const w = item.width;
+  const h = item.height;
+
+  const xLeft = snapValue(x, [0], thr);
+  const xRight = snapValue(x, [cw - w], thr);
+  const xCenter = snapValue(x, [(cw - w) / 2], thr);
+  // 优先边，其次中线
+  let nx = x;
+  let gv: number | null = null;
+  if (xLeft.guide != null) {
+    nx = xLeft.value;
+    gv = 0;
+  } else if (xRight.guide != null) {
+    nx = xRight.value;
+    gv = cw;
+  } else if (xCenter.guide != null) {
+    nx = xCenter.value;
+    gv = cw / 2;
+  }
+
+  const yTop = snapValue(y, [0], thr);
+  const yBottom = snapValue(y, [ch - h], thr);
+  const yCenter = snapValue(y, [(ch - h) / 2], thr);
+  let ny = y;
+  let gh: number | null = null;
+  if (yTop.guide != null) {
+    ny = yTop.value;
+    gh = 0;
+  } else if (yBottom.guide != null) {
+    ny = yBottom.value;
+    gh = ch;
+  } else if (yCenter.guide != null) {
+    ny = yCenter.value;
+    gh = ch / 2;
+  }
+
+  item.x = Math.floor(nx);
+  item.y = Math.floor(ny);
+  snapGuides.value = { v: gv, h: gh };
+}
+
+/** 缩放时吸附对边贴齐画布 */
+function applyResizeSnap(
+  item: JoinItem,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  handle: string,
+) {
+  if (!snapEnabled.value) {
+    snapGuides.value = { v: null, h: null };
+    item.x = Math.floor(x);
+    item.y = Math.floor(y);
+    item.width = evenDim(w);
+    item.height = evenDim(h);
+    return;
+  }
+  const thr = SNAP_THRESHOLD;
+  const cw = canvasWidth.value;
+  const ch = canvasHeight.value;
+  let nx = x;
+  let ny = y;
+  let nw = w;
+  let nh = h;
+  let gv: number | null = null;
+  let gh: number | null = null;
+
+  if (handle.includes("e")) {
+    const right = x + w;
+    const s = snapValue(right, [cw], thr);
+    if (s.guide != null) {
+      nw = Math.max(2, s.value - x);
+      gv = cw;
+    }
+  }
+  if (handle.includes("w")) {
+    const s = snapValue(x, [0], thr);
+    if (s.guide != null) {
+      const right = x + w;
+      nx = s.value;
+      nw = Math.max(2, right - nx);
+      gv = 0;
+    }
+  }
+  if (handle.includes("s")) {
+    const bottom = y + h;
+    const s = snapValue(bottom, [ch], thr);
+    if (s.guide != null) {
+      nh = Math.max(2, s.value - y);
+      gh = ch;
+    }
+  }
+  if (handle.includes("n")) {
+    const s = snapValue(y, [0], thr);
+    if (s.guide != null) {
+      const bottom = y + h;
+      ny = s.value;
+      nh = Math.max(2, bottom - ny);
+      gh = 0;
+    }
+  }
+
+  item.x = Math.floor(nx);
+  item.y = Math.floor(ny);
+  item.width = evenDim(nw);
+  item.height = evenDim(nh);
+  snapGuides.value = { v: gv, h: gh };
 }
 
 function removeSelected() {
@@ -321,8 +485,7 @@ function onPointerMove(e: PointerEvent) {
   const dy = (e.clientY - d.startY) / viewScale.value;
 
   if (d.kind === "move") {
-    item.x = Math.floor(d.origX + dx);
-    item.y = Math.floor(d.origY + dy);
+    applyMoveSnap(item, d.origX + dx, d.origY + dy);
     return;
   }
 
@@ -344,14 +507,12 @@ function onPointerMove(e: PointerEvent) {
     y = o.y + (o.h - h);
   }
 
-  item.x = Math.floor(x);
-  item.y = Math.floor(y);
-  item.width = evenDim(w);
-  item.height = evenDim(h);
+  applyResizeSnap(item, x, y, w, h, hdl);
 }
 
 function onPointerUp() {
   drag.value = null;
+  snapGuides.value = { v: null, h: null };
 }
 
 function onCanvasBgClick() {
@@ -371,7 +532,7 @@ function buildOutputName() {
   }
   if (props.naming.custom_text.trim()) parts.push(props.naming.custom_text.trim());
   if (parts.length === 0) parts.push(`join_${Date.now()}`);
-  const ext = mediaKind.value === "image" ? "png" : "mp4";
+  const ext = outputKind.value === "image" ? "png" : "mp4";
   return `${parts.join("-")}.${ext}`;
 }
 
@@ -380,15 +541,20 @@ async function startExport() {
   isExporting.value = true;
   statusMessage.value = "正在导出…";
 
+  const bg =
+    !canUseTransparent.value && background.value === "transparent"
+      ? "#000000"
+      : background.value;
+
   const outputFileName = buildOutputName();
   const sep = props.outputDir.includes("\\") ? "\\" : "/";
   const outputPath = `${props.outputDir.replace(/[\\/]$/, "")}${sep}${outputFileName}`;
 
   const options: JoinOptions = {
-    media_kind: mediaKind.value,
+    media_kind: outputKind.value,
     canvas_width: evenDim(canvasWidth.value),
     canvas_height: evenDim(canvasHeight.value),
-    background: background.value,
+    background: bg,
     items: items.value.map((i) => ({
       ...i,
       x: Math.floor(i.x),
@@ -445,33 +611,14 @@ onBeforeUnmount(() => {
       <div class="flex items-center gap-16px flex-wrap min-w-0">
         <div class="min-w-140px">
           <div class="text-13px font-600">自定义拼接</div>
-          <div class="text-11px color-t3 mt-2px">画布自由布局 · 最多 6 层</div>
+          <div class="text-11px color-t3 mt-2px">
+            图/视频可混排 · 最多 6 层
+          </div>
         </div>
 
         <div
           class="flex flex-wrap items-center gap-12px py-8px px-12px bg-bg0 rounded-8px border border-border"
         >
-          <label class="flex items-center gap-6px cursor-pointer text-12px">
-            <input
-              type="radio"
-              value="image"
-              v-model="mediaKind"
-              :disabled="isExporting"
-              class="accent-secondary"
-            />
-            图片
-          </label>
-          <label class="flex items-center gap-6px cursor-pointer text-12px">
-            <input
-              type="radio"
-              value="video"
-              v-model="mediaKind"
-              :disabled="isExporting"
-              class="accent-secondary"
-            />
-            视频
-          </label>
-          <div class="w-1px h-16px bg-border"></div>
           <span class="text-12px color-t3">画布</span>
           <select
             class="field w-auto! min-w-140px h-28px! px-8px! text-12px!"
@@ -509,16 +656,33 @@ onBeforeUnmount(() => {
           >
             <option value="#000000">黑色</option>
             <option value="#ffffff">白色</option>
-            <option value="transparent" :disabled="mediaKind === 'video'">
-              透明{{ mediaKind === "video" ? "（仅图）" : "" }}
+            <option value="transparent" :disabled="!canUseTransparent">
+              透明{{ !canUseTransparent ? "（仅纯图）" : "" }}
             </option>
           </select>
+          <div class="w-1px h-16px bg-border"></div>
+          <label
+            class="flex items-center gap-6px cursor-pointer text-12px select-none"
+            title="拖到画布边缘时自动吸附"
+          >
+            <input
+              type="checkbox"
+              v-model="snapEnabled"
+              :disabled="isExporting"
+              class="accent-secondary"
+            />
+            边缘吸附
+          </label>
         </div>
 
         <div
-          class="bg-bg0 px-10px h-36px flex items-center rounded-6px text-12px color-t2"
+          class="bg-bg0 px-10px h-36px flex items-center rounded-6px text-12px color-t2 gap-8px"
         >
-          图层 {{ items.length }}/6 · {{ canvasWidth }}×{{ canvasHeight }}
+          <span>图层 {{ items.length }}/6</span>
+          <span class="color-t3">·</span>
+          <span>{{ canvasWidth }}×{{ canvasHeight }}</span>
+          <span class="color-t3">·</span>
+          <span class="color-secondary">输出 {{ outputKindLabel }}</span>
         </div>
       </div>
 
@@ -538,10 +702,33 @@ onBeforeUnmount(() => {
         class="w-260px shrink-0 min-h-0 border-r border-border flex flex-col bg-bg0 overflow-hidden"
       >
         <div
-          class="shrink-0 h-32px px-10px flex items-center justify-between text-11px font-500 color-t3 border-b border-border bg-bg2"
+          class="shrink-0 px-10px py-6px flex flex-col gap-6px text-11px font-500 color-t3 border-b border-border bg-bg2"
         >
-          <span>素材 ({{ pickerFiles.length }})</span>
-          <span class="color-secondary">点击加入</span>
+          <div class="flex items-center justify-between">
+            <span>素材 ({{ pickerFiles.length }})</span>
+            <span class="color-secondary">点击加入</span>
+          </div>
+          <div class="flex gap-4px">
+            <button
+              v-for="f in [
+                { id: 'all', label: '全部' },
+                { id: 'image', label: '图' },
+                { id: 'video', label: '视频' },
+              ]"
+              :key="f.id"
+              type="button"
+              class="h-22px px-8px rounded-4px text-10px border-none cursor-pointer"
+              :class="
+                listFilter === f.id
+                  ? 'bg-secondary color-white'
+                  : 'bg-bg0 color-t3 hover:color-t1'
+              "
+              :disabled="isExporting"
+              @click="listFilter = f.id as 'all' | 'image' | 'video'"
+            >
+              {{ f.label }}
+            </button>
+          </div>
         </div>
         <div class="flex-1 min-h-0 overflow-y-auto">
           <button
@@ -587,7 +774,13 @@ onBeforeUnmount(() => {
             v-if="pickerFiles.length === 0"
             class="p-16px text-11px color-t3 text-center"
           >
-            输入目录无{{ mediaKind === "video" ? "视频" : "图片" }}
+            输入目录无{{
+              listFilter === "video"
+                ? "视频"
+                : listFilter === "image"
+                  ? "图片"
+                  : "素材"
+            }}
           </div>
         </div>
       </div>
@@ -602,17 +795,40 @@ onBeforeUnmount(() => {
         @click="onCanvasBgClick"
       >
         <div
-          class="relative shadow-lg shrink-0"
+          class="relative shadow-lg shrink-0 box-border"
           :style="{
             width: canvasWidth * viewScale + 'px',
             height: canvasHeight * viewScale + 'px',
             background:
-              background === 'transparent'
+              canUseTransparent && background === 'transparent'
                 ? 'transparent'
-                : background,
+                : background === 'transparent'
+                  ? '#000000'
+                  : background,
+            outline: '2px dashed rgba(255,255,255,0.75)',
+            outlineOffset: '0px',
+            boxShadow:
+              '0 0 0 1px rgba(0,0,0,0.5), 0 8px 24px rgba(0,0,0,0.35)',
           }"
           @click.stop
         >
+          <!-- 吸附辅助线 -->
+          <div
+            v-if="snapGuides.v != null"
+            class="absolute top-0 bottom-0 w-0 pointer-events-none z-100"
+            :style="{
+              left: snapGuides.v * viewScale + 'px',
+              borderLeft: '1px dashed #5b9cff',
+            }"
+          ></div>
+          <div
+            v-if="snapGuides.h != null"
+            class="absolute left-0 right-0 h-0 pointer-events-none z-100"
+            :style="{
+              top: snapGuides.h * viewScale + 'px',
+              borderTop: '1px dashed #5b9cff',
+            }"
+          ></div>
           <div
             v-for="item in sortedItems"
             :key="item.id"
@@ -651,9 +867,19 @@ onBeforeUnmount(() => {
               …
             </div>
             <div
-              class="absolute left-0 right-0 bottom-0 px-4px py-2px text-10px color-white bg-black/50 truncate pointer-events-none"
+              class="absolute left-0 right-0 bottom-0 px-4px py-2px text-10px color-white bg-black/50 truncate pointer-events-none flex items-center gap-4px"
             >
-              {{ item.name }}
+              <span
+                class="shrink-0 px-3px rounded-2px text-9px"
+                :class="
+                  item.media_kind === 'video'
+                    ? 'bg-secondary/90'
+                    : 'bg-white/25'
+                "
+              >
+                {{ item.media_kind === "video" ? "视频" : "图" }}
+              </span>
+              <span class="truncate">{{ item.name }}</span>
             </div>
 
             <template v-if="selectedId === item.id">
@@ -698,6 +924,9 @@ onBeforeUnmount(() => {
         <div class="flex-1 min-h-0 overflow-y-auto p-12px flex flex-col gap-10px">
           <template v-if="selectedItem">
             <div class="text-12px font-500 truncate" :title="selectedItem.name">
+              <span class="color-t3 font-400 mr-4px">
+                {{ selectedItem.media_kind === "video" ? "视频" : "图片" }}
+              </span>
               {{ selectedItem.name }}
             </div>
             <div class="grid grid-cols-2 gap-8px">
@@ -810,7 +1039,8 @@ onBeforeUnmount(() => {
             <p class="text-10px color-t3">Delete 删除 · 拖拽移动 · 角点缩放</p>
           </template>
           <div v-else class="text-11px color-t3 leading-relaxed">
-            从左侧点击素材加入画布，选中后可拖拽、缩放并调整属性。
+            从左侧点击图片/视频加入画布（可混排）。全图导出 png，含视频导出
+            mp4。选中后可拖拽、缩放；顶部可开关边缘吸附。
           </div>
 
           <div

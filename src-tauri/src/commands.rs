@@ -811,7 +811,15 @@ fn join_item_scale_filter(fit: &str, w: u32, h: u32, pad_color: &str) -> Result<
     }
 }
 
-fn validate_join_options(options: &JoinOptions) -> Result<(), String> {
+fn resolve_join_output_kind(items: &[crate::types::JoinItem]) -> String {
+    if items.iter().any(|i| i.media_kind == "video") {
+        "video".to_string()
+    } else {
+        "image".to_string()
+    }
+}
+
+fn validate_join_options(options: &JoinOptions) -> Result<String, String> {
     if options.output_path.trim().is_empty() {
         return Err("输出路径不能为空".to_string());
     }
@@ -820,9 +828,6 @@ fn validate_join_options(options: &JoinOptions) -> Result<(), String> {
     }
     if options.canvas_width > 7680 || options.canvas_height > 7680 {
         return Err("画布尺寸过大".to_string());
-    }
-    if options.media_kind != "image" && options.media_kind != "video" {
-        return Err("媒体类型无效".to_string());
     }
     if options.items.is_empty() {
         return Err("请至少添加一个素材".to_string());
@@ -844,19 +849,24 @@ fn validate_join_options(options: &JoinOptions) -> Result<(), String> {
         if !matches!(item.fit.as_str(), "cover" | "contain" | "fill") {
             return Err(format!("第 {} 个素材填充模式无效", index + 1));
         }
+        if item.media_kind != "image" && item.media_kind != "video" {
+            return Err(format!("第 {} 个素材类型无效", index + 1));
+        }
     }
-    Ok(())
+
+    let output_kind = resolve_join_output_kind(&options.items);
+    Ok(output_kind)
 }
 
 #[tauri::command]
 pub async fn join_media(app: AppHandle, options: JoinOptions) -> Result<String, String> {
-    validate_join_options(&options)?;
+    let output_kind = validate_join_options(&options)?;
+    let is_image = output_kind == "image";
 
     if let Some(parent) = PathBuf::from(&options.output_path).parent() {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
 
-    let is_image = options.media_kind == "image";
     let canvas_w = even_dim(options.canvas_width);
     let canvas_h = even_dim(options.canvas_height);
     let bg = join_bg_color(&options.background, is_image)?;
@@ -879,7 +889,7 @@ pub async fn join_media(app: AppHandle, options: JoinOptions) -> Result<String, 
 
     for (i, item) in items.iter().enumerate() {
         let scale = join_item_scale_filter(&item.fit, item.width, item.height, &pad_color)?;
-        // 统一到与底图相同像素格式，避免 overlay 失败
+        // 视频输出时：静图输入已用 -loop 1；再 setsar + 统一像素格式
         filter_parts.push(format!("[{}:v]{},{}[v{}]", i, scale, base_fmt, i));
     }
 
@@ -890,6 +900,7 @@ pub async fn join_media(app: AppHandle, options: JoinOptions) -> Result<String, 
         } else {
             format!("b{}", i)
         };
+        // 视频输出：shortest=1，时长由最短视频轨决定（静图 loop 不会先结束）
         let shortest = if is_image { "" } else { ":shortest=1" };
         filter_parts.push(format!(
             "[{}][v{}]overlay={}:{}{}[{}]",
@@ -902,6 +913,11 @@ pub async fn join_media(app: AppHandle, options: JoinOptions) -> Result<String, 
 
     let mut args: Vec<String> = Vec::new();
     for item in &items {
+        // 混合/视频输出时，图片需 loop，否则 overlay 只有一帧
+        if !is_image && item.media_kind == "image" {
+            args.push("-loop".to_string());
+            args.push("1".to_string());
+        }
         args.push("-i".to_string());
         args.push(item.path.clone());
     }

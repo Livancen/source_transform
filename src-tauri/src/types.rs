@@ -107,6 +107,9 @@ pub struct JoinItem {
     pub id: String,
     pub path: String,
     pub name: String,
+    /// "video" or "image"
+    #[serde(default = "default_media_kind")]
+    pub media_kind: String,
     pub x: i32,
     pub y: i32,
     pub width: u32,
@@ -118,7 +121,7 @@ pub struct JoinItem {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct JoinOptions {
-    /// "video" or "image"
+    /// 输出类型 "video" or "image"（含任意视频则为 video）
     pub media_kind: String,
     pub canvas_width: u32,
     pub canvas_height: u32,

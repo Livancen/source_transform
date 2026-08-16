@@ -90,6 +90,8 @@ export interface JoinItem {
   id: string;
   path: string;
   name: string;
+  /** 该图层素材类型 */
+  media_kind: "video" | "image";
   x: number;
   y: number;
   width: number;
@@ -99,6 +101,10 @@ export interface JoinItem {
 }
 
 export interface JoinOptions {
+  /**
+   * 输出类型：全图 → image；含任意视频 → video
+   * 可由后端根据 items 再校验
+   */
   media_kind: "video" | "image";
   canvas_width: number;
   canvas_height: number;
