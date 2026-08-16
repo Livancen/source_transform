@@ -650,12 +650,12 @@ async function startMerge() {
         >
           输出大小: {{ naturalSizeText }}
         </div>
-        <div
+        <!-- <div
           v-if="statusMessage"
           class="bg-bg0 p-10px rounded-6px whitespace-pre-wrap text-12px border border-border color-t2 max-w-560px"
         >
           {{ statusMessage }}
-        </div>
+        </div> -->
       </div>
       <button
         class="tb-btn tb-btn-success"
