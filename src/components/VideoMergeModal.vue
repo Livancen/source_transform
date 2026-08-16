@@ -241,7 +241,7 @@ function formatTimestamp(date: Date) {
         >
           <button
             type="button"
-            class="relative w-full h-150px bg-#111 border border-border rounded-6px flex flex-col items-center justify-center text-center p-0 overflow-hidden color-t2 cursor-pointer hover:not-disabled:bg-#1a1a1a disabled:opacity-45 disabled:cursor-not-allowed"
+            class="relative w-full h-150px bg-bg0 border border-border rounded-6px flex flex-col items-center justify-center text-center p-0 overflow-hidden color-t2 cursor-pointer hover:not-disabled:bg-bg-hover disabled:opacity-45 disabled:cursor-not-allowed"
             :disabled="isMerging"
             @click="selectVideo(index)"
           >

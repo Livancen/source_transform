@@ -22,7 +22,7 @@ function goHome() {
 <template>
   <div class="app-shell bg-bg0">
     <header
-      class="shrink-0 h-52px px-16px flex items-center gap-12px bg-gradient-to-b from-#1a2030 to-bg1 border-b border-border"
+      class="shrink-0 h-52px px-16px flex items-center gap-12px bg-bg1 border-b border-border"
     >
       <button class="tb-btn" type="button" @click="goHome">
         <svg class="w-15px h-15px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -33,7 +33,7 @@ function goHome() {
       <div class="w-1px h-28px bg-border"></div>
       <div class="flex items-center gap-10px">
         <div
-          class="w-30px h-30px rounded-8px bg-gradient-to-br from-#5b8cff to-#8b5cf6 grid place-items-center shadow-[0_2px_10px_rgba(91,140,255,0.35)] color-white"
+          class="w-30px h-30px rounded-8px bg-accent grid place-items-center color-white"
         >
           <svg class="w-16px h-16px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <circle cx="12" cy="12" r="3"/>
@@ -50,7 +50,7 @@ function goHome() {
     <div class="flex-1 min-h-0 overflow-auto p-20px">
       <div class="max-w-720px mx-auto flex flex-col gap-16px">
         <!-- 目录 -->
-        <section class="bg-bg1 border border-border rounded-14px p-18px shadow-[0_4px_24px_rgba(0,0,0,0.35)]">
+        <section class="bg-bg1 border border-border rounded-12px p-18px">
           <h2 class="text-14px font-600 mb-14px flex items-center gap-8px">
             <span class="w-26px h-26px rounded-8px bg-accent-soft color-accent grid place-items-center">
               <svg class="w-14px h-14px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -89,7 +89,7 @@ function goHome() {
 
             <div
               v-if="uploadUrl"
-              class="mt-4px py-10px px-12px rounded-6px bg-accent-soft border border-[rgba(91,140,255,0.2)] flex items-center gap-10px"
+              class="mt-4px py-10px px-12px rounded-6px bg-accent-soft border border-accent/15 flex items-center gap-10px"
             >
               <span class="text-11px color-t3 shrink-0">上传链接</span>
               <a
@@ -103,7 +103,7 @@ function goHome() {
         </section>
 
         <!-- 界面 -->
-        <section class="bg-bg1 border border-border rounded-14px p-18px shadow-[0_4px_24px_rgba(0,0,0,0.35)]">
+        <section class="bg-bg1 border border-border rounded-12px p-18px">
           <h2 class="text-14px font-600 mb-14px flex items-center gap-8px">
             <span class="w-26px h-26px rounded-8px bg-accent-soft color-accent grid place-items-center">
               <svg class="w-14px h-14px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -137,7 +137,7 @@ function goHome() {
         </section>
 
         <!-- 关于 -->
-        <section class="bg-bg1 border border-border rounded-14px p-18px shadow-[0_4px_24px_rgba(0,0,0,0.35)]">
+        <section class="bg-bg1 border border-border rounded-12px p-18px">
           <h2 class="text-14px font-600 mb-10px">关于</h2>
           <p class="text-12px color-t2 leading-relaxed">
             素材转换工具 v5.2.0 · 批量处理图片与视频 · 基于 Tauri + Vue 3 + FFmpeg

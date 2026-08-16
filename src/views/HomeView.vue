@@ -132,7 +132,7 @@ function goSettings() {
 
       <div
         class="splitter-bar relative z-5 bg-bg0 border-l border-r border-border cursor-col-resize transition-colors duration-150 hover:bg-accent"
-        :class="{ 'is-dragging bg-accent': isDragging }"
+        :class="{ 'is-dragging! bg-accent': isDragging }"
         title="拖动调整宽度"
         @mousedown="onSplitterDown"
       ></div>

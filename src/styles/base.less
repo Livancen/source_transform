@@ -1,7 +1,13 @@
 // 仅保留 UnoCSS 难以表达的全局基础与交互控件
 @font-ui: "Segoe UI", -apple-system, BlinkMacSystemFont, "PingFang SC",
   "Microsoft YaHei", sans-serif;
-@font-mono: ui-monospace, "Cascadia Mono", "Consolas", monospace;
+
+@bg0: #f1f2f3;
+@bg1: #ffffff;
+@border: #eeeeee;
+@t1: #1f2329;
+@t3: #8f959e;
+@accent: #1677ff;
 
 * {
   box-sizing: border-box;
@@ -16,8 +22,8 @@ body,
   height: 100%;
   overflow: hidden;
   font-family: @font-ui;
-  background: #0e1117;
-  color: #eef1f6;
+  background: @bg0;
+  color: @t1;
   font-size: 13px;
   line-height: 1.4;
   -webkit-font-smoothing: antialiased;
@@ -52,8 +58,8 @@ button:disabled {
   .slider {
     position: absolute;
     inset: 0;
-    background: #0e1117;
-    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: #d9d9d9;
+    border: 1px solid transparent;
     border-radius: 999px;
     cursor: pointer;
     transition: 0.15s;
@@ -65,15 +71,16 @@ button:disabled {
       height: 12px;
       left: 2px;
       top: 2px;
-      background: #6b7385;
+      background: #fff;
       border-radius: 50%;
       transition: 0.15s;
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
     }
   }
 
   input:checked + .slider {
-    background: #5b8cff;
-    border-color: #5b8cff;
+    background: @accent;
+    border-color: @accent;
 
     &::before {
       transform: translateX(14px);
@@ -93,12 +100,12 @@ button:disabled {
   }
 
   &::-webkit-scrollbar-thumb {
-    background: #232a3b;
+    background: #d9d9d9;
     border-radius: 999px;
-    border: 2px solid #151a22;
+    border: 2px solid @bg1;
 
     &:hover {
-      background: #2a3348;
+      background: #bfbfbf;
     }
   }
 }
@@ -126,12 +133,12 @@ button:disabled {
     width: 2px;
     height: 28px;
     border-radius: 2px;
-    background: rgba(255, 255, 255, 0.15);
+    background: #d0d0d0;
   }
 
   &:hover::after,
   &.is-dragging::after {
-    background: rgba(255, 255, 255, 0.6);
+    background: #fff;
   }
 }
 
@@ -144,7 +151,7 @@ button:disabled {
     left: 0;
     right: 0;
     height: 1px;
-    background: rgba(255, 255, 255, 0.5);
+    background: rgba(255, 255, 255, 0.55);
   }
 
   &::before {

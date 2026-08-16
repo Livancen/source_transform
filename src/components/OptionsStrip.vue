@@ -207,7 +207,7 @@ const emit = defineEmits<{
       </div>
 
       <!-- 比例裁剪 -->
-      <div class="flex flex-wrap items-center gap-10px py-10px px-12px rounded-8px bg-bg2 border border-dashed border-[rgba(91,140,255,0.3)]">
+      <div class="flex flex-wrap items-center gap-10px py-10px px-12px rounded-8px bg-bg0 border border-dashed border-border">
         <div class="flex items-center gap-8px font-500 text-12px">
           <label class="switch">
             <input
@@ -223,7 +223,7 @@ const emit = defineEmits<{
           <span
             v-for="(r, i) in ratios"
             :key="r"
-            class="inline-flex items-center gap-6px h-28px px-10px rounded-full bg-accent-soft border border-[rgba(91,140,255,0.25)] color-accent-hover text-12px font-500 font-mono"
+            class="inline-flex items-center gap-6px h-28px px-10px rounded-full bg-accent-soft border border-accent/20 color-accent text-12px font-500 font-mono"
           >
             {{ r }}
             <button
@@ -236,7 +236,7 @@ const emit = defineEmits<{
         </div>
         <div class="flex gap-6px items-center">
           <input
-            class="h-28px w-88px px-10px rounded-full border border-border bg-bg0 color-t1 text-12px font-mono outline-none focus:border-accent"
+            class="h-28px w-88px px-10px rounded-full border border-border bg-bg1 color-t1 text-12px font-mono outline-none focus:border-accent"
             :value="newRatio"
             type="text"
             placeholder="W:H"

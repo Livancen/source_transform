@@ -30,11 +30,11 @@ function progressPercent() {
 
 <template>
   <header
-    class="shrink-0 h-52px px-12px flex items-center gap-6px bg-gradient-to-b from-#1a2030 to-bg1 border-b border-border z-20"
+    class="shrink-0 h-52px px-12px flex items-center gap-6px bg-bg1 border-b border-border z-20"
   >
     <div class="flex items-center gap-10px pr-12px mr-4px border-r border-border shrink-0">
       <div
-        class="w-30px h-30px rounded-8px bg-gradient-to-br from-#5b8cff to-#8b5cf6 grid place-items-center shadow-[0_2px_10px_rgba(91,140,255,0.35)] color-white"
+        class="w-30px h-30px rounded-8px bg-accent grid place-items-center color-white"
       >
         <svg class="w-16px h-16px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/>
@@ -104,7 +104,7 @@ function progressPercent() {
     >
       <div class="flex-1 h-4px rounded-full bg-bg3 overflow-hidden">
         <i
-          class="block h-full rounded-full bg-gradient-to-r from-#5b8cff to-#8b5cf6 transition-all duration-300"
+          class="block h-full rounded-full bg-accent transition-all duration-300"
           :style="{ width: progressPercent() + '%' }"
         ></i>
       </div>
@@ -120,7 +120,7 @@ function progressPercent() {
     </button>
 
     <div class="flex items-center gap-8px text-11px color-t3 shrink-0">
-      <span class="w-6px h-6px rounded-full bg-success shadow-[0_0_8px_#34d399]"></span>
+      <span class="w-6px h-6px rounded-full bg-success"></span>
       FFmpeg 就绪
     </div>
   </header>
