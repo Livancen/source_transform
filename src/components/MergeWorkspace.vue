@@ -454,17 +454,17 @@ async function startMerge() {
         </p>
 
         <div
-          class="gap-10px grid"
+          class="gap-12px grid w-full"
           :class="
             layout === 'vertical'
-              ? 'grid-cols-1 max-w-560px'
-              : 'grid-cols-1 md:grid-cols-2'
+              ? 'grid-cols-1 max-w-360px'
+              : 'grid-cols-1 sm:grid-cols-2 max-w-920px'
           "
         >
           <div
             v-for="(slot, index) in slots"
             :key="index"
-            class="border rounded-8px p-10px bg-bg0 transition-colors cursor-pointer"
+            class="border rounded-8px p-10px bg-bg0 transition-colors cursor-pointer min-w-0"
             :class="
               activeSlot === index
                 ? 'border-secondary ring-1 ring-secondary/30'
@@ -476,11 +476,15 @@ async function startMerge() {
               <div class="text-11px font-500" :class="activeSlot === index ? 'color-secondary' : 'color-t3'">
                 槽位 {{ index + 1 }}
                 <span v-if="activeSlot === index" class="font-400">（当前填入）</span>
+                <span class="font-400 color-t3 ml-4px">
+                  {{ layout === "vertical" ? "9:16" : "16:9" }}
+                </span>
               </div>
             </div>
             <button
               type="button"
-              class="relative w-full h-140px bg-bg2 border border-border rounded-6px flex flex-col items-center justify-center text-center p-0 overflow-hidden color-t2 cursor-pointer hover:not-disabled:bg-bg-hover disabled:opacity-45"
+              class="relative w-full bg-bg2 border border-border rounded-6px flex flex-col items-center justify-center text-center p-0 overflow-hidden color-t2 cursor-pointer hover:not-disabled:bg-bg-hover disabled:opacity-45"
+              :class="layout === 'vertical' ? 'aspect-[9/16] max-h-420px' : 'aspect-video max-h-280px'"
               :disabled="isMerging"
               @click.stop="pickFile(index)"
             >
