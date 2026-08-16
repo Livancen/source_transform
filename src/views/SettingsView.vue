@@ -1,0 +1,149 @@
+<script setup lang="ts">
+import { useRouter } from "vue-router";
+import { useWorkspace } from "../composables/useWorkspace";
+
+const router = useRouter();
+const {
+  inputDir,
+  outputDir,
+  uploadUrl,
+  optionsOpen,
+  selectInputDir,
+  selectOutputDir,
+  openFolder,
+  scanAllFiles,
+} = useWorkspace();
+
+function goHome() {
+  router.push({ name: "home" });
+}
+</script>
+
+<template>
+  <div class="app-shell bg-bg0">
+    <header
+      class="shrink-0 h-52px px-16px flex items-center gap-12px bg-gradient-to-b from-#1a2030 to-bg1 border-b border-border"
+    >
+      <button class="tb-btn" type="button" @click="goHome">
+        <svg class="w-15px h-15px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M19 12H5"/><polyline points="12 19 5 12 12 5"/>
+        </svg>
+        返回
+      </button>
+      <div class="w-1px h-28px bg-border"></div>
+      <div class="flex items-center gap-10px">
+        <div
+          class="w-30px h-30px rounded-8px bg-gradient-to-br from-#5b8cff to-#8b5cf6 grid place-items-center shadow-[0_2px_10px_rgba(91,140,255,0.35)] color-white"
+        >
+          <svg class="w-16px h-16px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+          </svg>
+        </div>
+        <div class="flex flex-col leading-tight">
+          <strong class="text-13px font-700">设置</strong>
+          <span class="text-10px color-t3">目录与界面偏好</span>
+        </div>
+      </div>
+    </header>
+
+    <div class="flex-1 min-h-0 overflow-auto p-20px">
+      <div class="max-w-720px mx-auto flex flex-col gap-16px">
+        <!-- 目录 -->
+        <section class="bg-bg1 border border-border rounded-14px p-18px shadow-[0_4px_24px_rgba(0,0,0,0.35)]">
+          <h2 class="text-14px font-600 mb-14px flex items-center gap-8px">
+            <span class="w-26px h-26px rounded-8px bg-accent-soft color-accent grid place-items-center">
+              <svg class="w-14px h-14px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+              </svg>
+            </span>
+            目录设置
+          </h2>
+
+          <div class="flex flex-col gap-12px">
+            <div class="flex flex-col gap-6px">
+              <span class="text-11px font-500 color-t3 uppercase tracking-wide">输入目录</span>
+              <div class="flex items-center gap-8px">
+                <input
+                  class="field flex-1 min-w-0 font-mono text-11px!"
+                  readonly
+                  :value="inputDir"
+                />
+                <button class="tb-btn" type="button" @click="selectInputDir">选择</button>
+                <button class="tb-btn" type="button" :disabled="!inputDir" @click="openFolder(inputDir)">打开</button>
+              </div>
+            </div>
+
+            <div class="flex flex-col gap-6px">
+              <span class="text-11px font-500 color-t3 uppercase tracking-wide">输出目录</span>
+              <div class="flex items-center gap-8px">
+                <input
+                  class="field flex-1 min-w-0 font-mono text-11px!"
+                  readonly
+                  :value="outputDir"
+                />
+                <button class="tb-btn" type="button" @click="selectOutputDir">选择</button>
+                <button class="tb-btn" type="button" :disabled="!outputDir" @click="openFolder(outputDir)">打开</button>
+              </div>
+            </div>
+
+            <div
+              v-if="uploadUrl"
+              class="mt-4px py-10px px-12px rounded-6px bg-accent-soft border border-[rgba(91,140,255,0.2)] flex items-center gap-10px"
+            >
+              <span class="text-11px color-t3 shrink-0">上传链接</span>
+              <a
+                class="color-accent-hover font-mono text-11px no-underline truncate hover:underline"
+                :href="uploadUrl"
+                target="_blank"
+                rel="noreferrer"
+              >{{ uploadUrl }}</a>
+            </div>
+          </div>
+        </section>
+
+        <!-- 界面 -->
+        <section class="bg-bg1 border border-border rounded-14px p-18px shadow-[0_4px_24px_rgba(0,0,0,0.35)]">
+          <h2 class="text-14px font-600 mb-14px flex items-center gap-8px">
+            <span class="w-26px h-26px rounded-8px bg-accent-soft color-accent grid place-items-center">
+              <svg class="w-14px h-14px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="3" y="3" width="18" height="18" rx="2"/>
+                <path d="M3 9h18"/>
+              </svg>
+            </span>
+            界面偏好
+          </h2>
+
+          <label class="flex items-center justify-between gap-12px p-12px rounded-8px bg-bg2 border border-border cursor-pointer">
+            <div>
+              <div class="text-13px font-500">默认展开处理选项</div>
+              <div class="text-11px color-t3 mt-2px">进入首页时是否显示选项条</div>
+            </div>
+            <span class="switch">
+              <input type="checkbox" v-model="optionsOpen" />
+              <span class="slider"></span>
+            </span>
+          </label>
+
+          <div class="mt-12px">
+            <button class="tb-btn" type="button" @click="scanAllFiles">
+              <svg class="w-15px h-15px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="23 4 23 10 17 10"/>
+                <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+              </svg>
+              立即刷新文件列表
+            </button>
+          </div>
+        </section>
+
+        <!-- 关于 -->
+        <section class="bg-bg1 border border-border rounded-14px p-18px shadow-[0_4px_24px_rgba(0,0,0,0.35)]">
+          <h2 class="text-14px font-600 mb-10px">关于</h2>
+          <p class="text-12px color-t2 leading-relaxed">
+            素材转换工具 v5.2.0 · 批量处理图片与视频 · 基于 Tauri + Vue 3 + FFmpeg
+          </p>
+        </section>
+      </div>
+    </div>
+  </div>
+</template>
