@@ -177,7 +177,9 @@ function closeMediaPreview() {
   mediaPreviewFile.value = null;
 }
 
-const slotPaths = computed(() => new Set(slots.map((s) => s.path).filter(Boolean)));
+const slotPaths = computed(
+  () => new Set(slots.map((s) => s.path).filter(Boolean)),
+);
 
 watch(layout, () => {
   // 非原比例时按布局切换常用默认比例（会触发 reapply）
@@ -244,7 +246,9 @@ function reapplyAllSlotSizes() {
 }
 
 function syncLayoutConstraints() {
-  const filled = [0, 1].filter((i) => slots[i].path && slots[i].width && slots[i].height);
+  const filled = [0, 1].filter(
+    (i) => slots[i].path && slots[i].width && slots[i].height,
+  );
   if (filled.length === 0) return;
 
   const preset = currentRatioPreset.value;
@@ -330,18 +334,24 @@ async function assignFile(index: number, file: FileInfo) {
 
   try {
     if (file.file_type === "video") {
-      const dimensions = await invoke<[number, number]>("get_video_dimensions", {
-        videoPath: file.path,
-      });
+      const dimensions = await invoke<[number, number]>(
+        "get_video_dimensions",
+        {
+          videoPath: file.path,
+        },
+      );
       slots[index].nativeWidth = normalizeSize(dimensions[0]);
       slots[index].nativeHeight = normalizeSize(dimensions[1]);
       slots[index].previewImage = await invoke<string>("extract_video_frame", {
         videoPath: file.path,
       });
     } else {
-      const dimensions = await invoke<[number, number]>("get_image_dimensions", {
-        imagePath: file.path,
-      });
+      const dimensions = await invoke<[number, number]>(
+        "get_image_dimensions",
+        {
+          imagePath: file.path,
+        },
+      );
       slots[index].nativeWidth = normalizeSize(dimensions[0]);
       slots[index].nativeHeight = normalizeSize(dimensions[1]);
       slots[index].previewImage = await invoke<string>("load_image_preview", {
@@ -380,7 +390,16 @@ async function pickFile(index: number) {
       ? [
           {
             name: "Video",
-            extensions: ["mp4", "avi", "mov", "mkv", "wmv", "flv", "webm", "m4v"],
+            extensions: [
+              "mp4",
+              "avi",
+              "mov",
+              "mkv",
+              "wmv",
+              "flv",
+              "webm",
+              "m4v",
+            ],
           },
         ]
       : [
@@ -526,7 +545,7 @@ async function startMerge() {
       class="shrink-0 px-14px py-10px flex items-center justify-between gap-12px border-b border-border flex-wrap"
     >
       <div class="flex items-center gap-16px flex-wrap min-w-0">
-        <div>
+        <div class="w262px">
           <div class="text-13px font-600">拼接</div>
           <div class="text-11px color-t3 mt-2px">
             左侧选素材 · 右侧填槽位 · 素材 fill 填满槽位
@@ -539,86 +558,11 @@ async function startMerge() {
             v-model="slotRatioId"
             :disabled="isMerging"
           >
-            <option
-              v-for="p in SLOT_RATIO_PRESETS"
-              :key="p.id"
-              :value="p.id"
-            >
+            <option v-for="p in SLOT_RATIO_PRESETS" :key="p.id" :value="p.id">
               {{ p.label }}
             </option>
           </select>
         </div>
-      </div>
-      <button
-        class="tb-btn tb-btn-success"
-        type="button"
-        :disabled="!canMerge"
-        @click="startMerge"
-      >
-        {{ isMerging ? "拼接中…" : "导出拼接" }}
-      </button>
-    </div>
-
-    <div class="flex-1 min-h-0 flex overflow-hidden">
-      <!-- 左侧素材列表 -->
-      <div
-        class="w-280px shrink-0 min-h-0 border-r border-border flex flex-col bg-bg0 overflow-hidden"
-      >
-        <div
-          class="shrink-0 h-32px px-10px flex items-center justify-between text-11px font-500 color-t3 border-b border-border bg-bg2"
-        >
-          <span>选择素材 ({{ pickerFiles.length }})</span>
-          <span class="color-secondary">→ 槽位 {{ activeSlot + 1 }}</span>
-        </div>
-        <div class="flex-1 min-h-0 overflow-y-auto overflow-x-hidden">
-          <button
-            v-for="f in pickerFiles"
-            :key="f.path"
-            type="button"
-            class="w-full text-left px-10px py-8px border-none border-b border-border/60 cursor-pointer text-12px flex gap-10px items-center"
-            :class="
-              slotPaths.has(f.path)
-                ? 'bg-secondary-soft color-secondary'
-                : 'bg-transparent color-t2 hover:bg-bg2'
-            "
-            :disabled="isMerging"
-            @click="onPickFromList(f)"
-          >
-            <div
-              class="w-44px h-44px rounded-4px overflow-hidden bg-bg1 border border-border shrink-0 cursor-zoom-in hover:border-secondary"
-              title="点击预览"
-              @click="openMediaPreview(f, $event)"
-            >
-              <img
-                v-if="thumbs[f.path]"
-                :src="thumbs[f.path]"
-                class="w-full h-full object-cover pointer-events-none"
-                draggable="false"
-              />
-              <div v-else class="w-full h-full grid place-items-center text-10px color-t3 pointer-events-none">…</div>
-            </div>
-            <div class="min-w-0 flex-1">
-              <div class="truncate font-500" :title="f.name">{{ f.name }}</div>
-              <div class="text-10px color-t3 mt-2px flex items-center gap-6px flex-wrap">
-                <span>{{ f.file_type === "video" ? "视频" : "图片" }}</span>
-                <span>{{ formatFileSizeMb(f.size_bytes) }}</span>
-                <span v-if="slotIndexOf(f.path) >= 0" class="color-secondary">
-                  槽位 {{ slotIndexOf(f.path) + 1 }}
-                </span>
-              </div>
-            </div>
-          </button>
-          <div
-            v-if="pickerFiles.length === 0"
-            class="p-16px text-11px color-t3 text-center"
-          >
-            输入目录无{{ mediaKind === "video" ? "视频" : "图片" }}文件
-          </div>
-        </div>
-      </div>
-
-      <!-- 右侧拼接配置 -->
-      <div class="flex-1 min-w-0 min-h-0 overflow-y-auto p-14px flex flex-col gap-12px">
         <div
           class="flex flex-wrap items-center gap-16px py-10px px-12px bg-bg0 rounded-8px border border-border"
         >
@@ -668,7 +612,130 @@ async function startMerge() {
             </label>
           </div>
         </div>
+        <div
+          class="px-12px h-36px flex items-center bg-bg0 rounded-8px border border-border max-w-560px box-border"
+        >
+          <div class="flex gap-8px flex-wrap items-center">
+            <label class="text-12px color-t3">输出宽</label>
+            <input
+              class="field w-100px! h-26px"
+              type="number"
+              min="1"
+              v-model.number="outputWidth"
+              :disabled="isMerging"
+              placeholder="可选"
+            />
+            <label class="text-12px color-t3">输出高</label>
+            <input
+              class="field w-100px! h-26px"
+              type="number"
+              min="1"
+              v-model.number="outputHeight"
+              :disabled="isMerging"
+              placeholder="可选"
+            />
+            <button
+              class="tb-btn h-28px! px-8px! text-11px!"
+              type="button"
+              :disabled="isMerging"
+              @click="clearOutputSize"
+            >
+              清空
+            </button>
+          </div>
+        </div>
 
+        <div
+          class="bg-bg0 px-10px h36px flex items-center rounded-6px box-border"
+        >
+          输出大小: {{ naturalSizeText }}
+        </div>
+        <div
+          v-if="statusMessage"
+          class="bg-bg0 p-10px rounded-6px whitespace-pre-wrap text-12px border border-border color-t2 max-w-560px"
+        >
+          {{ statusMessage }}
+        </div>
+      </div>
+      <button
+        class="tb-btn tb-btn-success"
+        type="button"
+        :disabled="!canMerge"
+        @click="startMerge"
+      >
+        {{ isMerging ? "拼接中…" : "导出拼接" }}
+      </button>
+    </div>
+
+    <div class="flex-1 min-h-0 flex overflow-hidden">
+      <!-- 左侧素材列表 -->
+      <div
+        class="w-280px shrink-0 min-h-0 border-r border-border flex flex-col bg-bg0 overflow-hidden"
+      >
+        <div
+          class="shrink-0 h-32px px-10px flex items-center justify-between text-11px font-500 color-t3 border-b border-border bg-bg2"
+        >
+          <span>选择素材 ({{ pickerFiles.length }})</span>
+          <span class="color-secondary">→ 槽位 {{ activeSlot + 1 }}</span>
+        </div>
+        <div class="flex-1 min-h-0 overflow-y-auto overflow-x-hidden">
+          <button
+            v-for="f in pickerFiles"
+            :key="f.path"
+            type="button"
+            class="w-full text-left px-10px py-8px border-none border-b border-border/60 cursor-pointer text-12px flex gap-10px items-center"
+            :class="
+              slotPaths.has(f.path)
+                ? 'bg-secondary-soft color-secondary'
+                : 'bg-transparent color-t2 hover:bg-bg2'
+            "
+            :disabled="isMerging"
+            @click="onPickFromList(f)"
+          >
+            <div
+              class="w-44px h-44px rounded-4px overflow-hidden bg-bg1 border border-border shrink-0 cursor-zoom-in hover:border-secondary"
+              title="点击预览"
+              @click="openMediaPreview(f, $event)"
+            >
+              <img
+                v-if="thumbs[f.path]"
+                :src="thumbs[f.path]"
+                class="w-full h-full object-cover pointer-events-none"
+                draggable="false"
+              />
+              <div
+                v-else
+                class="w-full h-full grid place-items-center text-10px color-t3 pointer-events-none"
+              >
+                …
+              </div>
+            </div>
+            <div class="min-w-0 flex-1">
+              <div class="truncate font-500" :title="f.name">{{ f.name }}</div>
+              <div
+                class="text-10px color-t3 mt-2px flex items-center gap-6px flex-wrap"
+              >
+                <span>{{ f.file_type === "video" ? "视频" : "图片" }}</span>
+                <span>{{ formatFileSizeMb(f.size_bytes) }}</span>
+                <span v-if="slotIndexOf(f.path) >= 0" class="color-secondary">
+                  槽位 {{ slotIndexOf(f.path) + 1 }}
+                </span>
+              </div>
+            </div>
+          </button>
+          <div
+            v-if="pickerFiles.length === 0"
+            class="p-16px text-11px color-t3 text-center"
+          >
+            输入目录无{{ mediaKind === "video" ? "视频" : "图片" }}文件
+          </div>
+        </div>
+      </div>
+
+      <!-- 右侧拼接配置 -->
+      <div
+        class="flex-1 min-w-0 min-h-0 overflow-y-auto p-14px flex flex-col gap-12px"
+      >
         <p class="text-11px color-t3 -mt-4px">
           点击左侧文件填入高亮槽位；也可点击槽位卡片切换目标，或点预览区从本地选文件。
         </p>
@@ -693,9 +760,14 @@ async function startMerge() {
             @click="selectActiveSlot(index as 0 | 1)"
           >
             <div class="flex items-center justify-between mb-8px">
-              <div class="text-11px font-500" :class="activeSlot === index ? 'color-secondary' : 'color-t3'">
+              <div
+                class="text-11px font-500"
+                :class="activeSlot === index ? 'color-secondary' : 'color-t3'"
+              >
                 槽位 {{ index + 1 }}
-                <span v-if="activeSlot === index" class="font-400">（当前填入）</span>
+                <span v-if="activeSlot === index" class="font-400"
+                  >（当前填入）</span
+                >
                 <span class="font-400 color-t3 ml-4px">
                   {{ slotRatioLabel }} · fill
                 </span>
@@ -771,47 +843,6 @@ async function startMerge() {
               </button>
             </div>
           </div>
-        </div>
-
-        <div class="py-10px px-12px bg-bg0 rounded-8px border border-border max-w-560px">
-          <div class="text-12px mb-10px color-t3">
-            拼接后自然分辨率: {{ naturalSizeText }}
-          </div>
-          <div class="flex gap-8px flex-wrap items-center">
-            <label class="text-12px color-t3">输出宽</label>
-            <input
-              class="field w-100px!"
-              type="number"
-              min="1"
-              v-model.number="outputWidth"
-              :disabled="isMerging"
-              placeholder="可选"
-            />
-            <label class="text-12px color-t3">输出高</label>
-            <input
-              class="field w-100px!"
-              type="number"
-              min="1"
-              v-model.number="outputHeight"
-              :disabled="isMerging"
-              placeholder="可选"
-            />
-            <button
-              class="tb-btn h-28px! px-8px! text-11px!"
-              type="button"
-              :disabled="isMerging"
-              @click="clearOutputSize"
-            >
-              清空
-            </button>
-          </div>
-        </div>
-
-        <div
-          v-if="statusMessage"
-          class="bg-bg0 p-10px rounded-6px whitespace-pre-wrap text-12px border border-border color-t2 max-w-560px"
-        >
-          {{ statusMessage }}
         </div>
       </div>
     </div>
