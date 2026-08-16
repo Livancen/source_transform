@@ -40,11 +40,22 @@ git push origin v8.3.0
 
 也可在 Actions 页手动 `workflow_dispatch`（需有 tag 上下文时更稳妥）。
 
-### 产物
+### 产物命名
 
-- Windows：NSIS / MSI 安装包 + `.sig`
-- macOS：`.app` / `.dmg` / `.tar.gz` + `.sig`
-- `latest.json`：供更新器读取
+格式：`source_transform_[版本]_[平台]-[架构][setup].[后缀]`
+
+示例：
+
+| 平台 | 文件名示例 |
+|------|------------|
+| Windows NSIS | `source_transform_8.2.0_windows-x86_64_setup.exe` |
+| Windows MSI | `source_transform_8.2.0_windows-x86_64.msi` |
+| macOS arm64 | `source_transform_8.2.0_darwin-aarch64.dmg` |
+| macOS x64 | `source_transform_8.2.0_darwin-x86_64.dmg` |
+
+另有对应 `.sig` 签名文件，以及 `latest.json`（更新器用）。
+
+> 多平台会共用版本号，因此文件名中保留了平台/架构，避免 mac arm/x64 的 `.dmg` 互相覆盖。
 
 ## 4. Sidecar 二进制（构建时自动下载）
 

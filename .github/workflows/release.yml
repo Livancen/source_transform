@@ -18,12 +18,9 @@ jobs:
           - platform: windows-latest
             target: x86_64-pc-windows-msvc
             args: ""
-          # macOS arm64（原生）
           - platform: macos-latest
             target: aarch64-apple-darwin
             args: "--target aarch64-apple-darwin"
-          # macOS intel（在 arm runner 交叉编译；ffmpeg/ffprobe 下 x64 静态包，magick 用 brew 可能架构不符）
-          # 若 magick 交叉有问题，可暂时注释掉此矩阵项，只发 arm64
           - platform: macos-latest
             target: x86_64-apple-darwin
             args: "--target x86_64-apple-darwin"
@@ -57,7 +54,6 @@ jobs:
         if: matrix.platform == 'macos-latest'
         run: |
           brew update
-          # magick 在 download 脚本里也会 brew install；此处确保有基础工具
           brew list imagemagick >/dev/null 2>&1 || brew install imagemagick
           brew list ffmpeg >/dev/null 2>&1 || brew install ffmpeg
 
@@ -75,11 +71,15 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
-          tagName: ${{ github.ref_name }}
-          releaseName: "素材转换工具 ${{ github.ref_name }}"
-          releaseBody: "See the assets to download and install this version."
+          tagName: v__VERSION__
+          releaseName: "source_transform v__VERSION__"
+          releaseBody: "安装包命名：source_transform_版本_平台-架构.后缀"
           releaseDraft: false
           prerelease: false
           includeUpdaterJson: true
           updaterJsonPreferNsis: true
+          # 产物名：source_transform_8.2.0_windows-x86_64_setup.exe
+          #         source_transform_8.2.0_darwin-aarch64.dmg
+          # [setup] 仅 NSIS 安装包为 _setup，其它为空
+          releaseAssetNamePattern: source_transform_[version]_[platform]-[arch][setup].[ext]
           args: ${{ matrix.args }}
