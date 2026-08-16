@@ -828,7 +828,6 @@ onBeforeUnmount(() => {
         >
           <div class="flex items-center justify-between">
             <span>素材 ({{ pickerFiles.length }})</span>
-            <span class="color-secondary">点击加入</span>
           </div>
           <div class="flex gap-4px">
             <button
