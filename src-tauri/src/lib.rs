@@ -23,6 +23,7 @@ pub fn run() {
             commands::get_image_dimensions,
             commands::extract_video_frame,
             commands::load_image_preview,
+            commands::get_file_thumbnail,
             commands::process_files,
             commands::crop_by_ratios,
             commands::crop_videos_by_ratios,

@@ -23,6 +23,7 @@ const {
   outputFiles,
   selectedInputPath,
   selectedOutputPath,
+  checkedPaths,
   workMode,
   options,
   naming,
@@ -39,6 +40,9 @@ const {
   statusMessage,
   primaryActionLabel,
   canStart,
+  allVisibleChecked,
+  toggleCheck,
+  toggleCheckAllVisible,
   addRatio,
   removeRatio,
   scanAllFiles,
@@ -188,9 +192,14 @@ function handleMergeCompleted(message: string) {
         :dir="inputDir"
         :files="listFiles"
         :selected-path="selectedInputPath"
+        :selectable="true"
+        :checked-paths="checkedPaths"
+        :all-checked="allVisibleChecked"
         @select-dir="selectInputDir"
         @open-folder="openFolder(inputDir)"
         @select-file="selectedInputPath = $event.path"
+        @toggle-check="toggleCheck"
+        @toggle-check-all="toggleCheckAllVisible"
       />
 
       <div

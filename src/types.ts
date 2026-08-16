@@ -2,6 +2,17 @@ export interface FileInfo {
   path: string;
   name: string;
   file_type: string;
+  /** 字节 */
+  size_bytes: number;
+}
+
+export function formatFileSizeMb(bytes: number): string {
+  if (!bytes || bytes <= 0) return "0 MB";
+  const mb = bytes / (1024 * 1024);
+  if (mb < 0.01) return "<0.01 MB";
+  if (mb < 10) return `${mb.toFixed(2)} MB`;
+  if (mb < 100) return `${mb.toFixed(1)} MB`;
+  return `${Math.round(mb)} MB`;
 }
 
 export interface ProcessProgress {

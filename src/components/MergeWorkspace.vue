@@ -8,6 +8,8 @@ import type {
   VideoMergeLayout,
   VideoMergeOptions,
 } from "../types";
+import { formatFileSizeMb } from "../types";
+import { useFileThumbs } from "../composables/useFileThumbs";
 
 type MergeSlotState = {
   path: string;
@@ -105,6 +107,9 @@ const canMerge = computed(() => {
 const pickerFiles = computed(() =>
   props.inputFiles.filter((f) => f.file_type === mediaKind.value),
 );
+
+const pickerFilesRef = computed(() => pickerFiles.value);
+const { thumbs } = useFileThumbs(pickerFilesRef);
 
 const slotPaths = computed(() => new Set(slots.map((s) => s.path).filter(Boolean)));
 
@@ -230,7 +235,7 @@ async function pickFile(index: number) {
   const ext = name.split(".").pop()?.toLowerCase() || "";
   const imageExts = ["jpg", "jpeg", "png", "gif", "bmp", "webp", "tiff"];
   const fileType = imageExts.includes(ext) ? "image" : "video";
-  await assignFile(index, { path, name, file_type: fileType });
+  await assignFile(index, { path, name, file_type: fileType, size_bytes: 0 });
 }
 
 function clearSlot(index: number) {
@@ -358,7 +363,7 @@ async function startMerge() {
     <div class="flex-1 min-h-0 flex overflow-hidden">
       <!-- 左侧素材列表 -->
       <div
-        class="w-240px shrink-0 min-h-0 border-r border-border flex flex-col bg-bg0 overflow-hidden"
+        class="w-280px shrink-0 min-h-0 border-r border-border flex flex-col bg-bg0 overflow-hidden"
       >
         <div
           class="shrink-0 h-32px px-10px flex items-center justify-between text-11px font-500 color-t3 border-b border-border bg-bg2"
@@ -371,7 +376,7 @@ async function startMerge() {
             v-for="f in pickerFiles"
             :key="f.path"
             type="button"
-            class="w-full text-left px-10px py-8px border-none border-b border-border/60 cursor-pointer text-12px"
+            class="w-full text-left px-10px py-8px border-none border-b border-border/60 cursor-pointer text-12px flex gap-10px items-center"
             :class="
               slotPaths.has(f.path)
                 ? 'bg-secondary-soft color-secondary'
@@ -380,12 +385,24 @@ async function startMerge() {
             :disabled="isMerging"
             @click="onPickFromList(f)"
           >
-            <div class="truncate font-500" :title="f.name">{{ f.name }}</div>
-            <div class="text-10px color-t3 mt-2px flex items-center gap-6px">
-              <span>{{ f.file_type === "video" ? "视频" : "图片" }}</span>
-              <span v-if="slotIndexOf(f.path) >= 0" class="color-secondary">
-                槽位 {{ slotIndexOf(f.path) + 1 }}
-              </span>
+            <div class="w-44px h-44px rounded-4px overflow-hidden bg-bg1 border border-border shrink-0">
+              <img
+                v-if="thumbs[f.path]"
+                :src="thumbs[f.path]"
+                class="w-full h-full object-cover"
+                draggable="false"
+              />
+              <div v-else class="w-full h-full grid place-items-center text-10px color-t3">…</div>
+            </div>
+            <div class="min-w-0 flex-1">
+              <div class="truncate font-500" :title="f.name">{{ f.name }}</div>
+              <div class="text-10px color-t3 mt-2px flex items-center gap-6px flex-wrap">
+                <span>{{ f.file_type === "video" ? "视频" : "图片" }}</span>
+                <span>{{ formatFileSizeMb(f.size_bytes) }}</span>
+                <span v-if="slotIndexOf(f.path) >= 0" class="color-secondary">
+                  槽位 {{ slotIndexOf(f.path) + 1 }}
+                </span>
+              </div>
             </div>
           </button>
           <div

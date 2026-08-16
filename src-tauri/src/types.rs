@@ -61,6 +61,9 @@ pub struct FileInfo {
     pub path: String,
     pub name: String,
     pub file_type: String, // "image" or "video"
+    /// 文件大小（字节）
+    #[serde(default)]
+    pub size_bytes: u64,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

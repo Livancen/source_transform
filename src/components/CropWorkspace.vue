@@ -1,6 +1,8 @@
 <script setup lang="ts">
-import { ref, watch, onMounted, onBeforeUnmount, nextTick } from "vue";
+import { ref, watch, onMounted, onBeforeUnmount, nextTick, toRef } from "vue";
 import type { FileInfo } from "../types";
+import { formatFileSizeMb } from "../types";
+import { useFileThumbs } from "../composables/useFileThumbs";
 
 const props = defineProps<{
   files: FileInfo[];
@@ -32,6 +34,9 @@ const emit = defineEmits<{
   "update:cropHeight": [v: number];
   fitPreview: [width: number, height: number];
 }>();
+
+const filesRef = toRef(props, "files");
+const { thumbs } = useFileThumbs(filesRef);
 
 const previewHostRef = ref<HTMLElement | null>(null);
 let resizeObserver: ResizeObserver | null = null;
@@ -104,7 +109,7 @@ watch(
     <div class="flex-1 min-h-0 flex gap-0 overflow-hidden">
       <!-- 文件列表：固定宽 + 内部滚动 -->
       <div
-        class="w-240px shrink-0 min-h-0 border-r border-border flex flex-col bg-bg0 overflow-hidden"
+        class="w-280px shrink-0 min-h-0 border-r border-border flex flex-col bg-bg0 overflow-hidden"
       >
         <div
           class="shrink-0 h-32px px-10px flex items-center text-11px font-500 color-t3 border-b border-border bg-bg2"
@@ -116,7 +121,7 @@ watch(
             v-for="f in files"
             :key="f.path"
             type="button"
-            class="w-full text-left px-10px py-8px border-none border-b border-border/60 cursor-pointer text-12px"
+            class="w-full text-left px-10px py-8px border-none border-b border-border/60 cursor-pointer text-12px flex gap-10px items-center"
             :class="
               selectedPath === f.path
                 ? 'bg-secondary-soft color-secondary'
@@ -124,9 +129,21 @@ watch(
             "
             @click="emit('selectFile', f)"
           >
-            <div class="truncate font-500" :title="f.name">{{ f.name }}</div>
-            <div class="text-10px color-t3 mt-2px">
-              {{ f.file_type === "video" ? "视频" : "图片" }}
+            <div class="w-44px h-44px rounded-4px overflow-hidden bg-bg1 border border-border shrink-0">
+              <img
+                v-if="thumbs[f.path]"
+                :src="thumbs[f.path]"
+                class="w-full h-full object-cover"
+                draggable="false"
+              />
+              <div v-else class="w-full h-full grid place-items-center text-10px color-t3">…</div>
+            </div>
+            <div class="min-w-0 flex-1">
+              <div class="truncate font-500" :title="f.name">{{ f.name }}</div>
+              <div class="text-10px color-t3 mt-2px flex gap-8px">
+                <span>{{ f.file_type === "video" ? "视频" : "图片" }}</span>
+                <span>{{ formatFileSizeMb(f.size_bytes) }}</span>
+              </div>
             </div>
           </button>
           <div

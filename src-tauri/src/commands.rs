@@ -176,6 +176,7 @@ pub fn scan_input_files(input_dir: String) -> Result<Vec<FileInfo>, String> {
         let path = entry.path().to_path_buf();
         if path.is_file() {
             if let Some(file_type) = get_file_type(&path) {
+                let size_bytes = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
                 files.push(FileInfo {
                     path: path.to_string_lossy().to_string(),
                     name: path
@@ -184,6 +185,7 @@ pub fn scan_input_files(input_dir: String) -> Result<Vec<FileInfo>, String> {
                         .to_string_lossy()
                         .to_string(),
                     file_type,
+                    size_bytes,
                 });
             }
         }
@@ -313,6 +315,7 @@ pub async fn process_files(
     options: ProcessOptions,
     file_type_filter: Option<String>,
     naming: Option<NamingOptions>,
+    file_paths: Option<Vec<String>>,
 ) -> Result<String, String> {
     std::fs::create_dir_all(&output_dir).map_err(|e| e.to_string())?;
 
@@ -322,10 +325,14 @@ pub async fn process_files(
     if let Some(ref filter) = file_type_filter {
         files.retain(|f| f.file_type == *filter);
     }
+    if let Some(ref paths) = file_paths {
+        let set: std::collections::HashSet<&str> = paths.iter().map(|s| s.as_str()).collect();
+        files.retain(|f| set.contains(f.path.as_str()));
+    }
 
     let total = files.len();
     if total == 0 {
-        return Err("没有找到可处理的媒体文件".to_string());
+        return Err("没有选中可处理的媒体文件".to_string());
     }
 
     let mut success_count = 0;
@@ -408,6 +415,7 @@ pub async fn crop_by_ratios(
     output_dir: String,
     ratios: Vec<String>,
     file_type_filter: Option<String>,
+    file_paths: Option<Vec<String>>,
 ) -> Result<String, String> {
     if ratios.is_empty() {
         return Err("请至少添加一个比例".to_string());
@@ -419,9 +427,13 @@ pub async fn crop_by_ratios(
     if let Some(ref filter) = file_type_filter {
         files.retain(|f| f.file_type == *filter);
     }
+    if let Some(ref paths) = file_paths {
+        let set: std::collections::HashSet<&str> = paths.iter().map(|s| s.as_str()).collect();
+        files.retain(|f| set.contains(f.path.as_str()));
+    }
 
     if files.is_empty() {
-        return Err("没有找到可裁剪的媒体文件".to_string());
+        return Err("没有选中可裁剪的媒体文件".to_string());
     }
 
     let total = files.len() * ratios.len();
@@ -585,8 +597,50 @@ pub async fn crop_videos_by_ratios(
         output_dir,
         ratios,
         Some("video".to_string()),
+        None,
     )
     .await
+}
+
+#[tauri::command]
+pub async fn get_file_thumbnail(app: AppHandle, path: String, file_type: String) -> Result<String, String> {
+    if file_type == "video" {
+        extract_video_frame(app, path).await
+    } else {
+        // 用 ImageMagick 生成小缩略图，避免大图 base64 过重
+        let temp_dir = std::env::temp_dir();
+        let out = temp_dir.join(format!("thumb_{}.jpg", generate_timestamp()));
+        let out_str = out.to_string_lossy().to_string();
+        let output = app
+            .shell()
+            .sidecar("magick")
+            .map_err(|e| format!("无法找到ImageMagick: {}", e))?
+            .args(&[
+                &path,
+                "-thumbnail",
+                "96x96^",
+                "-gravity",
+                "center",
+                "-extent",
+                "96x96",
+                "-quality",
+                "70",
+                &out_str,
+            ])
+            .output()
+            .await
+            .map_err(|e| format!("无法执行ImageMagick: {}", e))?;
+
+        if !output.status.success() {
+            // 回退为原图预览
+            return load_image_preview(path).await;
+        }
+
+        let image_data = std::fs::read(&out).map_err(|e| format!("读取缩略图失败: {}", e))?;
+        let _ = std::fs::remove_file(&out);
+        use base64::{engine::general_purpose::STANDARD, Engine as _};
+        Ok(format!("data:image/jpeg;base64,{}", STANDARD.encode(&image_data)))
+    }
 }
 
 #[tauri::command]

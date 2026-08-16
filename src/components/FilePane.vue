@@ -1,25 +1,39 @@
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, toRef } from "vue";
 import type { FileInfo } from "../types";
+import { formatFileSizeMb } from "../types";
+import { useFileThumbs } from "../composables/useFileThumbs";
 
 const props = defineProps<{
   kind: "input" | "output";
   dir: string;
   files: FileInfo[];
   selectedPath?: string;
+  /** 输入列表是否显示勾选 */
+  selectable?: boolean;
+  checkedPaths?: Set<string>;
+  allChecked?: boolean;
 }>();
 
 const emit = defineEmits<{
   selectDir: [];
   openFolder: [];
   selectFile: [file: FileInfo];
+  toggleCheck: [path: string];
+  toggleCheckAll: [];
 }>();
 
 const title = computed(() => (props.kind === "input" ? "输入" : "输出"));
+const filesRef = toRef(props, "files");
+const { thumbs } = useFileThumbs(filesRef);
 
 function fileExt(name: string) {
   const i = name.lastIndexOf(".");
   return i >= 0 ? name.slice(i + 1) : "";
+}
+
+function isRowChecked(path: string) {
+  return props.checkedPaths?.has(path) ?? false;
 }
 </script>
 
@@ -70,11 +84,24 @@ function fileExt(name: string) {
     </div>
 
     <div
-      class="shrink-0 grid grid-cols-[minmax(0,1fr)_72px_88px] h-28px items-center px-12px bg-bg2 border-b border-border text-11px font-500 color-t3"
+      class="shrink-0 grid h-28px items-center px-10px bg-bg2 border-b border-border text-11px font-500 color-t3"
+      :class="selectable
+        ? 'grid-cols-[28px_48px_minmax(0,1fr)_56px_64px]'
+        : 'grid-cols-[48px_minmax(0,1fr)_56px_64px]'"
     >
+      <label v-if="selectable" class="flex items-center justify-center" @click.stop>
+        <input
+          type="checkbox"
+          class="accent-secondary w-14px h-14px cursor-pointer"
+          :checked="allChecked"
+          :indeterminate="!allChecked && files.some(f => isRowChecked(f.path))"
+          @change="emit('toggleCheckAll')"
+        />
+      </label>
+      <span class="px-4px truncate">预览</span>
       <span class="px-6px truncate">名称</span>
-      <span class="px-6px truncate">类型</span>
-      <span class="px-6px truncate">扩展名</span>
+      <span class="px-4px truncate">大小</span>
+      <span class="px-4px truncate">类型</span>
     </div>
 
     <div class="file-list-scroll flex-1 min-h-0 overflow-y-auto overflow-x-hidden py-2px">
@@ -82,30 +109,62 @@ function fileExt(name: string) {
         <div
           v-for="file in files"
           :key="file.path"
-          class="grid grid-cols-[minmax(0,1fr)_72px_88px] items-center h-32px px-12px mx-4px rounded-6px color-t1 transition-colors duration-100 cursor-default hover:bg-bg3"
-          :class="{
-            'bg-bg-selected outline outline-1 outline-secondary/25': selectedPath === file.path,
-          }"
+          class="grid items-center min-h-52px px-10px mx-4px my-1px rounded-6px color-t1 transition-colors duration-100 cursor-default hover:bg-bg3"
+          :class="[
+            selectable
+              ? 'grid-cols-[28px_48px_minmax(0,1fr)_56px_64px]'
+              : 'grid-cols-[48px_minmax(0,1fr)_56px_64px]',
+            { 'bg-bg-selected outline outline-1 outline-secondary/25': selectedPath === file.path },
+          ]"
           @click="emit('selectFile', file)"
         >
-          <div class="flex items-center gap-8px min-w-0 px-6px">
-            <span
-              class="w-18px h-18px shrink-0 grid place-items-center"
+          <label
+            v-if="selectable"
+            class="flex items-center justify-center h-full"
+            @click.stop
+          >
+            <input
+              type="checkbox"
+              class="accent-secondary w-14px h-14px cursor-pointer"
+              :checked="isRowChecked(file.path)"
+              @change="emit('toggleCheck', file.path)"
+            />
+          </label>
+
+          <div class="w-40px h-40px rounded-4px overflow-hidden bg-bg0 border border-border shrink-0">
+            <img
+              v-if="thumbs[file.path]"
+              :src="thumbs[file.path]"
+              class="w-full h-full object-cover"
+              draggable="false"
+            />
+            <div
+              v-else
+              class="w-full h-full grid place-items-center"
               :class="file.file_type === 'image' ? 'color-image' : 'color-video'"
             >
-              <svg v-if="file.file_type === 'image'" class="w-16px h-16px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <svg v-if="file.file_type === 'image'" class="w-16px h-16px opacity-50" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <rect x="3" y="3" width="18" height="18" rx="2"/>
                 <circle cx="8.5" cy="8.5" r="1.5"/>
                 <path d="M21 15l-5-5L5 21"/>
               </svg>
-              <svg v-else class="w-16px h-16px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <svg v-else class="w-16px h-16px opacity-50" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <rect x="2" y="4" width="15" height="16" rx="2"/>
                 <path d="M17 10l5-3v10l-5-3z"/>
               </svg>
-            </span>
-            <span class="truncate text-13px" :title="file.path">{{ file.name }}</span>
+            </div>
           </div>
-          <div class="px-6px">
+
+          <div class="min-w-0 px-6px">
+            <div class="truncate text-13px" :title="file.path">{{ file.name }}</div>
+            <div class="text-10px color-t3 font-mono uppercase truncate">{{ fileExt(file.name) }}</div>
+          </div>
+
+          <div class="px-4px text-11px color-t3 whitespace-nowrap">
+            {{ formatFileSizeMb(file.size_bytes) }}
+          </div>
+
+          <div class="px-4px">
             <span
               class="inline-flex items-center h-18px px-6px rounded-4px text-10px font-600 tracking-wide"
               :class="file.file_type === 'image'
@@ -114,9 +173,6 @@ function fileExt(name: string) {
             >
               {{ file.file_type === "image" ? "图片" : "视频" }}
             </span>
-          </div>
-          <div class="px-6px font-mono text-11px color-t3 uppercase truncate">
-            {{ fileExt(file.name) }}
           </div>
         </div>
       </template>

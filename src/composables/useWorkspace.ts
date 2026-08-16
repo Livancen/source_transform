@@ -21,6 +21,8 @@ const allInputFiles = ref<FileInfo[]>([]);
 const outputFiles = ref<FileInfo[]>([]);
 const selectedInputPath = ref("");
 const selectedOutputPath = ref("");
+/** 勾选的输入文件路径 */
+const checkedPaths = ref<Set<string>>(new Set());
 
 const workMode = ref<WorkMode>("image");
 const options = ref<ProcessOptions>(defaultProcessOptions());
@@ -52,6 +54,10 @@ const files = computed(() => {
   }
 });
 
+const checkedFiles = computed(() =>
+  files.value.filter((f) => checkedPaths.value.has(f.path)),
+);
+
 const imageCount = computed(
   () => allInputFiles.value.filter((f) => f.file_type === "image").length,
 );
@@ -72,7 +78,7 @@ const statusMessage = computed(() => {
 
 const primaryActionLabel = computed(() => {
   if (isProcessing.value) return "处理中…";
-  const n = files.value.length;
+  const n = checkedFiles.value.length;
   switch (workMode.value) {
     case "image":
       return `开始处理图片 (${n})`;
@@ -94,9 +100,9 @@ const canStart = computed(() => {
   switch (workMode.value) {
     case "image":
     case "video":
-      return files.value.length > 0;
+      return checkedFiles.value.length > 0;
     case "ratio":
-      return files.value.length > 0 && ratios.value.length > 0;
+      return checkedFiles.value.length > 0 && ratios.value.length > 0;
     case "crop":
     case "merge":
       return true;
@@ -104,6 +110,50 @@ const canStart = computed(() => {
       return false;
   }
 });
+
+function isChecked(path: string) {
+  return checkedPaths.value.has(path);
+}
+
+function toggleCheck(path: string) {
+  const next = new Set(checkedPaths.value);
+  if (next.has(path)) next.delete(path);
+  else next.add(path);
+  checkedPaths.value = next;
+}
+
+function setChecked(path: string, value: boolean) {
+  const next = new Set(checkedPaths.value);
+  if (value) next.add(path);
+  else next.delete(path);
+  checkedPaths.value = next;
+}
+
+function toggleCheckAllVisible() {
+  const visible = files.value;
+  const allOn = visible.length > 0 && visible.every((f) => checkedPaths.value.has(f.path));
+  const next = new Set(checkedPaths.value);
+  if (allOn) {
+    for (const f of visible) next.delete(f.path);
+  } else {
+    for (const f of visible) next.add(f.path);
+  }
+  checkedPaths.value = next;
+}
+
+const allVisibleChecked = computed(() => {
+  const visible = files.value;
+  return visible.length > 0 && visible.every((f) => checkedPaths.value.has(f.path));
+});
+
+function pruneChecked() {
+  const valid = new Set(allInputFiles.value.map((f) => f.path));
+  const next = new Set<string>();
+  for (const p of checkedPaths.value) {
+    if (valid.has(p)) next.add(p);
+  }
+  checkedPaths.value = next;
+}
 
 function addRatio() {
   ratioError.value = "";
@@ -154,6 +204,7 @@ async function scanFiles() {
     allInputFiles.value = await invoke<FileInfo[]>("scan_input_files", {
       inputDir: inputDir.value,
     });
+    pruneChecked();
   } catch (e) {
     console.error("扫描文件失败:", e);
     allInputFiles.value = [];
@@ -216,16 +267,18 @@ async function startProcess() {
     return;
   }
 
+  const paths = checkedFiles.value.map((f) => f.path);
+
   if (workMode.value === "image" || workMode.value === "video") {
-    if (files.value.length === 0) {
-      resultMessage.value = "没有可处理的文件";
+    if (paths.length === 0) {
+      resultMessage.value = "请先勾选要处理的文件";
       return;
     }
   }
 
   if (workMode.value === "ratio") {
-    if (files.value.length === 0) {
-      resultMessage.value = "没有可裁剪的文件";
+    if (paths.length === 0) {
+      resultMessage.value = "请先勾选要裁剪的文件";
       return;
     }
     if (ratios.value.length === 0) {
@@ -245,6 +298,7 @@ async function startProcess() {
         outputDir: outputDir.value,
         ratios: ratios.value,
         fileTypeFilter: null,
+        filePaths: paths,
       });
       resultMessage.value = result;
     } else {
@@ -255,6 +309,7 @@ async function startProcess() {
         options: options.value,
         fileTypeFilter: filter,
         naming: naming.value,
+        filePaths: paths,
       });
       resultMessage.value = result;
     }
@@ -336,6 +391,8 @@ watch(optionsOpen, (val) => {
 watch(workMode, (val) => {
   localStorage.setItem(WORK_MODE_KEY, val);
   selectedInputPath.value = "";
+  checkedPaths.value = new Set();
+
   if (val === "image") {
     const imageExts = ["jpg", "png", "webp", "bmp", "tiff"];
     if (!imageExts.includes(options.value.target_format)) {
@@ -370,6 +427,8 @@ export function useWorkspace() {
     outputFiles,
     selectedInputPath,
     selectedOutputPath,
+    checkedPaths,
+    checkedFiles,
     workMode,
     options,
     naming,
@@ -386,6 +445,11 @@ export function useWorkspace() {
     statusMessage,
     primaryActionLabel,
     canStart,
+    allVisibleChecked,
+    isChecked,
+    toggleCheck,
+    setChecked,
+    toggleCheckAllVisible,
     addRatio,
     removeRatio,
     saveCustomDirs,
