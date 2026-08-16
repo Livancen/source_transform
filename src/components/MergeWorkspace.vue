@@ -94,14 +94,20 @@ const currentRatioPreset = computed(
     SLOT_RATIO_PRESETS[0],
 );
 
+/** 预览框最大高度；宽度按比例收缩，避免 max-height 破坏 aspect-ratio */
+const SLOT_PREVIEW_MAX_H = 420;
+
 const slotAspectStyle = computed(() => {
   const p = currentRatioPreset.value;
-  if (p.w > 0 && p.h > 0) {
-    return { aspectRatio: `${p.w} / ${p.h}` };
-  }
-  return layout.value === "vertical"
-    ? { aspectRatio: "9 / 16" }
-    : { aspectRatio: "16 / 9" };
+  const rw = p.w > 0 ? p.w : layout.value === "vertical" ? 9 : 16;
+  const rh = p.h > 0 ? p.h : layout.value === "vertical" ? 16 : 9;
+  // width = min(100%, maxH * w/h)，保证 9:16 等比例不被 max-h 压扁
+  return {
+    aspectRatio: `${rw} / ${rh}`,
+    width: `min(100%, calc(${SLOT_PREVIEW_MAX_H}px * ${rw} / ${rh}))`,
+    maxHeight: `${SLOT_PREVIEW_MAX_H}px`,
+    height: "auto",
+  };
 });
 
 const slotRatioLabel = computed(() => currentRatioPreset.value.label);
@@ -210,16 +216,13 @@ function computeSlotSize(
   if (preset.w <= 0 || preset.h <= 0) {
     return { width: evenDim(nativeW), height: evenDim(nativeH) };
   }
-  const ratio = preset.w / preset.h;
-  // 以素材较长边为基准，生成目标比例矩形，素材将 stretch fill 填满
-  let width: number;
-  let height: number;
-  if (nativeW / nativeH >= ratio) {
-    width = evenDim(nativeW);
-    height = evenDim(width / ratio);
-  } else {
-    height = evenDim(nativeH);
-    width = evenDim(height * ratio);
+  // 以素材面积近似边长为基准，严格按预设 w:h 出偶数尺寸（fill 拉伸）
+  const base = evenDim(Math.max(nativeW, nativeH));
+  let width = evenDim((base * preset.w) / Math.max(preset.w, preset.h));
+  let height = evenDim((width * preset.h) / preset.w);
+  // 校正：保证 width/height ≈ preset.w/preset.h
+  if (Math.abs(width / height - preset.w / preset.h) > 0.01) {
+    height = evenDim((width * preset.h) / preset.w);
   }
   return { width: Math.max(2, width), height: Math.max(2, height) };
 }
@@ -249,23 +252,20 @@ function syncLayoutConstraints() {
   const ratio = hasRatio ? preset.w / preset.h : 0;
 
   if (layout.value === "vertical") {
-    const baseW = Math.max(
-      ...filled.map((i) => slots[i].width || 0),
-    );
+    const baseW = evenDim(Math.max(...filled.map((i) => slots[i].width || 0)));
     for (const i of filled) {
-      slots[i].width = evenDim(baseW);
+      slots[i].width = baseW;
       if (hasRatio) {
-        slots[i].height = evenDim(slots[i].width! / ratio);
+        // height = width * h / w，避免 width/ratio 浮点误差
+        slots[i].height = evenDim((baseW * preset.h) / preset.w);
       }
     }
   } else {
-    const baseH = Math.max(
-      ...filled.map((i) => slots[i].height || 0),
-    );
+    const baseH = evenDim(Math.max(...filled.map((i) => slots[i].height || 0)));
     for (const i of filled) {
-      slots[i].height = evenDim(baseH);
+      slots[i].height = baseH;
       if (hasRatio) {
-        slots[i].width = evenDim(slots[i].height! * ratio);
+        slots[i].width = evenDim((baseH * preset.w) / preset.h);
       }
     }
   }
@@ -276,19 +276,26 @@ function syncRequiredDimension(changedIndex: number) {
   if (!slots[otherIndex].path) return;
   const preset = currentRatioPreset.value;
   const hasRatio = preset.w > 0 && preset.h > 0;
-  const ratio = hasRatio ? preset.w / preset.h : 0;
 
   if (layout.value === "vertical") {
     if (slots[changedIndex].width != null) {
-      slots[otherIndex].width = slots[changedIndex].width;
-      if (hasRatio && slots[otherIndex].width != null) {
-        slots[otherIndex].height = evenDim(slots[otherIndex].width! / ratio);
+      const w = evenDim(slots[changedIndex].width!);
+      slots[changedIndex].width = w;
+      slots[otherIndex].width = w;
+      if (hasRatio) {
+        const h = evenDim((w * preset.h) / preset.w);
+        slots[changedIndex].height = h;
+        slots[otherIndex].height = h;
       }
     }
   } else if (slots[changedIndex].height != null) {
-    slots[otherIndex].height = slots[changedIndex].height;
-    if (hasRatio && slots[otherIndex].height != null) {
-      slots[otherIndex].width = evenDim(slots[otherIndex].height! * ratio);
+    const h = evenDim(slots[changedIndex].height!);
+    slots[changedIndex].height = h;
+    slots[otherIndex].height = h;
+    if (hasRatio) {
+      const w = evenDim((h * preset.w) / preset.h);
+      slots[changedIndex].width = w;
+      slots[otherIndex].width = w;
     }
   }
 }
@@ -415,7 +422,7 @@ function updateSlotWidth(index: number, value: string) {
   slots[index].width = w == null ? null : evenDim(w);
   const preset = currentRatioPreset.value;
   if (preset.w > 0 && preset.h > 0 && slots[index].width != null) {
-    slots[index].height = evenDim(slots[index].width! / (preset.w / preset.h));
+    slots[index].height = evenDim((slots[index].width! * preset.h) / preset.w);
   }
   if (layout.value === "vertical") syncRequiredDimension(index);
   else if (preset.w > 0) syncLayoutConstraints();
@@ -426,7 +433,7 @@ function updateSlotHeight(index: number, value: string) {
   slots[index].height = h == null ? null : evenDim(h);
   const preset = currentRatioPreset.value;
   if (preset.w > 0 && preset.h > 0 && slots[index].height != null) {
-    slots[index].width = evenDim(slots[index].height! * (preset.w / preset.h));
+    slots[index].width = evenDim((slots[index].height! * preset.w) / preset.h);
   }
   if (layout.value === "horizontal") syncRequiredDimension(index);
   else if (preset.w > 0) syncLayoutConstraints();
@@ -696,7 +703,7 @@ async function startMerge() {
             </div>
             <button
               type="button"
-              class="relative w-full bg-bg2 border border-border rounded-6px flex flex-col items-center justify-center text-center p-0 overflow-hidden color-t2 cursor-pointer hover:not-disabled:bg-bg-hover disabled:opacity-45 max-h-420px"
+              class="relative bg-bg2 border border-border rounded-6px flex flex-col items-center justify-center text-center p-0 overflow-hidden color-t2 cursor-pointer hover:not-disabled:bg-bg-hover disabled:opacity-45 mx-auto"
               :style="slotAspectStyle"
               :disabled="isMerging"
               @click.stop="pickFile(index)"
