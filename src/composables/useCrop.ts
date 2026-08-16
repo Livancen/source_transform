@@ -25,6 +25,34 @@ export function useCrop(onMessage: (msg: string) => void) {
   const startCropW = ref(0);
   const startCropH = ref(0);
 
+  /** 根据预览容器可用宽高，计算缩放比（裁剪坐标仍为素材像素） */
+  function fitPreviewScale(containerW: number, containerH: number) {
+    if (mediaWidth.value <= 0 || mediaHeight.value <= 0) {
+      previewScale.value = 1;
+      return;
+    }
+    const pad = 8;
+    const availW = Math.max(40, containerW - pad);
+    const availH = Math.max(40, containerH - pad);
+    const scale = Math.min(
+      1,
+      availW / mediaWidth.value,
+      availH / mediaHeight.value,
+    );
+    previewScale.value = Number.isFinite(scale) && scale > 0 ? scale : 1;
+  }
+
+  function initCropRect() {
+    const mw = mediaWidth.value;
+    const mh = mediaHeight.value;
+    const preferW = Math.min(mw, Math.max(100, Math.floor(mw * 0.6)));
+    const preferH = Math.min(mh, Math.max(100, Math.floor(mh * 0.6)));
+    cropWidth.value = preferW;
+    cropHeight.value = preferH;
+    cropX.value = Math.floor((mw - preferW) / 2);
+    cropY.value = Math.floor((mh - preferH) / 2);
+  }
+
   async function loadFile(file: FileInfo) {
     selectedFile.value = file;
     isLoading.value = true;
@@ -50,15 +78,7 @@ export function useCrop(onMessage: (msg: string) => void) {
         });
       }
 
-      const maxPreviewWidth = 720;
-      previewScale.value = Math.min(1, maxPreviewWidth / mediaWidth.value);
-
-      cropWidth.value = Math.min(cropWidth.value, mediaWidth.value);
-      cropHeight.value = Math.min(cropHeight.value, mediaHeight.value);
-      if (cropWidth.value < 100) cropWidth.value = Math.min(mediaWidth.value, 1280);
-      if (cropHeight.value < 100) cropHeight.value = Math.min(mediaHeight.value, 720);
-      cropX.value = Math.floor((mediaWidth.value - cropWidth.value) / 2);
-      cropY.value = Math.floor((mediaHeight.value - cropHeight.value) / 2);
+      initCropRect();
     } catch (e) {
       onMessage(`加载文件失败: ${e}`);
       selectedFile.value = null;
@@ -98,8 +118,9 @@ export function useCrop(onMessage: (msg: string) => void) {
   function handleMouseMove(e: MouseEvent) {
     if (!isDragging.value && !isResizing.value) return;
 
-    const deltaX = Math.round((e.clientX - dragStartX.value) / previewScale.value);
-    const deltaY = Math.round((e.clientY - dragStartY.value) / previewScale.value);
+    const scale = previewScale.value || 1;
+    const deltaX = Math.round((e.clientX - dragStartX.value) / scale);
+    const deltaY = Math.round((e.clientY - dragStartY.value) / scale);
 
     if (isDragging.value) {
       let newX = startCropX.value + deltaX;
@@ -114,22 +135,23 @@ export function useCrop(onMessage: (msg: string) => void) {
       let newW = startCropW.value;
       let newH = startCropH.value;
       const handle = resizeHandle.value;
+      const minSize = Math.min(20, mediaWidth.value, mediaHeight.value);
 
       if (handle.includes("e")) {
-        newW = Math.max(100, Math.min(startCropW.value + deltaX, mediaWidth.value - startCropX.value));
+        newW = Math.max(minSize, Math.min(startCropW.value + deltaX, mediaWidth.value - startCropX.value));
       }
       if (handle.includes("w")) {
         const maxDelta = startCropX.value;
-        const clampedDelta = Math.max(-maxDelta, Math.min(deltaX, startCropW.value - 100));
+        const clampedDelta = Math.max(-maxDelta, Math.min(deltaX, startCropW.value - minSize));
         newX = startCropX.value + clampedDelta;
         newW = startCropW.value - clampedDelta;
       }
       if (handle.includes("s")) {
-        newH = Math.max(100, Math.min(startCropH.value + deltaY, mediaHeight.value - startCropY.value));
+        newH = Math.max(minSize, Math.min(startCropH.value + deltaY, mediaHeight.value - startCropY.value));
       }
       if (handle.includes("n")) {
         const maxDelta = startCropY.value;
-        const clampedDelta = Math.max(-maxDelta, Math.min(deltaY, startCropH.value - 100));
+        const clampedDelta = Math.max(-maxDelta, Math.min(deltaY, startCropH.value - minSize));
         newY = startCropY.value + clampedDelta;
         newH = startCropH.value - clampedDelta;
       }
@@ -188,6 +210,7 @@ export function useCrop(onMessage: (msg: string) => void) {
     cropHeight,
     isExporting,
     isLoading,
+    fitPreviewScale,
     loadFile,
     clearFile,
     startDrag,

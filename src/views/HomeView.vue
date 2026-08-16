@@ -63,6 +63,7 @@ const {
   cropHeight,
   isExporting,
   isLoading,
+  fitPreviewScale,
   loadFile,
   clearFile,
   startDrag,
@@ -140,7 +141,6 @@ function handleMergeCompleted(message: string) {
     />
 
     <CropWorkspace
-      class="flex-1"
       v-if="workMode === 'crop'"
       :files="allInputFiles"
       :selected-path="selectedFile?.path || ''"
@@ -166,6 +166,7 @@ function handleMergeCompleted(message: string) {
       @update:crop-y="cropY = $event"
       @update:crop-width="cropWidth = $event"
       @update:crop-height="cropHeight = $event"
+      @fit-preview="fitPreviewScale"
     />
 
     <MergeWorkspace
