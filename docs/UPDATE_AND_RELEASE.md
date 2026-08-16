@@ -29,22 +29,33 @@ npm run tauri signer generate -w ~/.tauri/source_transform.key
 
 工作流：`.github/workflows/release.yml`
 
-### 触发方式
+### 触发方式（推荐一键）
 
 ```bash
-# 1. 升版本（会同步 package.json / tauri.conf.json / Cargo.toml / app.ts）
-npm run version:bump              # patch 8.2.0 -> 8.2.1
-npm run version:bump -- minor     # 8.2.0 -> 8.3.0
-npm run version:bump -- 8.3.0     # 指定版本
+# 升版本 + commit + 打 tag + push（触发 GitHub Actions 发布）
+npm run version                 # patch  8.2.0 → 8.2.1
+npm run version -- minor        # minor  8.2.0 → 8.3.0
+npm run version -- major        # major  8.2.0 → 9.0.0
+npm run version -- 8.3.0        # 指定版本
 
-# 2. 提交并打 tag 推送
+# 仅预览升版本、不提交推送
+npm run version -- patch --dry-run
+
+# 本地 commit + tag，不 push
+npm run version -- patch --no-push
+```
+
+要求：工作区干净（或仅有版本相关文件改动）。脚本会拒绝在存在其他未提交改动时发布。
+
+### 手动方式
+
+```bash
+npm run version:bump -- minor
 git add -A
 git commit -m "chore: release v8.3.0"
 git tag v8.3.0
 git push && git push origin v8.3.0
 ```
-
-也可在 Actions 页手动 `workflow_dispatch`（需有 tag 上下文时更稳妥）。
 
 ### 产物命名
 

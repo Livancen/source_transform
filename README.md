@@ -169,14 +169,12 @@ source_transform/
 
 ## 发布
 
-推送版本 tag 后，GitHub Actions 会构建 Windows / macOS 安装包并创建 Release。
+一键升版本、打标签并推送，触发 GitHub Actions 构建安装包：
 
 ```bash
-npm run version:bump -- minor   # 例如 8.2.0 → 8.3.0
-git add -A
-git commit -m "chore: release v8.3.0"
-git tag v8.3.0
-git push && git push origin v8.3.0
+npm run version              # patch
+npm run version -- minor     # minor
+npm run version -- 8.3.0     # 指定版本
 ```
 
 发布与自动更新所需 Secrets、签名密钥说明见：
