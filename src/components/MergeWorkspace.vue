@@ -253,7 +253,6 @@ function syncLayoutConstraints() {
 
   const preset = currentRatioPreset.value;
   const hasRatio = preset.w > 0 && preset.h > 0;
-  const ratio = hasRatio ? preset.w / preset.h : 0;
 
   if (layout.value === "vertical") {
     const baseW = evenDim(Math.max(...filled.map((i) => slots[i].width || 0)));

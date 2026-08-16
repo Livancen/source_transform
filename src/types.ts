@@ -84,6 +84,30 @@ export interface CustomCropOptions {
   naming: NamingOptions;
 }
 
+export type JoinFit = "cover" | "contain" | "fill";
+
+export interface JoinItem {
+  id: string;
+  path: string;
+  name: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  z: number;
+  fit: JoinFit;
+}
+
+export interface JoinOptions {
+  media_kind: "video" | "image";
+  canvas_width: number;
+  canvas_height: number;
+  /** "#000000" | "#ffffff" | "transparent" */
+  background: string;
+  items: JoinItem[];
+  output_path: string;
+}
+
 export function defaultProcessOptions(): ProcessOptions {
   return {
     compress: false,

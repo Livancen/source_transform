@@ -101,3 +101,29 @@ pub struct CustomCropOptions {
     pub crop_height: u32,
     pub naming: NamingOptions,
 }
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct JoinItem {
+    pub id: String,
+    pub path: String,
+    pub name: String,
+    pub x: i32,
+    pub y: i32,
+    pub width: u32,
+    pub height: u32,
+    pub z: u32,
+    /// "cover" | "contain" | "fill"
+    pub fit: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct JoinOptions {
+    /// "video" or "image"
+    pub media_kind: String,
+    pub canvas_width: u32,
+    pub canvas_height: u32,
+    /// "#000000" | "#ffffff" | "transparent"
+    pub background: String,
+    pub items: Vec<JoinItem>,
+    pub output_path: String,
+}

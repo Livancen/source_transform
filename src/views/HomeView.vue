@@ -11,6 +11,7 @@ import FilePane from "../components/FilePane.vue";
 import StatusBar from "../components/StatusBar.vue";
 import CropWorkspace from "../components/CropWorkspace.vue";
 import MergeWorkspace from "../components/MergeWorkspace.vue";
+import JoinWorkspace from "../components/JoinWorkspace.vue";
 import type { FileInfo } from "../types";
 import { useToast } from "../composables/useToast";
 
@@ -94,7 +95,11 @@ const showStart = computed(
 );
 
 const listFiles = computed(() => {
-  if (workMode.value === "crop" || workMode.value === "merge") {
+  if (
+    workMode.value === "crop" ||
+    workMode.value === "merge" ||
+    workMode.value === "join"
+  ) {
     return allInputFiles.value;
   }
   return files.value;
@@ -121,6 +126,16 @@ async function onExportCrop() {
 function handleMergeCompleted(message: string) {
   resultMessage.value = message;
   showToast(message || "拼接完成", "success", 2000);
+  scanOutputFiles();
+}
+
+function handleJoinCompleted(message: string) {
+  resultMessage.value = message;
+  if (/失败/.test(message)) {
+    showToast(message, "error", 2000);
+  } else {
+    showToast(message || "自定义拼接完成", "success", 2000);
+  }
   scanOutputFiles();
 }
 </script>
@@ -187,6 +202,14 @@ function handleMergeCompleted(message: string) {
       :input-files="allInputFiles"
       :naming="naming"
       @completed="handleMergeCompleted"
+    />
+
+    <JoinWorkspace
+      v-if="workMode === 'join'"
+      :output-dir="outputDir"
+      :input-files="allInputFiles"
+      :naming="naming"
+      @completed="handleJoinCompleted"
     />
 
     <div

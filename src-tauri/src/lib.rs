@@ -94,6 +94,7 @@ pub fn run() {
             commands::crop_videos_by_ratios,
             commands::custom_crop,
             commands::merge_videos,
+            commands::join_media,
             commands::open_folder,
             commands::start_upload_server,
         ])

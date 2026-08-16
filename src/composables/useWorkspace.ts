@@ -50,6 +50,7 @@ const files = computed(() => {
       return allInputFiles.value;
     case "crop":
     case "merge":
+    case "join":
       return allInputFiles.value;
     default:
       return allInputFiles.value;
@@ -92,6 +93,8 @@ const primaryActionLabel = computed(() => {
       return "导出裁剪";
     case "merge":
       return "导出拼接";
+    case "join":
+      return "导出自定义拼接";
     default:
       return "开始处理";
   }
@@ -107,6 +110,7 @@ const canStart = computed(() => {
       return checkedFiles.value.length > 0 && ratios.value.length > 0;
     case "crop":
     case "merge":
+    case "join":
       return true;
     default:
       return false;
@@ -265,7 +269,11 @@ async function openFolder(path: string) {
 }
 
 async function startProcess() {
-  if (workMode.value === "crop" || workMode.value === "merge") {
+  if (
+    workMode.value === "crop" ||
+    workMode.value === "merge" ||
+    workMode.value === "join"
+  ) {
     return;
   }
 
@@ -348,7 +356,7 @@ async function initWorkspace() {
   const savedMode = localStorage.getItem(WORK_MODE_KEY) as WorkMode | null;
   if (
     savedMode &&
-    ["image", "video", "ratio", "crop", "merge"].includes(savedMode)
+    ["image", "video", "ratio", "crop", "merge", "join"].includes(savedMode)
   ) {
     workMode.value = savedMode;
   }

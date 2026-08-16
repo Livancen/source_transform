@@ -10,8 +10,8 @@ use crate::process::{
     crop_image_by_ratio, crop_image_region, crop_video_region, process_image, process_video,
 };
 use crate::types::{
-    CustomCropOptions, FileInfo, NamingOptions, ProcessOptions, ProcessProgress, VideoMergeOptions,
-    IMAGE_EXTENSIONS, VIDEO_EXTENSIONS,
+    CustomCropOptions, FileInfo, JoinOptions, NamingOptions, ProcessOptions, ProcessProgress,
+    VideoMergeOptions, IMAGE_EXTENSIONS, VIDEO_EXTENSIONS,
 };
 
 fn get_file_type(path: &PathBuf) -> Option<String> {
@@ -773,6 +773,186 @@ pub async fn merge_videos(app: AppHandle, options: VideoMergeOptions) -> Result<
     }
 
     Ok(format!("拼接完成: {}", options.output_path))
+}
+
+fn join_bg_color(background: &str, is_image: bool) -> Result<String, String> {
+    let bg = background.trim().to_lowercase();
+    match bg.as_str() {
+        "transparent" if is_image => Ok("black@0".to_string()),
+        "transparent" => Ok("black".to_string()),
+        "#ffffff" | "white" => Ok("white".to_string()),
+        "#000000" | "black" | "" => Ok("black".to_string()),
+        s if s.starts_with('#') && s.len() == 7 => {
+            let hex = &s[1..];
+            if hex.chars().all(|c| c.is_ascii_hexdigit()) {
+                Ok(format!("0x{}", hex))
+            } else {
+                Err("背景色无效".to_string())
+            }
+        }
+        _ => Err("背景色无效".to_string()),
+    }
+}
+
+fn join_item_scale_filter(fit: &str, w: u32, h: u32, pad_color: &str) -> Result<String, String> {
+    let w = even_dim(w);
+    let h = even_dim(h);
+    match fit {
+        "fill" => Ok(format!("scale={}:{}:flags=bicubic,setsar=1", w, h)),
+        "cover" => Ok(format!(
+            "scale={}:{}:force_original_aspect_ratio=increase:flags=bicubic,crop={}:{},setsar=1",
+            w, h, w, h
+        )),
+        "contain" => Ok(format!(
+            "scale={}:{}:force_original_aspect_ratio=decrease:flags=bicubic,pad={}:{}:(ow-iw)/2:(oh-ih)/2:color={},setsar=1",
+            w, h, w, h, pad_color
+        )),
+        _ => Err(format!("不支持的填充模式: {}", fit)),
+    }
+}
+
+fn validate_join_options(options: &JoinOptions) -> Result<(), String> {
+    if options.output_path.trim().is_empty() {
+        return Err("输出路径不能为空".to_string());
+    }
+    if options.canvas_width < 2 || options.canvas_height < 2 {
+        return Err("画布尺寸无效".to_string());
+    }
+    if options.canvas_width > 7680 || options.canvas_height > 7680 {
+        return Err("画布尺寸过大".to_string());
+    }
+    if options.media_kind != "image" && options.media_kind != "video" {
+        return Err("媒体类型无效".to_string());
+    }
+    if options.items.is_empty() {
+        return Err("请至少添加一个素材".to_string());
+    }
+    if options.items.len() > 6 {
+        return Err("自定义拼接最多支持 6 个素材".to_string());
+    }
+
+    for (index, item) in options.items.iter().enumerate() {
+        if item.path.trim().is_empty() {
+            return Err(format!("第 {} 个素材路径为空", index + 1));
+        }
+        if item.width < 2 || item.height < 2 {
+            return Err(format!("第 {} 个素材尺寸无效", index + 1));
+        }
+        if !PathBuf::from(&item.path).is_file() {
+            return Err(format!("第 {} 个文件不存在: {}", index + 1, item.name));
+        }
+        if !matches!(item.fit.as_str(), "cover" | "contain" | "fill") {
+            return Err(format!("第 {} 个素材填充模式无效", index + 1));
+        }
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn join_media(app: AppHandle, options: JoinOptions) -> Result<String, String> {
+    validate_join_options(&options)?;
+
+    if let Some(parent) = PathBuf::from(&options.output_path).parent() {
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+
+    let is_image = options.media_kind == "image";
+    let canvas_w = even_dim(options.canvas_width);
+    let canvas_h = even_dim(options.canvas_height);
+    let bg = join_bg_color(&options.background, is_image)?;
+    let pad_color = bg.clone();
+
+    let mut items = options.items.clone();
+    items.sort_by_key(|i| i.z);
+
+    let mut filter_parts: Vec<String> = Vec::new();
+    let base_dur = if is_image { "1" } else { "999999" };
+    let base_fmt = if is_image && options.background.trim().eq_ignore_ascii_case("transparent") {
+        "format=rgba"
+    } else {
+        "format=yuv420p"
+    };
+    filter_parts.push(format!(
+        "color=c={}:s={}x{}:d={},{}[base]",
+        bg, canvas_w, canvas_h, base_dur, base_fmt
+    ));
+
+    for (i, item) in items.iter().enumerate() {
+        let scale = join_item_scale_filter(&item.fit, item.width, item.height, &pad_color)?;
+        // 统一到与底图相同像素格式，避免 overlay 失败
+        filter_parts.push(format!("[{}:v]{},{}[v{}]", i, scale, base_fmt, i));
+    }
+
+    let mut prev = "base".to_string();
+    for (i, item) in items.iter().enumerate() {
+        let out = if i + 1 == items.len() {
+            "outv".to_string()
+        } else {
+            format!("b{}", i)
+        };
+        let shortest = if is_image { "" } else { ":shortest=1" };
+        filter_parts.push(format!(
+            "[{}][v{}]overlay={}:{}{}[{}]",
+            prev, i, item.x, item.y, shortest, out
+        ));
+        prev = out;
+    }
+
+    let filter = filter_parts.join(";");
+
+    let mut args: Vec<String> = Vec::new();
+    for item in &items {
+        args.push("-i".to_string());
+        args.push(item.path.clone());
+    }
+    args.push("-filter_complex".to_string());
+    args.push(filter);
+    args.push("-map".to_string());
+    args.push("[outv]".to_string());
+
+    if is_image {
+        args.extend([
+            "-frames:v".to_string(),
+            "1".to_string(),
+            "-pix_fmt".to_string(),
+            if options.background.trim().eq_ignore_ascii_case("transparent") {
+                "rgba".to_string()
+            } else {
+                "rgb24".to_string()
+            },
+        ]);
+    } else {
+        args.extend([
+            "-an".to_string(),
+            "-c:v".to_string(),
+            "libx264".to_string(),
+            "-pix_fmt".to_string(),
+            "yuv420p".to_string(),
+            "-movflags".to_string(),
+            "+faststart".to_string(),
+        ]);
+    }
+
+    args.push("-y".to_string());
+    args.push(options.output_path.clone());
+
+    let arg_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+
+    let output = app
+        .shell()
+        .sidecar("ffmpeg")
+        .map_err(|e| format!("无法找到FFmpeg: {}", e))?
+        .args(&arg_refs)
+        .output()
+        .await
+        .map_err(|e| format!("无法执行FFmpeg: {}", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("自定义拼接失败: {}", stderr));
+    }
+
+    Ok(format!("自定义拼接完成: {}", options.output_path))
 }
 
 fn validate_merge_options(options: &VideoMergeOptions) -> Result<(), String> {
