@@ -85,6 +85,15 @@ pub struct VideoMergeOptions {
     /// "video" or "image"
     #[serde(default = "default_media_kind")]
     pub media_kind: String,
+    /// 输出帧率 30 / 60；不足时 fps 滤镜补帧
+    #[serde(default)]
+    pub output_fps: Option<u32>,
+    #[serde(default)]
+    pub set_level: bool,
+    #[serde(default)]
+    pub video_level: Option<String>,
+    #[serde(default)]
+    pub video_profile: Option<String>,
 }
 
 fn default_media_kind() -> String {
@@ -129,4 +138,13 @@ pub struct JoinOptions {
     pub background: String,
     pub items: Vec<JoinItem>,
     pub output_path: String,
+    /// 输出帧率 30 / 60；不足时补帧
+    #[serde(default)]
+    pub output_fps: Option<u32>,
+    #[serde(default)]
+    pub set_level: bool,
+    #[serde(default)]
+    pub video_level: Option<String>,
+    #[serde(default)]
+    pub video_profile: Option<String>,
 }

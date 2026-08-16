@@ -72,6 +72,14 @@ export interface VideoMergeOptions {
   output_height?: number;
   output_path: string;
   media_kind: "video" | "image";
+  /** 输出帧率：30 | 60；不足时由 FFmpeg fps 滤镜补帧 */
+  output_fps?: 30 | 60;
+  /** 是否指定 H.264 Level */
+  set_level?: boolean;
+  /** 如 "4.0" "4.1" "5.1" */
+  video_level?: string;
+  /** 如 "high" "main" "baseline" */
+  video_profile?: string;
 }
 
 export interface CustomCropOptions {
@@ -112,6 +120,11 @@ export interface JoinOptions {
   background: string;
   items: JoinItem[];
   output_path: string;
+  /** 输出帧率：30 | 60；不足时补帧（仅视频输出） */
+  output_fps?: 30 | 60;
+  set_level?: boolean;
+  video_level?: string;
+  video_profile?: string;
 }
 
 export function defaultProcessOptions(): ProcessOptions {

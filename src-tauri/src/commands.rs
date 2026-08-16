@@ -702,6 +702,31 @@ pub async fn custom_crop(app: AppHandle, options: CustomCropOptions) -> Result<S
     Ok(format!("裁剪完成: {}", output_path.to_string_lossy()))
 }
 
+/// 规范化输出帧率：仅允许 30 / 60
+fn normalize_output_fps(fps: Option<u32>) -> Option<u32> {
+    match fps {
+        Some(30) => Some(30),
+        Some(60) => Some(60),
+        _ => None,
+    }
+}
+
+/// fps 滤镜：升帧会补帧（重复帧），降帧会丢帧
+fn fps_filter_segment(fps: u32) -> String {
+    format!("fps={}", fps)
+}
+
+fn validate_video_level(level: &str) -> bool {
+    matches!(
+        level,
+        "3.0" | "3.1" | "3.2" | "4.0" | "4.1" | "4.2" | "5.0" | "5.1" | "5.2"
+    )
+}
+
+fn validate_video_profile(profile: &str) -> bool {
+    matches!(profile, "baseline" | "main" | "high")
+}
+
 #[tauri::command]
 pub async fn merge_videos(app: AppHandle, options: VideoMergeOptions) -> Result<String, String> {
     validate_merge_options(&options)?;
@@ -718,51 +743,97 @@ pub async fn merge_videos(app: AppHandle, options: VideoMergeOptions) -> Result<
     } else {
         "hstack"
     };
+    let out_fps = if is_image {
+        None
+    } else {
+        normalize_output_fps(options.output_fps)
+    };
+
+    // 视频：各路先 scale，再 fps（不足 60 时补帧），再 stack
+    let (s0, s1) = if let Some(fps) = out_fps {
+        let f = fps_filter_segment(fps);
+        (
+            format!("scale={}:{},{},setsar=1", first.width, first.height, f),
+            format!("scale={}:{},{},setsar=1", second.width, second.height, f),
+        )
+    } else {
+        (
+            format!("scale={}:{},setsar=1", first.width, first.height),
+            format!("scale={}:{},setsar=1", second.width, second.height),
+        )
+    };
 
     let mut filter = format!(
-        "[0:v]scale={}:{},setsar=1[v0];[1:v]scale={}:{},setsar=1[v1];[v0][v1]{}=inputs=2{}[v]",
-        first.width,
-        first.height,
-        second.width,
-        second.height,
+        "[0:v]{}[v0];[1:v]{}[v1];[v0][v1]{}=inputs=2{}[v]",
+        s0,
+        s1,
         stack_filter,
         if is_image { "" } else { ":shortest=1" },
     );
 
-    let output_label =
-        if let (Some(width), Some(height)) = (options.output_width, options.output_height) {
-            filter.push_str(&format!(";[v]scale={}:{},setsar=1[outv]", width, height));
-            "[outv]"
-        } else {
-            filter.push_str(";[v]setsar=1[outv]");
-            "[outv]"
-        };
+    if let (Some(width), Some(height)) = (options.output_width, options.output_height) {
+        filter.push_str(&format!(";[v]scale={}:{},setsar=1[outv]", width, height));
+    } else {
+        filter.push_str(";[v]setsar=1[outv]");
+    }
 
-    let mut args: Vec<&str> = vec![
-        "-i",
-        &first.path,
-        "-i",
-        &second.path,
-        "-filter_complex",
-        &filter,
-        "-map",
-        output_label,
+    let mut args: Vec<String> = vec![
+        "-i".to_string(),
+        first.path.clone(),
+        "-i".to_string(),
+        second.path.clone(),
+        "-filter_complex".to_string(),
+        filter,
+        "-map".to_string(),
+        "[outv]".to_string(),
     ];
 
     if is_image {
-        args.extend_from_slice(&["-frames:v", "1"]);
+        args.extend(["-frames:v".to_string(), "1".to_string()]);
     } else {
-        args.extend_from_slice(&["-an", "-c:v", "libx264", "-pix_fmt", "yuv420p"]);
+        args.extend([
+            "-an".to_string(),
+            "-c:v".to_string(),
+            "libx264".to_string(),
+            "-pix_fmt".to_string(),
+            "yuv420p".to_string(),
+        ]);
+        if let Some(fps) = out_fps {
+            args.push("-r".to_string());
+            args.push(fps.to_string());
+        }
+        if options.set_level {
+            let profile = options
+                .video_profile
+                .as_deref()
+                .unwrap_or("high")
+                .to_lowercase();
+            let level = options.video_level.as_deref().unwrap_or("4.0");
+            if !validate_video_profile(&profile) {
+                return Err("Profile 无效".to_string());
+            }
+            if !validate_video_level(level) {
+                return Err("Level 无效".to_string());
+            }
+            args.extend([
+                "-profile:v".to_string(),
+                profile,
+                "-level:v".to_string(),
+                level.to_string(),
+            ]);
+        }
     }
 
-    args.push("-y");
-    args.push(&options.output_path);
+    args.push("-y".to_string());
+    args.push(options.output_path.clone());
+
+    let arg_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
 
     let output = app
         .shell()
         .sidecar("ffmpeg")
         .map_err(|e| format!("无法找到FFmpeg: {}", e))?
-        .args(&args)
+        .args(&arg_refs)
         .output()
         .await
         .map_err(|e| format!("无法执行FFmpeg: {}", e))?;
@@ -875,6 +946,12 @@ pub async fn join_media(app: AppHandle, options: JoinOptions) -> Result<String, 
     let mut items = options.items.clone();
     items.sort_by_key(|i| i.z);
 
+    let out_fps = if is_image {
+        None
+    } else {
+        normalize_output_fps(options.output_fps)
+    };
+
     let mut filter_parts: Vec<String> = Vec::new();
     let base_dur = if is_image { "1" } else { "999999" };
     let base_fmt = if is_image && options.background.trim().eq_ignore_ascii_case("transparent") {
@@ -882,15 +959,25 @@ pub async fn join_media(app: AppHandle, options: JoinOptions) -> Result<String, 
     } else {
         "format=yuv420p"
     };
+    // 底图与输出帧率一致，避免 overlay 时间基错乱
+    let base_rate = match out_fps {
+        Some(fps) => format!(":r={}", fps),
+        None => String::new(),
+    };
     filter_parts.push(format!(
-        "color=c={}:s={}x{}:d={},{}[base]",
-        bg, canvas_w, canvas_h, base_dur, base_fmt
+        "color=c={}:s={}x{}:d={}{},{}[base]",
+        bg, canvas_w, canvas_h, base_dur, base_rate, base_fmt
     ));
 
     for (i, item) in items.iter().enumerate() {
         let scale = join_item_scale_filter(&item.fit, item.width, item.height, &pad_color)?;
-        // 视频输出时：静图输入已用 -loop 1；再 setsar + 统一像素格式
-        filter_parts.push(format!("[{}:v]{},{}[v{}]", i, scale, base_fmt, i));
+        // 视频输出：各图层统一 fps（不足目标帧率时补帧），再统一像素格式
+        let chain = if let Some(fps) = out_fps {
+            format!("{},{},{}", scale, fps_filter_segment(fps), base_fmt)
+        } else {
+            format!("{},{}", scale, base_fmt)
+        };
+        filter_parts.push(format!("[{}:v]{}[v{}]", i, chain, i));
     }
 
     let mut prev = "base".to_string();
@@ -947,6 +1034,30 @@ pub async fn join_media(app: AppHandle, options: JoinOptions) -> Result<String, 
             "-movflags".to_string(),
             "+faststart".to_string(),
         ]);
+        if let Some(fps) = out_fps {
+            args.push("-r".to_string());
+            args.push(fps.to_string());
+        }
+        if options.set_level {
+            let profile = options
+                .video_profile
+                .as_deref()
+                .unwrap_or("high")
+                .to_lowercase();
+            let level = options.video_level.as_deref().unwrap_or("4.0");
+            if !validate_video_profile(&profile) {
+                return Err("Profile 无效".to_string());
+            }
+            if !validate_video_level(level) {
+                return Err("Level 无效".to_string());
+            }
+            args.extend([
+                "-profile:v".to_string(),
+                profile,
+                "-level:v".to_string(),
+                level.to_string(),
+            ]);
+        }
     }
 
     args.push("-y".to_string());

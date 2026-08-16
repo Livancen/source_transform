@@ -59,6 +59,11 @@ const background = ref<"#000000" | "#ffffff" | "transparent">("#000000");
 /** 拖到画布边缘时吸附 */
 const snapEnabled = ref(true);
 const SNAP_THRESHOLD = 12;
+/** 视频输出帧率 / Level */
+const outputFps = ref<30 | 60>(30);
+const setLevel = ref(false);
+const videoLevel = ref("4.0");
+const videoProfile = ref("high");
 const items = ref<JoinItem[]>([]);
 const selectedId = ref<string | null>(null);
 const statusMessage = ref("");
@@ -674,6 +679,15 @@ async function startExport() {
     output_path: outputPath,
   };
 
+  if (outputKind.value === "video") {
+    options.output_fps = outputFps.value;
+    options.set_level = setLevel.value;
+    if (setLevel.value) {
+      options.video_level = videoLevel.value;
+      options.video_profile = videoProfile.value;
+    }
+  }
+
   try {
     const result = await invoke<string>("join_media", { options });
     statusMessage.value = result;
@@ -781,6 +795,67 @@ onBeforeUnmount(() => {
             边缘吸附
             <span class="text-10px color-t3">（画布+素材）</span>
           </label>
+          <template v-if="items.length === 0 || outputKind === 'video'">
+            <div class="w-1px h-16px bg-border"></div>
+            <span class="text-12px color-t3">帧率</span>
+            <label class="flex items-center gap-4px cursor-pointer text-12px">
+              <input
+                type="radio"
+                :value="30"
+                v-model.number="outputFps"
+                :disabled="isExporting"
+                class="accent-secondary"
+              />
+              30
+            </label>
+            <label
+              class="flex items-center gap-4px cursor-pointer text-12px"
+              title="源不足 60fps 时自动补帧"
+            >
+              <input
+                type="radio"
+                :value="60"
+                v-model.number="outputFps"
+                :disabled="isExporting"
+                class="accent-secondary"
+              />
+              60
+            </label>
+            <label class="flex items-center gap-6px cursor-pointer text-12px">
+              <input
+                type="checkbox"
+                v-model="setLevel"
+                :disabled="isExporting"
+                class="accent-secondary"
+              />
+              Level
+            </label>
+            <template v-if="setLevel">
+              <select
+                class="field w-auto! min-w-72px h-28px! px-6px! text-11px!"
+                v-model="videoProfile"
+                :disabled="isExporting"
+              >
+                <option value="baseline">Baseline</option>
+                <option value="main">Main</option>
+                <option value="high">High</option>
+              </select>
+              <select
+                class="field w-auto! min-w-72px h-28px! px-6px! text-11px!"
+                v-model="videoLevel"
+                :disabled="isExporting"
+              >
+                <option value="3.0">3.0</option>
+                <option value="3.1">3.1</option>
+                <option value="4.0">4.0</option>
+                <option value="4.1">4.1</option>
+                <option value="4.2">4.2</option>
+                <option value="5.0">5.0</option>
+                <option value="5.1">5.1</option>
+                <option value="5.2">5.2</option>
+              </select>
+            </template>
+          </template>
         </div>
 
         <div
