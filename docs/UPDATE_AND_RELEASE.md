@@ -32,10 +32,16 @@ npm run tauri signer generate -w ~/.tauri/source_transform.key
 ### 触发方式
 
 ```bash
-# 1. 同步版本号：package.json / src-tauri/tauri.conf.json / Cargo.toml
-# 2. 打 tag 并推送
+# 1. 升版本（会同步 package.json / tauri.conf.json / Cargo.toml / app.ts）
+npm run version:bump              # patch 8.2.0 -> 8.2.1
+npm run version:bump -- minor     # 8.2.0 -> 8.3.0
+npm run version:bump -- 8.3.0     # 指定版本
+
+# 2. 提交并打 tag 推送
+git add -A
+git commit -m "chore: release v8.3.0"
 git tag v8.3.0
-git push origin v8.3.0
+git push && git push origin v8.3.0
 ```
 
 也可在 Actions 页手动 `workflow_dispatch`（需有 tag 上下文时更稳妥）。
