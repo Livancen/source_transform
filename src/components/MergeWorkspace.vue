@@ -87,7 +87,7 @@ const outputWidth = ref<number | null>(null);
 const outputHeight = ref<number | null>(null);
 /** 视频输出帧率 */
 const outputFps = ref<30 | 60>(30);
-const setLevel = ref(false);
+const setLevel = ref(true);
 const videoLevel = ref("4.0");
 const videoProfile = ref("high");
 const statusMessage = ref("");
@@ -631,7 +631,7 @@ async function startMerge() {
           <div class="flex gap-8px flex-wrap items-center">
             <label class="text-12px color-t3">输出宽</label>
             <input
-              class="field w-100px! h-26px"
+              class="field w-60px! h-26px"
               type="number"
               min="1"
               v-model.number="outputWidth"
@@ -640,7 +640,7 @@ async function startMerge() {
             />
             <label class="text-12px color-t3">输出高</label>
             <input
-              class="field w-100px! h-26px"
+              class="field w-60px! h-26px"
               type="number"
               min="1"
               v-model.number="outputHeight"
@@ -656,72 +656,6 @@ async function startMerge() {
               清空
             </button>
           </div>
-        </div>
-
-        <div
-          v-if="mediaKind === 'video'"
-          class="flex flex-wrap items-center gap-10px py-8px px-12px bg-bg0 rounded-8px border border-border"
-        >
-          <span class="text-12px color-t3">帧率</span>
-          <label class="flex items-center gap-4px cursor-pointer text-12px">
-            <input
-              type="radio"
-              :value="30"
-              v-model.number="outputFps"
-              :disabled="isMerging"
-              class="accent-secondary"
-            />
-            30
-          </label>
-          <label
-            class="flex items-center gap-4px cursor-pointer text-12px"
-            title="源不足 60fps 时自动补帧"
-          >
-            <input
-              type="radio"
-              :value="60"
-              v-model.number="outputFps"
-              :disabled="isMerging"
-              class="accent-secondary"
-            />
-            60
-            <span class="text-10px color-t3">（不足补帧）</span>
-          </label>
-          <div class="w-1px h-16px bg-border"></div>
-          <label class="flex items-center gap-6px cursor-pointer text-12px">
-            <input
-              type="checkbox"
-              v-model="setLevel"
-              :disabled="isMerging"
-              class="accent-secondary"
-            />
-            Profile/Level
-          </label>
-          <template v-if="setLevel">
-            <select
-              class="field w-auto! min-w-72px h-28px! px-6px! text-11px!"
-              v-model="videoProfile"
-              :disabled="isMerging"
-            >
-              <option value="baseline">Baseline</option>
-              <option value="main">Main</option>
-              <option value="high">High</option>
-            </select>
-            <select
-              class="field w-auto! min-w-72px h-28px! px-6px! text-11px!"
-              v-model="videoLevel"
-              :disabled="isMerging"
-            >
-              <option value="3.0">3.0</option>
-              <option value="3.1">3.1</option>
-              <option value="4.0">4.0</option>
-              <option value="4.1">4.1</option>
-              <option value="4.2">4.2</option>
-              <option value="5.0">5.0</option>
-              <option value="5.1">5.1</option>
-              <option value="5.2">5.2</option>
-            </select>
-          </template>
         </div>
 
         <div
@@ -920,6 +854,76 @@ async function startMerge() {
               >
                 清除
               </button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <!-- 其他配置 -->
+      <div class="w-240px box-border bg-bg0">
+        <div
+          class="shrink-0 h-32px px-10px flex items-center text-11px font-500 color-t3 border-b border-border bg-bg2"
+        >
+          输出设置(仅视频有效)
+        </div>
+        <div
+          v-if="mediaKind === 'video'"
+          class="px-12px py-4px flex flex-col gap-6px"
+        >
+          <div class="flex items-center h-28px gap-6px">
+            <span class="text-12px color-t3">帧率</span>
+            <label class="flex items-center gap-4px cursor-pointer text-12px">
+              <input
+                type="radio"
+                :value="30"
+                v-model.number="outputFps"
+                :disabled="isMerging"
+                class="accent-secondary"
+              />
+              30
+            </label>
+            <label
+              class="flex items-center gap-4px cursor-pointer text-12px"
+              title="源不足 60fps 时自动补帧"
+            >
+              <input
+                type="radio"
+                :value="60"
+                v-model.number="outputFps"
+                :disabled="isMerging"
+                class="accent-secondary"
+              />
+              60
+            </label>
+          </div>
+
+          <div class="flex items-center h-28px">
+            <label class="flex items-center gap-6px cursor-pointer text-12px">
+              Level
+            </label>
+            <div>
+              <select
+                class="field w-auto! min-w-72px h-28px! px-6px! text-11px!"
+                v-model="videoProfile"
+                :disabled="isMerging"
+              >
+                <option value="baseline">Baseline</option>
+                <option value="main">Main</option>
+                <option value="high">High</option>
+              </select>
+              <select
+                class="field w-auto! min-w-72px h-28px! px-6px! text-11px!"
+                v-model="videoLevel"
+                :disabled="isMerging"
+              >
+                <option value="3.0">3.0</option>
+                <option value="3.1">3.1</option>
+                <option value="4.0">4.0</option>
+                <option value="4.1">4.1</option>
+                <option value="4.2">4.2</option>
+                <option value="5.0">5.0</option>
+                <option value="5.1">5.1</option>
+                <option value="5.2">5.2</option>
+              </select>
             </div>
           </div>
         </div>
