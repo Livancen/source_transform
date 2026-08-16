@@ -16,11 +16,32 @@ type MergeSlotState = {
   path: string;
   name: string;
   fileType: "image" | "video" | "";
+  /** 素材原始尺寸 */
+  nativeWidth: number | null;
+  nativeHeight: number | null;
+  /** 槽位输出尺寸（fill 目标） */
   width: number | null;
   height: number | null;
   previewImage: string;
   isLoadingPreview: boolean;
 };
+
+type SlotRatioPreset = {
+  id: string;
+  label: string;
+  /** 0 表示原比例 */
+  w: number;
+  h: number;
+};
+
+const SLOT_RATIO_PRESETS: SlotRatioPreset[] = [
+  { id: "9:16", label: "9:16", w: 9, h: 16 },
+  { id: "16:9", label: "16:9", w: 16, h: 9 },
+  { id: "1:1", label: "1:1", w: 1, h: 1 },
+  { id: "4:3", label: "4:3", w: 4, h: 3 },
+  { id: "3:4", label: "3:4", w: 3, h: 4 },
+  { id: "original", label: "原比例", w: 0, h: 0 },
+];
 
 const props = defineProps<{
   outputDir: string;
@@ -34,6 +55,8 @@ const emit = defineEmits<{
 
 const layout = ref<VideoMergeLayout>("vertical");
 const mediaKind = ref<"video" | "image">("video");
+/** 槽位比例预设 */
+const slotRatioId = ref("9:16");
 /** 当前从左侧列表填入的目标槽位 */
 const activeSlot = ref<0 | 1>(0);
 const slots = reactive<[MergeSlotState, MergeSlotState]>([
@@ -41,6 +64,8 @@ const slots = reactive<[MergeSlotState, MergeSlotState]>([
     path: "",
     name: "",
     fileType: "",
+    nativeWidth: null,
+    nativeHeight: null,
     width: null,
     height: null,
     previewImage: "",
@@ -50,6 +75,8 @@ const slots = reactive<[MergeSlotState, MergeSlotState]>([
     path: "",
     name: "",
     fileType: "",
+    nativeWidth: null,
+    nativeHeight: null,
     width: null,
     height: null,
     previewImage: "",
@@ -60,6 +87,24 @@ const outputWidth = ref<number | null>(null);
 const outputHeight = ref<number | null>(null);
 const statusMessage = ref("");
 const isMerging = ref(false);
+
+const currentRatioPreset = computed(
+  () =>
+    SLOT_RATIO_PRESETS.find((p) => p.id === slotRatioId.value) ||
+    SLOT_RATIO_PRESETS[0],
+);
+
+const slotAspectStyle = computed(() => {
+  const p = currentRatioPreset.value;
+  if (p.w > 0 && p.h > 0) {
+    return { aspectRatio: `${p.w} / ${p.h}` };
+  }
+  return layout.value === "vertical"
+    ? { aspectRatio: "9 / 16" }
+    : { aspectRatio: "16 / 9" };
+});
+
+const slotRatioLabel = computed(() => currentRatioPreset.value.label);
 
 const naturalWidth = computed(() => {
   if (slots.some((slot) => slot.width == null || slot.height == null))
@@ -129,7 +174,19 @@ function closeMediaPreview() {
 const slotPaths = computed(() => new Set(slots.map((s) => s.path).filter(Boolean)));
 
 watch(layout, () => {
-  syncRequiredDimension(slots[0].path ? 0 : 1);
+  // 非原比例时按布局切换常用默认比例（会触发 reapply）
+  if (slotRatioId.value !== "original") {
+    const next = layout.value === "vertical" ? "9:16" : "16:9";
+    if (slotRatioId.value !== next) {
+      slotRatioId.value = next;
+      return;
+    }
+  }
+  reapplyAllSlotSizes();
+});
+
+watch(slotRatioId, () => {
+  reapplyAllSlotSizes();
 });
 
 watch(mediaKind, () => {
@@ -139,15 +196,100 @@ watch(mediaKind, () => {
   statusMessage.value = "";
 });
 
+function evenDim(v: number) {
+  const n = Math.max(2, Math.floor(v));
+  return n % 2 === 0 ? n : n - 1 || 2;
+}
+
+/** 按当前比例预设，从素材原始尺寸算出槽位 fill 目标尺寸 */
+function computeSlotSize(
+  nativeW: number,
+  nativeH: number,
+): { width: number; height: number } {
+  const preset = currentRatioPreset.value;
+  if (preset.w <= 0 || preset.h <= 0) {
+    return { width: evenDim(nativeW), height: evenDim(nativeH) };
+  }
+  const ratio = preset.w / preset.h;
+  // 以素材较长边为基准，生成目标比例矩形，素材将 stretch fill 填满
+  let width: number;
+  let height: number;
+  if (nativeW / nativeH >= ratio) {
+    width = evenDim(nativeW);
+    height = evenDim(width / ratio);
+  } else {
+    height = evenDim(nativeH);
+    width = evenDim(height * ratio);
+  }
+  return { width: Math.max(2, width), height: Math.max(2, height) };
+}
+
+function applySizeToSlot(index: number) {
+  const slot = slots[index];
+  if (slot.nativeWidth == null || slot.nativeHeight == null) return;
+  const size = computeSlotSize(slot.nativeWidth, slot.nativeHeight);
+  slot.width = size.width;
+  slot.height = size.height;
+}
+
+function reapplyAllSlotSizes() {
+  for (let i = 0; i < 2; i++) {
+    if (slots[i].path) applySizeToSlot(i);
+  }
+  // 布局约束：上下同宽 / 左右同高；预设比例时另一维由比例推导
+  syncLayoutConstraints();
+}
+
+function syncLayoutConstraints() {
+  const filled = [0, 1].filter((i) => slots[i].path && slots[i].width && slots[i].height);
+  if (filled.length === 0) return;
+
+  const preset = currentRatioPreset.value;
+  const hasRatio = preset.w > 0 && preset.h > 0;
+  const ratio = hasRatio ? preset.w / preset.h : 0;
+
+  if (layout.value === "vertical") {
+    const baseW = Math.max(
+      ...filled.map((i) => slots[i].width || 0),
+    );
+    for (const i of filled) {
+      slots[i].width = evenDim(baseW);
+      if (hasRatio) {
+        slots[i].height = evenDim(slots[i].width! / ratio);
+      }
+    }
+  } else {
+    const baseH = Math.max(
+      ...filled.map((i) => slots[i].height || 0),
+    );
+    for (const i of filled) {
+      slots[i].height = evenDim(baseH);
+      if (hasRatio) {
+        slots[i].width = evenDim(slots[i].height! * ratio);
+      }
+    }
+  }
+}
+
 function syncRequiredDimension(changedIndex: number) {
   const otherIndex = changedIndex === 0 ? 1 : 0;
   if (!slots[otherIndex].path) return;
+  const preset = currentRatioPreset.value;
+  const hasRatio = preset.w > 0 && preset.h > 0;
+  const ratio = hasRatio ? preset.w / preset.h : 0;
+
   if (layout.value === "vertical") {
     if (slots[changedIndex].width != null) {
       slots[otherIndex].width = slots[changedIndex].width;
+      if (hasRatio && slots[otherIndex].width != null) {
+        slots[otherIndex].height = evenDim(slots[otherIndex].width! / ratio);
+      }
     }
   } else if (slots[changedIndex].height != null) {
     slots[otherIndex].height = slots[changedIndex].height;
+    if (hasRatio && slots[otherIndex].height != null) {
+      slots[otherIndex].width = evenDim(slots[otherIndex].height! * ratio);
+    }
   }
 }
 
@@ -172,6 +314,8 @@ async function assignFile(index: number, file: FileInfo) {
   slots[index].name = file.name;
   slots[index].fileType = file.file_type as "image" | "video";
   slots[index].previewImage = "";
+  slots[index].nativeWidth = null;
+  slots[index].nativeHeight = null;
   slots[index].width = null;
   slots[index].height = null;
   slots[index].isLoadingPreview = true;
@@ -182,8 +326,8 @@ async function assignFile(index: number, file: FileInfo) {
       const dimensions = await invoke<[number, number]>("get_video_dimensions", {
         videoPath: file.path,
       });
-      slots[index].width = normalizeSize(dimensions[0]);
-      slots[index].height = normalizeSize(dimensions[1]);
+      slots[index].nativeWidth = normalizeSize(dimensions[0]);
+      slots[index].nativeHeight = normalizeSize(dimensions[1]);
       slots[index].previewImage = await invoke<string>("extract_video_frame", {
         videoPath: file.path,
       });
@@ -191,13 +335,14 @@ async function assignFile(index: number, file: FileInfo) {
       const dimensions = await invoke<[number, number]>("get_image_dimensions", {
         imagePath: file.path,
       });
-      slots[index].width = normalizeSize(dimensions[0]);
-      slots[index].height = normalizeSize(dimensions[1]);
+      slots[index].nativeWidth = normalizeSize(dimensions[0]);
+      slots[index].nativeHeight = normalizeSize(dimensions[1]);
       slots[index].previewImage = await invoke<string>("load_image_preview", {
         imagePath: file.path,
       });
     }
-    syncRequiredDimension(index);
+    applySizeToSlot(index);
+    syncLayoutConstraints();
 
     // 填完当前槽后，若另一槽为空则自动切过去
     const other = index === 0 ? 1 : 0;
@@ -257,6 +402,8 @@ function clearSlot(index: number) {
   slots[index].path = "";
   slots[index].name = "";
   slots[index].fileType = "";
+  slots[index].nativeWidth = null;
+  slots[index].nativeHeight = null;
   slots[index].width = null;
   slots[index].height = null;
   slots[index].previewImage = "";
@@ -264,13 +411,25 @@ function clearSlot(index: number) {
 }
 
 function updateSlotWidth(index: number, value: string) {
-  slots[index].width = parseOptionalSize(value);
+  const w = parseOptionalSize(value);
+  slots[index].width = w == null ? null : evenDim(w);
+  const preset = currentRatioPreset.value;
+  if (preset.w > 0 && preset.h > 0 && slots[index].width != null) {
+    slots[index].height = evenDim(slots[index].width! / (preset.w / preset.h));
+  }
   if (layout.value === "vertical") syncRequiredDimension(index);
+  else if (preset.w > 0) syncLayoutConstraints();
 }
 
 function updateSlotHeight(index: number, value: string) {
-  slots[index].height = parseOptionalSize(value);
+  const h = parseOptionalSize(value);
+  slots[index].height = h == null ? null : evenDim(h);
+  const preset = currentRatioPreset.value;
+  if (preset.w > 0 && preset.h > 0 && slots[index].height != null) {
+    slots[index].width = evenDim(slots[index].height! * (preset.w / preset.h));
+  }
   if (layout.value === "horizontal") syncRequiredDimension(index);
+  else if (preset.w > 0) syncLayoutConstraints();
 }
 
 function normalizeSize(value: number) {
@@ -359,10 +518,28 @@ async function startMerge() {
     <div
       class="shrink-0 px-14px py-10px flex items-center justify-between gap-12px border-b border-border flex-wrap"
     >
-      <div>
-        <div class="text-13px font-600">拼接</div>
-        <div class="text-11px color-t3 mt-2px">
-          左侧选素材 · 右侧填槽位 · 双视频/双图片 · 上下/左右
+      <div class="flex items-center gap-16px flex-wrap min-w-0">
+        <div>
+          <div class="text-13px font-600">拼接</div>
+          <div class="text-11px color-t3 mt-2px">
+            左侧选素材 · 右侧填槽位 · 素材 fill 填满槽位
+          </div>
+        </div>
+        <div class="flex items-center gap-8px">
+          <span class="text-12px color-t3 shrink-0">槽位比例</span>
+          <select
+            class="field w-auto! min-w-88px h-28px! px-8px! text-12px!"
+            v-model="slotRatioId"
+            :disabled="isMerging"
+          >
+            <option
+              v-for="p in SLOT_RATIO_PRESETS"
+              :key="p.id"
+              :value="p.id"
+            >
+              {{ p.label }}
+            </option>
+          </select>
         </div>
       </div>
       <button
@@ -513,21 +690,21 @@ async function startMerge() {
                 槽位 {{ index + 1 }}
                 <span v-if="activeSlot === index" class="font-400">（当前填入）</span>
                 <span class="font-400 color-t3 ml-4px">
-                  {{ layout === "vertical" ? "9:16" : "16:9" }}
+                  {{ slotRatioLabel }} · fill
                 </span>
               </div>
             </div>
             <button
               type="button"
-              class="relative w-full bg-bg2 border border-border rounded-6px flex flex-col items-center justify-center text-center p-0 overflow-hidden color-t2 cursor-pointer hover:not-disabled:bg-bg-hover disabled:opacity-45"
-              :class="layout === 'vertical' ? 'aspect-[9/16] max-h-420px' : 'aspect-video max-h-280px'"
+              class="relative w-full bg-bg2 border border-border rounded-6px flex flex-col items-center justify-center text-center p-0 overflow-hidden color-t2 cursor-pointer hover:not-disabled:bg-bg-hover disabled:opacity-45 max-h-420px"
+              :style="slotAspectStyle"
               :disabled="isMerging"
               @click.stop="pickFile(index)"
             >
               <img
                 v-if="slot.previewImage"
                 :src="slot.previewImage"
-                class="absolute inset-0 w-full h-full object-cover"
+                class="absolute inset-0 w-full h-full object-fill"
                 draggable="false"
               />
               <div
