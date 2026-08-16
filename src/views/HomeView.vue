@@ -12,8 +12,10 @@ import StatusBar from "../components/StatusBar.vue";
 import CropWorkspace from "../components/CropWorkspace.vue";
 import MergeWorkspace from "../components/MergeWorkspace.vue";
 import type { FileInfo } from "../types";
+import { useToast } from "../composables/useToast";
 
 const router = useRouter();
+const { showToast } = useToast();
 
 const {
   inputDir,
@@ -77,6 +79,11 @@ const {
   exportCrop,
 } = useCrop((msg) => {
   resultMessage.value = msg;
+  if (/失败|请先/.test(msg)) {
+    showToast(msg, "error", 2000);
+  } else {
+    showToast(msg || "裁剪完成", "success", 2000);
+  }
 });
 
 const showStart = computed(
@@ -113,6 +120,7 @@ async function onExportCrop() {
 
 function handleMergeCompleted(message: string) {
   resultMessage.value = message;
+  showToast(message || "拼接完成", "success", 2000);
   scanOutputFiles();
 }
 </script>

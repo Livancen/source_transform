@@ -10,6 +10,7 @@ import type {
   WorkMode,
 } from "../types";
 import { defaultProcessOptions, defaultNamingOptions } from "../types";
+import { useToast } from "./useToast";
 
 const RATIO_STORAGE_KEY = "aspect-ratio-crop-ratios";
 const OPTIONS_OPEN_KEY = "options-strip-open";
@@ -37,6 +38,7 @@ const ratios = ref<string[]>([]);
 const newRatio = ref("");
 const ratioError = ref("");
 const initialized = ref(false);
+const { showToast } = useToast();
 
 const files = computed(() => {
   switch (workMode.value) {
@@ -301,6 +303,7 @@ async function startProcess() {
         filePaths: paths,
       });
       resultMessage.value = result;
+      showToast(result || "处理完成", "success", 2000);
     } else {
       const filter = workMode.value === "image" ? "image" : "video";
       const result = await invoke<string>("process_files", {
@@ -312,9 +315,11 @@ async function startProcess() {
         filePaths: paths,
       });
       resultMessage.value = result;
+      showToast(result || "处理完成", "success", 2000);
     }
   } catch (e) {
     resultMessage.value = `处理失败: ${e}`;
+    showToast(`处理失败: ${e}`, "error", 2000);
   }
 
   isProcessing.value = false;

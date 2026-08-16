@@ -28,7 +28,7 @@ const showBatchOpts = () => showImageOpts() || showVideoOpts();
     class="options-strip-body shrink-0 bg-bg1 border-b border-border"
     :class="{ 'is-open': open }"
   >
-    <div class="pt-12px px-14px pb-14px flex flex-col gap-10px">
+    <div class="py-2px px-12px flex flex-col gap-10px">
       <!-- 图片 / 视频 批量选项 -->
       <div v-if="showBatchOpts()" class="flex flex-wrap gap-8px items-start">
         <!-- 压缩 -->
@@ -37,59 +37,135 @@ const showBatchOpts = () => showImageOpts() || showVideoOpts();
             <input type="checkbox" v-model="options.compress" />
             <span class="slider"></span>
           </label>
-          <span class="text-12px font-500" :class="options.compress ? 'color-t1' : 'color-t2'">压缩</span>
+          <span
+            class="text-12px font-500"
+            :class="options.compress ? 'color-t1' : 'color-t2'"
+            >压缩</span
+          >
           <span
             v-show="options.compress"
             class="inline-flex flex-wrap items-center gap-6px pl-6px ml-2px border-l border-border"
           >
             <span class="text-10px color-t3">质量</span>
-            <input class="field w-64px! h-24px! px-6px! text-11px!" type="number" v-model.number="options.compress_quality" min="1" max="100" />
-            <label class="inline-flex items-center gap-4px text-11px color-t2 cursor-pointer whitespace-nowrap">
-              <input type="radio" :value="false" v-model="options.compress_resize" class="accent-secondary" />
+            <input
+              class="field w-64px! h-24px! px-6px! text-11px!"
+              type="number"
+              v-model.number="options.compress_quality"
+              min="1"
+              max="100"
+            />
+            <label
+              class="inline-flex items-center gap-4px text-11px color-t2 cursor-pointer whitespace-nowrap"
+            >
+              <input
+                type="radio"
+                :value="false"
+                v-model="options.compress_resize"
+                class="accent-secondary"
+              />
               仅质量
             </label>
-            <label class="inline-flex items-center gap-4px text-11px color-t2 cursor-pointer whitespace-nowrap">
-              <input type="radio" :value="true" v-model="options.compress_resize" class="accent-secondary" />
+            <label
+              class="inline-flex items-center gap-4px text-11px color-t2 cursor-pointer whitespace-nowrap"
+            >
+              <input
+                type="radio"
+                :value="true"
+                v-model="options.compress_resize"
+                class="accent-secondary"
+              />
               +降分辨率
             </label>
             <template v-if="options.compress_resize">
-              <input class="field w-64px! h-24px! px-6px! text-11px!" type="number" v-model.number="options.compress_width" min="1" title="宽" />
+              <input
+                class="field w-64px! h-24px! px-6px! text-11px!"
+                type="number"
+                v-model.number="options.compress_width"
+                min="1"
+                title="宽"
+              />
               <span class="text-10px color-t3">×</span>
-              <input class="field w-64px! h-24px! px-6px! text-11px!" type="number" v-model.number="options.compress_height" min="1" title="高" />
+              <input
+                class="field w-64px! h-24px! px-6px! text-11px!"
+                type="number"
+                v-model.number="options.compress_height"
+                min="1"
+                title="高"
+              />
             </template>
           </span>
         </div>
 
         <!-- 降分辨率 -->
-        <div class="opt-chip" :class="{ 'opt-chip-on': options.reduce_resolution }">
+        <div
+          class="opt-chip"
+          :class="{ 'opt-chip-on': options.reduce_resolution }"
+        >
           <label class="switch">
             <input type="checkbox" v-model="options.reduce_resolution" />
             <span class="slider"></span>
           </label>
-          <span class="text-12px font-500" :class="options.reduce_resolution ? 'color-t1' : 'color-t2'">降分辨率</span>
-          <span v-show="options.reduce_resolution" class="inline-flex items-center gap-6px pl-6px ml-2px border-l border-border">
-            <input class="field w-64px! h-24px! px-6px! text-11px!" type="number" v-model.number="options.target_width" min="1" title="宽" />
+          <span
+            class="text-12px font-500"
+            :class="options.reduce_resolution ? 'color-t1' : 'color-t2'"
+            >降分辨率</span
+          >
+          <span
+            v-show="options.reduce_resolution"
+            class="inline-flex items-center gap-6px pl-6px ml-2px border-l border-border"
+          >
+            <input
+              class="field w-64px! h-24px! px-6px! text-11px!"
+              type="number"
+              v-model.number="options.target_width"
+              min="1"
+              title="宽"
+            />
             <span class="text-10px color-t3">×</span>
-            <input class="field w-64px! h-24px! px-6px! text-11px!" type="number" v-model.number="options.target_height" min="1" title="高" />
+            <input
+              class="field w-64px! h-24px! px-6px! text-11px!"
+              type="number"
+              v-model.number="options.target_height"
+              min="1"
+              title="高"
+            />
           </span>
         </div>
 
         <!-- 转格式 -->
-        <div class="opt-chip" :class="{ 'opt-chip-on': options.convert_format }">
+        <div
+          class="opt-chip"
+          :class="{ 'opt-chip-on': options.convert_format }"
+        >
           <label class="switch">
             <input type="checkbox" v-model="options.convert_format" />
             <span class="slider"></span>
           </label>
-          <span class="text-12px font-500" :class="options.convert_format ? 'color-t1' : 'color-t2'">转格式</span>
-          <span v-show="options.convert_format" class="inline-flex items-center gap-6px pl-6px ml-2px border-l border-border">
-            <select v-if="showImageOpts()" class="field w-auto! min-w-72px h-24px! px-6px! text-11px!" v-model="options.target_format">
+          <span
+            class="text-12px font-500"
+            :class="options.convert_format ? 'color-t1' : 'color-t2'"
+            >转格式</span
+          >
+          <span
+            v-show="options.convert_format"
+            class="inline-flex items-center gap-6px pl-6px ml-2px border-l border-border"
+          >
+            <select
+              v-if="showImageOpts()"
+              class="field w-auto! min-w-72px h-24px! px-6px! text-11px!"
+              v-model="options.target_format"
+            >
               <option value="jpg">JPG</option>
               <option value="png">PNG</option>
               <option value="webp">WebP</option>
               <option value="bmp">BMP</option>
               <option value="tiff">TIFF</option>
             </select>
-            <select v-else class="field w-auto! min-w-72px h-24px! px-6px! text-11px!" v-model="options.target_format">
+            <select
+              v-else
+              class="field w-auto! min-w-72px h-24px! px-6px! text-11px!"
+              v-model="options.target_format"
+            >
               <option value="mp4">MP4</option>
               <option value="avi">AVI</option>
               <option value="mkv">MKV</option>
@@ -106,9 +182,19 @@ const showBatchOpts = () => showImageOpts() || showVideoOpts();
             <input type="checkbox" v-model="options.rotate" />
             <span class="slider"></span>
           </label>
-          <span class="text-12px font-500" :class="options.rotate ? 'color-t1' : 'color-t2'">旋转</span>
-          <span v-show="options.rotate" class="inline-flex items-center gap-6px pl-6px ml-2px border-l border-border">
-            <select class="field w-auto! min-w-72px h-24px! px-6px! text-11px!" v-model.number="options.rotation_degrees">
+          <span
+            class="text-12px font-500"
+            :class="options.rotate ? 'color-t1' : 'color-t2'"
+            >旋转</span
+          >
+          <span
+            v-show="options.rotate"
+            class="inline-flex items-center gap-6px pl-6px ml-2px border-l border-border"
+          >
+            <select
+              class="field w-auto! min-w-72px h-24px! px-6px! text-11px!"
+              v-model.number="options.rotation_degrees"
+            >
               <option :value="90">顺时针 90°</option>
               <option :value="180">180°</option>
               <option :value="270">顺时针 270°</option>
@@ -119,14 +205,27 @@ const showBatchOpts = () => showImageOpts() || showVideoOpts();
 
         <!-- 仅视频 -->
         <template v-if="showVideoOpts()">
-          <div class="opt-chip" :class="{ 'opt-chip-on': options.reduce_bitrate }">
+          <div
+            class="opt-chip"
+            :class="{ 'opt-chip-on': options.reduce_bitrate }"
+          >
             <label class="switch">
               <input type="checkbox" v-model="options.reduce_bitrate" />
               <span class="slider"></span>
             </label>
-            <span class="text-12px font-500" :class="options.reduce_bitrate ? 'color-t1' : 'color-t2'">降码率</span>
-            <span v-show="options.reduce_bitrate" class="inline-flex items-center gap-6px pl-6px ml-2px border-l border-border">
-              <select class="field w-auto! min-w-72px h-24px! px-6px! text-11px!" v-model="options.target_bitrate">
+            <span
+              class="text-12px font-500"
+              :class="options.reduce_bitrate ? 'color-t1' : 'color-t2'"
+              >降码率</span
+            >
+            <span
+              v-show="options.reduce_bitrate"
+              class="inline-flex items-center gap-6px pl-6px ml-2px border-l border-border"
+            >
+              <select
+                class="field w-auto! min-w-72px h-24px! px-6px! text-11px!"
+                v-model="options.target_bitrate"
+              >
                 <option value="200k">200 Kbps</option>
                 <option value="500k">500 Kbps</option>
                 <option value="800k">800 Kbps</option>
@@ -142,19 +241,35 @@ const showBatchOpts = () => showImageOpts() || showVideoOpts();
             </span>
           </div>
 
-          <div class="opt-chip" :class="{ 'opt-chip-on': options.reduce_level }">
+          <div
+            class="opt-chip"
+            :class="{ 'opt-chip-on': options.reduce_level }"
+          >
             <label class="switch">
               <input type="checkbox" v-model="options.reduce_level" />
               <span class="slider"></span>
             </label>
-            <span class="text-12px font-500" :class="options.reduce_level ? 'color-t1' : 'color-t2'">Profile/Level</span>
-            <span v-show="options.reduce_level" class="inline-flex items-center gap-6px pl-6px ml-2px border-l border-border">
-              <select class="field w-auto! min-w-72px h-24px! px-6px! text-11px!" v-model="options.target_profile">
+            <span
+              class="text-12px font-500"
+              :class="options.reduce_level ? 'color-t1' : 'color-t2'"
+              >Profile/Level</span
+            >
+            <span
+              v-show="options.reduce_level"
+              class="inline-flex items-center gap-6px pl-6px ml-2px border-l border-border"
+            >
+              <select
+                class="field w-auto! min-w-72px h-24px! px-6px! text-11px!"
+                v-model="options.target_profile"
+              >
                 <option value="baseline">Baseline</option>
                 <option value="main">Main</option>
                 <option value="high">High</option>
               </select>
-              <select class="field w-auto! min-w-72px h-24px! px-6px! text-11px!" v-model="options.target_level">
+              <select
+                class="field w-auto! min-w-72px h-24px! px-6px! text-11px!"
+                v-model="options.target_level"
+              >
                 <option value="3.0">3.0</option>
                 <option value="3.1">3.1</option>
                 <option value="4.0">4.0</option>
@@ -167,28 +282,48 @@ const showBatchOpts = () => showImageOpts() || showVideoOpts();
             </span>
           </div>
 
-          <div class="opt-chip" :class="{ 'opt-chip-on': options.convert_h265_to_h264 }">
+          <div
+            class="opt-chip"
+            :class="{ 'opt-chip-on': options.convert_h265_to_h264 }"
+          >
             <label class="switch">
               <input
                 type="checkbox"
                 v-model="options.convert_h265_to_h264"
-                @change="options.convert_h265_to_h264 && (options.convert_h264_to_h265 = false)"
+                @change="
+                  options.convert_h265_to_h264 &&
+                  (options.convert_h264_to_h265 = false)
+                "
               />
               <span class="slider"></span>
             </label>
-            <span class="text-12px font-500" :class="options.convert_h265_to_h264 ? 'color-t1' : 'color-t2'">H.265→H.264</span>
+            <span
+              class="text-12px font-500"
+              :class="options.convert_h265_to_h264 ? 'color-t1' : 'color-t2'"
+              >H.265→H.264</span
+            >
           </div>
 
-          <div class="opt-chip" :class="{ 'opt-chip-on': options.convert_h264_to_h265 }">
+          <div
+            class="opt-chip"
+            :class="{ 'opt-chip-on': options.convert_h264_to_h265 }"
+          >
             <label class="switch">
               <input
                 type="checkbox"
                 v-model="options.convert_h264_to_h265"
-                @change="options.convert_h264_to_h265 && (options.convert_h265_to_h264 = false)"
+                @change="
+                  options.convert_h264_to_h265 &&
+                  (options.convert_h265_to_h264 = false)
+                "
               />
               <span class="slider"></span>
             </label>
-            <span class="text-12px font-500" :class="options.convert_h264_to_h265 ? 'color-t1' : 'color-t2'">H.264→H.265</span>
+            <span
+              class="text-12px font-500"
+              :class="options.convert_h264_to_h265 ? 'color-t1' : 'color-t2'"
+              >H.264→H.265</span
+            >
           </div>
 
           <div class="opt-chip" :class="{ 'opt-chip-on': options.mute }">
@@ -196,17 +331,38 @@ const showBatchOpts = () => showImageOpts() || showVideoOpts();
               <input type="checkbox" v-model="options.mute" />
               <span class="slider"></span>
             </label>
-            <span class="text-12px font-500" :class="options.mute ? 'color-t1' : 'color-t2'">静音</span>
+            <span
+              class="text-12px font-500"
+              :class="options.mute ? 'color-t1' : 'color-t2'"
+              >静音</span
+            >
           </div>
 
-          <div class="opt-chip" :class="{ 'opt-chip-on': options.change_framerate }">
+          <div
+            class="opt-chip"
+            :class="{ 'opt-chip-on': options.change_framerate }"
+          >
             <label class="switch">
               <input type="checkbox" v-model="options.change_framerate" />
               <span class="slider"></span>
             </label>
-            <span class="text-12px font-500" :class="options.change_framerate ? 'color-t1' : 'color-t2'">帧率</span>
-            <span v-show="options.change_framerate" class="inline-flex items-center gap-6px pl-6px ml-2px border-l border-border">
-              <input class="field w-48px! h-24px! px-6px! text-11px!" type="number" v-model.number="options.target_framerate" min="1" max="120" step="1" />
+            <span
+              class="text-12px font-500"
+              :class="options.change_framerate ? 'color-t1' : 'color-t2'"
+              >帧率</span
+            >
+            <span
+              v-show="options.change_framerate"
+              class="inline-flex items-center gap-6px pl-6px ml-2px border-l border-border"
+            >
+              <input
+                class="field w-48px! h-24px! px-6px! text-11px!"
+                type="number"
+                v-model.number="options.target_framerate"
+                min="1"
+                max="120"
+                step="1"
+              />
               <span class="text-10px color-t3">fps</span>
             </span>
           </div>
@@ -216,11 +372,13 @@ const showBatchOpts = () => showImageOpts() || showVideoOpts();
       <!-- 比例裁剪 -->
       <div
         v-if="showRatioOpts()"
-        class="flex flex-wrap items-center gap-10px py-10px px-12px rounded-8px bg-bg0 border border-dashed border-border"
+        class="flex flex-wrap items-center gap-10px py-2px px-12px rounded-4px bg-bg0 border border-dashed border-border"
       >
         <div class="flex items-center gap-8px font-500 text-12px color-t1">
           比例列表
-          <span class="text-11px color-t3 font-400">（图+视频批量 · 专用命名）</span>
+          <span class="text-11px color-t3 font-400"
+            >（图+视频批量 · 专用命名）</span
+          >
         </div>
         <div class="flex flex-wrap gap-6px flex-1">
           <span
@@ -233,26 +391,36 @@ const showBatchOpts = () => showImageOpts() || showVideoOpts();
               type="button"
               class="border-none bg-transparent color-t3 cursor-pointer text-14px leading-none p-0 hover:color-danger"
               @click="emit('removeRatio', i)"
-            >×</button>
+            >
+              ×
+            </button>
           </span>
-          <span v-if="ratios.length === 0" class="text-11px color-t3">暂无比例，请添加</span>
+          <span v-if="ratios.length === 0" class="text-11px color-t3"
+            >暂无比例，请添加</span
+          >
         </div>
         <div class="flex gap-6px items-center">
           <input
-            class="h-28px w-88px px-10px rounded-full border border-border bg-bg1 color-t1 text-12px font-mono outline-none focus:border-secondary"
+            class="h-24px w-88px px-10px rounded-full border border-border bg-bg1 color-t1 text-12px font-mono outline-none focus:border-secondary"
             :value="newRatio"
             type="text"
             placeholder="W:H"
-            @input="emit('update:newRatio', ($event.target as HTMLInputElement).value)"
+            @input="
+              emit('update:newRatio', ($event.target as HTMLInputElement).value)
+            "
             @keyup.enter="emit('addRatio')"
           />
           <button
-            class="w-28px h-28px p-0 rounded-full border-none bg-secondary color-white text-16px grid place-items-center cursor-pointer hover:bg-secondary-hover"
+            class="w-28px h-28px p-0 lh-28px rounded-full border-none bg-secondary color-white text-16px grid place-items-center cursor-pointer hover:bg-secondary-hover"
             type="button"
             @click="emit('addRatio')"
-          >+</button>
+          >
+            +
+          </button>
         </div>
-        <p v-if="ratioError" class="text-11px color-danger w-full">{{ ratioError }}</p>
+        <p v-if="ratioError" class="text-11px color-danger w-full">
+          {{ ratioError }}
+        </p>
       </div>
     </div>
   </div>

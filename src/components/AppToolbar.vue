@@ -74,13 +74,11 @@ function progressPercent() {
             : 'bg-transparent color-t2 hover:color-t1 hover:bg-bg2'
         "
         :disabled="isProcessing"
-        @click="$emit('update:workMode', m.id)"
+        @click="($emit('update:workMode', m.id), $emit('refresh'))"
       >
         {{ m.label }}
       </button>
     </div>
-
-    <div class="w-1px h-28px bg-border mx-4px shrink-0"></div>
 
     <button
       v-if="showStart"
