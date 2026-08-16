@@ -23,6 +23,7 @@ const modes: { id: WorkMode; label: string }[] = [
   { id: "ratio", label: "比例裁剪" },
   { id: "crop", label: "自定义裁剪" },
   { id: "merge", label: "拼接" },
+  { id: "join", label: "自定义拼接" },
 ];
 
 function progressPercent() {

@@ -54,7 +54,7 @@ export interface NamingOptions {
   custom_text: string;
 }
 
-export type WorkMode = "image" | "video" | "ratio" | "crop" | "merge";
+export type WorkMode = "image" | "video" | "ratio" | "crop" | "merge" | "join";
 
 export type VideoMergeLayout = "vertical" | "horizontal";
 
