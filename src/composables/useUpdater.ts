@@ -41,6 +41,9 @@ async function checkForUpdates(silent = true) {
   if (isUpdating.value) return;
   phase.value = "checking";
   errorMessage.value = "";
+  if (!silent) {
+    visible.value = true;
+  }
   try {
     const update = await check();
     if (update) {
@@ -69,6 +72,7 @@ async function checkForUpdates(silent = true) {
       visible.value = true;
     } else {
       phase.value = "idle";
+      visible.value = false;
       console.warn("检查更新失败:", e);
     }
   }

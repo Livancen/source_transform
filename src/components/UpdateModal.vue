@@ -58,7 +58,11 @@ const {
       </div>
 
       <div class="px-18px py-16px flex flex-col gap-14px">
-        <template v-if="phase === 'available'">
+        <template v-if="phase === 'checking'">
+          <p class="text-13px color-t2 leading-relaxed">正在检查更新…</p>
+        </template>
+
+        <template v-else-if="phase === 'available'">
           <p class="text-13px color-t2 leading-relaxed">
             检测到新版本 <strong class="color-t1">{{ latestVersion }}</strong>，是否立即更新？
           </p>
