@@ -49,7 +49,7 @@ const {
   startProcess,
 } = useWorkspace();
 
-const { leftPanePct, isDragging, panesRef, onSplitterDown } = useSplitter();
+const { leftPanePct, isDragging, onSplitterDown } = useSplitter();
 
 const {
   selectedFile,
@@ -140,6 +140,7 @@ function handleMergeCompleted(message: string) {
     />
 
     <CropWorkspace
+      class="flex-1"
       v-if="workMode === 'crop'"
       :files="allInputFiles"
       :selected-path="selectedFile?.path || ''"

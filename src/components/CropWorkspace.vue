@@ -34,12 +34,14 @@ const emit = defineEmits<{
 
 <template>
   <div
-    class="shrink-0 w-full h-full border-b border-border bg-bg1"
+    class="shrink-0 border-b border-border bg-bg1"
     @mousemove="emit('mouseMove', $event)"
     @mouseup="emit('mouseUp')"
     @mouseleave="emit('mouseUp')"
   >
-    <div class="px-14px py-12px flex flex-col gap-12px overflow-auto">
+    <div
+      class="px-14px py-12px w-full h-full box-border flex flex-col gap-12px border border-solid border-#000"
+    >
       <div class="flex items-center justify-between gap-12px flex-wrap">
         <div>
           <div class="text-13px font-600">自定义裁剪</div>
@@ -58,18 +60,18 @@ const emit = defineEmits<{
       </div>
 
       <div
-        class="flex-1 flex gap-12px min-h-0 flex-wrap lg:flex-nowrap bg-bg-selected"
+        class="flex-1 flex gap-12px min-h-0 bg-bg-selected border border-solid border-#000"
       >
         <!-- 文件选择 -->
         <div
-          class="w-full lg:w-240px shrink-0 border border-border rounded-8px bg-bg0 overflow-hidden flex flex-col max-h-320px"
+          class="w-full h-full lg:w-240px shrink-0 border border-border rounded-8px bg-bg0 overflow-hidden flex flex-col border border-solid border-#000"
         >
           <div
             class="h-32px px-10px flex items-center text-11px font-500 color-t3 border-b border-border bg-bg2"
           >
             选择文件
           </div>
-          <div class="flex-1 overflow-y-auto">
+          <div class="flex-1 overflow-y-auto border border-solid border-#000">
             <button
               v-for="f in files"
               :key="f.path"
