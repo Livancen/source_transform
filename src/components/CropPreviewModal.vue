@@ -28,8 +28,19 @@ const emit = defineEmits<{
     @mouseup="emit('mouseUp')"
     @mouseleave="emit('mouseUp')"
   >
-    <div class="modal-panel p-20px max-w-90%">
-      <h3 class="text-16px font-600 mb-8px">设置裁剪区域</h3>
+    <div class="modal-panel p-20px pt-16px max-w-90%" @click.stop>
+      <button
+        class="modal-close"
+        type="button"
+        title="关闭"
+        @click="emit('close')"
+      >
+        <svg class="w-16px h-16px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+          <line x1="18" y1="6" x2="6" y2="18" />
+          <line x1="6" y1="6" x2="18" y2="18" />
+        </svg>
+      </button>
+      <h3 class="text-16px font-600 mb-8px pr-36px">设置裁剪区域</h3>
       <p class="text-12px color-t3 mb-14px">拖拽移动裁剪框，拖拽边角调整大小</p>
 
       <div class="relative inline-block bg-black mb-14px">
@@ -79,7 +90,7 @@ const emit = defineEmits<{
         </div>
 
         <div
-          class="crop-area-box absolute border-2 border-accent cursor-move box-border"
+          class="crop-area-box absolute border-2 border-secondary cursor-move box-border"
           :style="{
             left: options.crop_x * previewScale + 'px',
             top: options.crop_y * previewScale + 'px',
@@ -89,35 +100,35 @@ const emit = defineEmits<{
           @mousedown="emit('startDrag', $event)"
         >
           <div
-            class="absolute w-10px h-10px bg-accent border border-white cursor-n-resize -top-5px left-50% -translate-x-50%"
+            class="absolute w-10px h-10px bg-secondary border border-white cursor-n-resize -top-5px left-50% -translate-x-50%"
             @mousedown.stop="emit('startResize', $event, 'n')"
           ></div>
           <div
-            class="absolute w-10px h-10px bg-accent border border-white cursor-s-resize -bottom-5px left-50% -translate-x-50%"
+            class="absolute w-10px h-10px bg-secondary border border-white cursor-s-resize -bottom-5px left-50% -translate-x-50%"
             @mousedown.stop="emit('startResize', $event, 's')"
           ></div>
           <div
-            class="absolute w-10px h-10px bg-accent border border-white cursor-e-resize -right-5px top-50% -translate-y-50%"
+            class="absolute w-10px h-10px bg-secondary border border-white cursor-e-resize -right-5px top-50% -translate-y-50%"
             @mousedown.stop="emit('startResize', $event, 'e')"
           ></div>
           <div
-            class="absolute w-10px h-10px bg-accent border border-white cursor-w-resize -left-5px top-50% -translate-y-50%"
+            class="absolute w-10px h-10px bg-secondary border border-white cursor-w-resize -left-5px top-50% -translate-y-50%"
             @mousedown.stop="emit('startResize', $event, 'w')"
           ></div>
           <div
-            class="absolute w-10px h-10px bg-accent border border-white cursor-ne-resize -top-5px -right-5px"
+            class="absolute w-10px h-10px bg-secondary border border-white cursor-ne-resize -top-5px -right-5px"
             @mousedown.stop="emit('startResize', $event, 'ne')"
           ></div>
           <div
-            class="absolute w-10px h-10px bg-accent border border-white cursor-nw-resize -top-5px -left-5px"
+            class="absolute w-10px h-10px bg-secondary border border-white cursor-nw-resize -top-5px -left-5px"
             @mousedown.stop="emit('startResize', $event, 'nw')"
           ></div>
           <div
-            class="absolute w-10px h-10px bg-accent border border-white cursor-se-resize -bottom-5px -right-5px"
+            class="absolute w-10px h-10px bg-secondary border border-white cursor-se-resize -bottom-5px -right-5px"
             @mousedown.stop="emit('startResize', $event, 'se')"
           ></div>
           <div
-            class="absolute w-10px h-10px bg-accent border border-white cursor-sw-resize -bottom-5px -left-5px"
+            class="absolute w-10px h-10px bg-secondary border border-white cursor-sw-resize -bottom-5px -left-5px"
             @mousedown.stop="emit('startResize', $event, 'sw')"
           ></div>
 
@@ -177,7 +188,7 @@ const emit = defineEmits<{
       </div>
 
       <div class="flex justify-end gap-8px">
-        <button class="modal-btn" type="button" @click="emit('close')">取消</button>
+        <button class="modal-btn modal-btn-cancel" type="button" @click="emit('close')">取消</button>
         <button class="modal-btn modal-btn-primary" type="button" @click="emit('confirm')">确认</button>
       </div>
     </div>

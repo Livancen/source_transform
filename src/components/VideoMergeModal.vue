@@ -211,20 +211,31 @@ function formatTimestamp(date: Date) {
 
 <template>
   <div v-if="visible" class="modal-mask">
-    <div class="modal-panel p-20px w-760px">
-      <div class="flex justify-between items-center mb-14px">
+    <div class="modal-panel p-20px pt-16px w-760px" @click.stop>
+      <button
+        class="modal-close"
+        type="button"
+        title="关闭"
+        :disabled="isMerging"
+        @click="closeModal"
+      >
+        <svg class="w-16px h-16px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+          <line x1="18" y1="6" x2="6" y2="18" />
+          <line x1="6" y1="6" x2="18" y2="18" />
+        </svg>
+      </button>
+      <div class="flex items-center mb-14px pr-36px">
         <h3 class="text-16px font-600">视频拼接</h3>
-        <button class="modal-btn" type="button" :disabled="isMerging" @click="closeModal">关闭</button>
       </div>
 
       <div class="mb-14px py-10px px-12px bg-bg2 rounded-8px border border-border">
         <div class="flex items-center gap-16px">
           <label class="flex items-center gap-6px cursor-pointer text-12px">
-            <input type="radio" value="vertical" v-model="layout" :disabled="isMerging" class="accent-accent" />
+            <input type="radio" value="vertical" v-model="layout" :disabled="isMerging" class="accent-secondary" />
             上下拼接
           </label>
           <label class="flex items-center gap-6px cursor-pointer text-12px">
-            <input type="radio" value="horizontal" v-model="layout" :disabled="isMerging" class="accent-accent" />
+            <input type="radio" value="horizontal" v-model="layout" :disabled="isMerging" class="accent-secondary" />
             左右拼接
           </label>
         </div>
@@ -283,7 +294,7 @@ function formatTimestamp(date: Date) {
               @input="updateSlotHeight(index, ($event.target as HTMLInputElement).value)"
             />
             <button
-              class="modal-btn"
+              class="modal-btn modal-btn-secondary"
               type="button"
               :disabled="isMerging || !slot.path"
               @click="clearVideo(index)"
@@ -315,7 +326,7 @@ function formatTimestamp(date: Date) {
             :disabled="isMerging"
             placeholder="可选"
           />
-          <button class="modal-btn" type="button" :disabled="isMerging" @click="clearOutputSize">清空</button>
+          <button class="modal-btn modal-btn-secondary" type="button" :disabled="isMerging" @click="clearOutputSize">清空</button>
         </div>
         <div class="text-11px color-t3 mt-8px">
           不填写输出分辨率时使用自然分辨率，输出文件不包含音轨。
@@ -330,7 +341,7 @@ function formatTimestamp(date: Date) {
       </div>
 
       <div class="flex justify-end gap-8px">
-        <button class="modal-btn" type="button" :disabled="isMerging" @click="closeModal">取消</button>
+        <button class="modal-btn modal-btn-cancel" type="button" :disabled="isMerging" @click="closeModal">取消</button>
         <button class="modal-btn modal-btn-primary" type="button" :disabled="!canMerge" @click="startMerge">
           {{ isMerging ? "拼接中..." : "开始拼接" }}
         </button>

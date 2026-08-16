@@ -38,11 +38,11 @@ const emit = defineEmits<{
             <span class="text-10px color-t3">质量</span>
             <input class="field w-64px! h-24px! px-6px! text-11px!" type="number" v-model.number="options.compress_quality" min="1" max="100" />
             <label class="inline-flex items-center gap-4px text-11px color-t2 cursor-pointer whitespace-nowrap">
-              <input type="radio" :value="false" v-model="options.compress_resize" class="accent-accent" />
+              <input type="radio" :value="false" v-model="options.compress_resize" class="accent-secondary" />
               仅质量
             </label>
             <label class="inline-flex items-center gap-4px text-11px color-t2 cursor-pointer whitespace-nowrap">
-              <input type="radio" :value="true" v-model="options.compress_resize" class="accent-accent" />
+              <input type="radio" :value="true" v-model="options.compress_resize" class="accent-secondary" />
               +降分辨率
             </label>
             <template v-if="options.compress_resize">
@@ -223,7 +223,7 @@ const emit = defineEmits<{
           <span
             v-for="(r, i) in ratios"
             :key="r"
-            class="inline-flex items-center gap-6px h-28px px-10px rounded-full bg-accent-soft border border-accent/20 color-accent text-12px font-500 font-mono"
+            class="inline-flex items-center gap-6px h-28px px-10px rounded-full bg-secondary-soft border border-secondary/20 color-secondary text-12px font-500 font-mono"
           >
             {{ r }}
             <button
@@ -236,7 +236,7 @@ const emit = defineEmits<{
         </div>
         <div class="flex gap-6px items-center">
           <input
-            class="h-28px w-88px px-10px rounded-full border border-border bg-bg1 color-t1 text-12px font-mono outline-none focus:border-accent"
+            class="h-28px w-88px px-10px rounded-full border border-border bg-bg1 color-t1 text-12px font-mono outline-none focus:border-secondary"
             :value="newRatio"
             type="text"
             placeholder="W:H"
@@ -244,7 +244,7 @@ const emit = defineEmits<{
             @keyup.enter="emit('addRatio')"
           />
           <button
-            class="w-28px h-28px p-0 rounded-full border-none bg-accent color-white text-16px grid place-items-center cursor-pointer hover:brightness-110"
+            class="w-28px h-28px p-0 rounded-full border-none bg-secondary color-white text-16px grid place-items-center cursor-pointer hover:bg-secondary-hover"
             type="button"
             @click="emit('addRatio')"
           >+</button>

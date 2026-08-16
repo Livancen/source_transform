@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { useRouter } from "vue-router";
 import { useWorkspace } from "../composables/useWorkspace";
+import { APP_VERSION } from "../constants/app";
 
 const router = useRouter();
 const {
@@ -33,7 +34,7 @@ function goHome() {
       <div class="w-1px h-28px bg-border"></div>
       <div class="flex items-center gap-10px">
         <div
-          class="w-30px h-30px rounded-8px bg-accent grid place-items-center color-white"
+          class="w-30px h-30px rounded-8px bg-secondary grid place-items-center color-white"
         >
           <svg class="w-16px h-16px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <circle cx="12" cy="12" r="3"/>
@@ -52,7 +53,7 @@ function goHome() {
         <!-- 目录 -->
         <section class="bg-bg1 border border-border rounded-12px p-18px">
           <h2 class="text-14px font-600 mb-14px flex items-center gap-8px">
-            <span class="w-26px h-26px rounded-8px bg-accent-soft color-accent grid place-items-center">
+            <span class="w-26px h-26px rounded-8px bg-secondary-soft color-secondary grid place-items-center">
               <svg class="w-14px h-14px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
               </svg>
@@ -89,11 +90,11 @@ function goHome() {
 
             <div
               v-if="uploadUrl"
-              class="mt-4px py-10px px-12px rounded-6px bg-accent-soft border border-accent/15 flex items-center gap-10px"
+              class="mt-4px py-10px px-12px rounded-6px bg-secondary-soft border border-secondary/15 flex items-center gap-10px"
             >
               <span class="text-11px color-t3 shrink-0">上传链接</span>
               <a
-                class="color-accent-hover font-mono text-11px no-underline truncate hover:underline"
+                class="color-secondary font-mono text-11px no-underline truncate hover:underline"
                 :href="uploadUrl"
                 target="_blank"
                 rel="noreferrer"
@@ -105,7 +106,7 @@ function goHome() {
         <!-- 界面 -->
         <section class="bg-bg1 border border-border rounded-12px p-18px">
           <h2 class="text-14px font-600 mb-14px flex items-center gap-8px">
-            <span class="w-26px h-26px rounded-8px bg-accent-soft color-accent grid place-items-center">
+            <span class="w-26px h-26px rounded-8px bg-secondary-soft color-secondary grid place-items-center">
               <svg class="w-14px h-14px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <rect x="3" y="3" width="18" height="18" rx="2"/>
                 <path d="M3 9h18"/>
@@ -140,7 +141,7 @@ function goHome() {
         <section class="bg-bg1 border border-border rounded-12px p-18px">
           <h2 class="text-14px font-600 mb-10px">关于</h2>
           <p class="text-12px color-t2 leading-relaxed">
-            素材转换工具 v5.2.0 · 批量处理图片与视频 · 基于 Tauri + Vue 3 + FFmpeg
+            素材转换工具 v{{ APP_VERSION }} · 批量处理图片与视频 · 基于 Tauri + Vue 3 + FFmpeg
           </p>
         </section>
       </div>

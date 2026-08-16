@@ -153,7 +153,7 @@ function progressPercent() {
     >
       <div class="flex-1 h-4px rounded-full bg-bg3 overflow-hidden">
         <i
-          class="block h-full rounded-full bg-accent transition-all duration-300"
+          class="block h-full rounded-full bg-primary transition-all duration-300"
           :style="{ width: progressPercent() + '%' }"
         ></i>
       </div>
@@ -179,7 +179,7 @@ function progressPercent() {
     </button>
 
     <div class="flex items-center gap-8px text-11px color-t3 shrink-0">
-      <span class="w-6px h-6px rounded-full bg-success"></span>
+      <span class="w-6px h-6px rounded-full bg-primary"></span>
       FFmpeg 就绪
     </div>
   </header>

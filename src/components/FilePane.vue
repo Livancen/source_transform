@@ -29,7 +29,7 @@ function fileExt(name: string) {
       <span
         class="inline-flex items-center gap-5px h-24px px-8px rounded-5px text-11px font-600 shrink-0"
         :class="kind === 'input'
-          ? 'bg-accent-soft color-video'
+          ? 'bg-secondary-soft color-video'
           : 'bg-success-soft color-success'"
       >
         <svg class="w-12px h-12px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
@@ -39,7 +39,7 @@ function fileExt(name: string) {
         {{ title }}
       </span>
       <input
-        class="flex-1 min-w-0 h-28px px-10px rounded-6px border border-border bg-bg0 color-t2 font-mono text-11px outline-none focus:border-accent focus:bg-bg1 focus:color-t1"
+        class="flex-1 min-w-0 h-28px px-10px rounded-6px border border-border bg-bg0 color-t2 font-mono text-11px outline-none focus:border-secondary focus:bg-bg1 focus:color-t1"
         readonly
         :value="dir"
         :title="dir"
@@ -84,7 +84,7 @@ function fileExt(name: string) {
           :key="file.path"
           class="grid grid-cols-[minmax(0,1fr)_72px_88px] items-center h-32px px-12px mx-4px rounded-6px color-t1 transition-colors duration-100 cursor-default hover:bg-bg3"
           :class="{
-            'bg-bg-selected outline outline-1 outline-accent/25': selectedPath === file.path,
+            'bg-bg-selected outline outline-1 outline-secondary/25': selectedPath === file.path,
           }"
           @click="emit('selectFile', file)"
         >
@@ -110,7 +110,7 @@ function fileExt(name: string) {
               class="inline-flex items-center h-18px px-6px rounded-4px text-10px font-600 tracking-wide"
               :class="file.file_type === 'image'
                 ? 'bg-[rgba(114,46,209,0.08)] color-image'
-                : 'bg-accent-soft color-video'"
+                : 'bg-secondary-soft color-video'"
             >
               {{ file.file_type === "image" ? "图片" : "视频" }}
             </span>
