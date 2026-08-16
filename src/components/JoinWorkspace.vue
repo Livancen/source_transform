@@ -61,7 +61,7 @@ const snapEnabled = ref(true);
 const SNAP_THRESHOLD = 12;
 /** 视频输出帧率 / Level */
 const outputFps = ref<30 | 60>(30);
-const setLevel = ref(false);
+const setLevel = ref(true);
 const videoLevel = ref("4.0");
 const videoProfile = ref("high");
 const items = ref<JoinItem[]>([]);
@@ -783,7 +783,7 @@ onBeforeUnmount(() => {
           </select>
           <div class="w-1px h-16px bg-border"></div>
           <label
-            class="flex items-center gap-6px cursor-pointer text-12px select-none"
+            class="flex h-28px items-center gap-6px cursor-pointer text-12px select-none"
             title="拖到画布边缘时自动吸附"
           >
             <input
@@ -795,67 +795,6 @@ onBeforeUnmount(() => {
             边缘吸附
             <span class="text-10px color-t3">（画布+素材）</span>
           </label>
-          <template v-if="items.length === 0 || outputKind === 'video'">
-            <div class="w-1px h-16px bg-border"></div>
-            <span class="text-12px color-t3">帧率</span>
-            <label class="flex items-center gap-4px cursor-pointer text-12px">
-              <input
-                type="radio"
-                :value="30"
-                v-model.number="outputFps"
-                :disabled="isExporting"
-                class="accent-secondary"
-              />
-              30
-            </label>
-            <label
-              class="flex items-center gap-4px cursor-pointer text-12px"
-              title="源不足 60fps 时自动补帧"
-            >
-              <input
-                type="radio"
-                :value="60"
-                v-model.number="outputFps"
-                :disabled="isExporting"
-                class="accent-secondary"
-              />
-              60
-            </label>
-            <label class="flex items-center gap-6px cursor-pointer text-12px">
-              <input
-                type="checkbox"
-                v-model="setLevel"
-                :disabled="isExporting"
-                class="accent-secondary"
-              />
-              Level
-            </label>
-            <template v-if="setLevel">
-              <select
-                class="field w-auto! min-w-72px h-28px! px-6px! text-11px!"
-                v-model="videoProfile"
-                :disabled="isExporting"
-              >
-                <option value="baseline">Baseline</option>
-                <option value="main">Main</option>
-                <option value="high">High</option>
-              </select>
-              <select
-                class="field w-auto! min-w-72px h-28px! px-6px! text-11px!"
-                v-model="videoLevel"
-                :disabled="isExporting"
-              >
-                <option value="3.0">3.0</option>
-                <option value="3.1">3.1</option>
-                <option value="4.0">4.0</option>
-                <option value="4.1">4.1</option>
-                <option value="4.2">4.2</option>
-                <option value="5.0">5.0</option>
-                <option value="5.1">5.1</option>
-                <option value="5.2">5.2</option>
-              </select>
-            </template>
-          </template>
         </div>
 
         <div
@@ -1104,7 +1043,72 @@ onBeforeUnmount(() => {
         <div
           class="shrink-0 h-32px px-10px flex items-center text-11px font-500 color-t3 border-b border-border bg-bg2"
         >
-          属性
+          输出设置(仅视频有效)
+        </div>
+        <div class="px-12px py-4px flex flex-col gap-6px">
+          <div class="flex h-28px items-center gap-6px">
+            <template v-if="items.length === 0 || outputKind === 'video'">
+              <span class="text-12px color-t3">帧率</span>
+              <label class="flex items-center gap-4px cursor-pointer text-12px">
+                <input
+                  type="radio"
+                  :value="30"
+                  v-model.number="outputFps"
+                  :disabled="isExporting"
+                  class="accent-secondary"
+                />
+                30
+              </label>
+              <label
+                class="flex items-center gap-4px cursor-pointer text-12px"
+                title="源不足 60fps 时自动补帧"
+              >
+                <input
+                  type="radio"
+                  :value="60"
+                  v-model.number="outputFps"
+                  :disabled="isExporting"
+                  class="accent-secondary"
+                />
+                60
+              </label>
+            </template>
+          </div>
+          <div class="flex items-center h-28px">
+            <label class="flex items-center gap-6px cursor-pointer text-12px">
+              Level
+            </label>
+            <div>
+              <select
+                class="field w-auto! min-w-72px h-28px! px-6px! text-11px!"
+                v-model="videoProfile"
+                :disabled="isExporting"
+              >
+                <option value="baseline">Baseline</option>
+                <option value="main">Main</option>
+                <option value="high">High</option>
+              </select>
+              <select
+                class="field w-auto! min-w-72px h-28px! px-6px! text-11px!"
+                v-model="videoLevel"
+                :disabled="isExporting"
+              >
+                <option value="3.0">3.0</option>
+                <option value="3.1">3.1</option>
+                <option value="4.0">4.0</option>
+                <option value="4.1">4.1</option>
+                <option value="4.2">4.2</option>
+                <option value="5.0">5.0</option>
+                <option value="5.1">5.1</option>
+                <option value="5.2">5.2</option>
+              </select>
+            </div>
+          </div>
+        </div>
+        <div
+          class="shrink-0 h-32px px-10px flex items-center text-11px font-500 color-t3 border-b border-border bg-bg2"
+        >
+          素材属性
         </div>
         <div
           class="flex-1 min-h-0 overflow-y-auto p-12px flex flex-col gap-10px"
