@@ -213,119 +213,187 @@ function formatTimestamp(date: Date) {
 </script>
 
 <template>
-  <div v-if="visible" class="fixed inset-0 bg-black/70 flex items-center justify-center z-1000">
-    <div class="bg-white rounded-8px p-20px w-760px max-w-94% max-h-92% overflow-auto dark:bg-#2d2d2d dark:color-#f6f6f6">
-      <div class="flex justify-between items-center mb-15px">
-        <h3 class="text-18px">视频拼接</h3>
-        <button class="p-4px-10px bg-#6c757d" :disabled="isMerging" @click="closeModal">关闭</button>
+  <div v-if="visible" class="modal-mask">
+    <div class="modal-panel" style="padding: 20px; width: 760px">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px">
+        <h3>视频拼接</h3>
+        <button class="modal-btn ghost" type="button" :disabled="isMerging" @click="closeModal">关闭</button>
       </div>
 
-      <div class="mb-15px p-10px bg-#f9f9f9 rounded-4px dark:bg-#333">
-        <div class="flex items-center gap-12px">
-          <label class="flex items-center gap-6px cursor-pointer">
-            <input type="radio" value="vertical" v-model="layout" :disabled="isMerging" />
+      <div style="margin-bottom: 14px; padding: 10px 12px; background: var(--bg-2); border-radius: 8px; border: 1px solid var(--border)">
+        <div style="display: flex; align-items: center; gap: 16px">
+          <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 12px">
+            <input type="radio" value="vertical" v-model="layout" :disabled="isMerging" style="accent-color: var(--accent)" />
             上下拼接
           </label>
-          <label class="flex items-center gap-6px cursor-pointer">
-            <input type="radio" value="horizontal" v-model="layout" :disabled="isMerging" />
+          <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 12px">
+            <input type="radio" value="horizontal" v-model="layout" :disabled="isMerging" style="accent-color: var(--accent)" />
             左右拼接
           </label>
         </div>
       </div>
 
       <div
-        class="gap-10px mb-15px"
-        :class="layout === 'vertical' ? 'flex flex-col' : 'grid grid-cols-2'"
+        style="gap: 10px; margin-bottom: 14px; display: grid"
+        :style="layout === 'vertical' ? { gridTemplateColumns: '1fr' } : { gridTemplateColumns: '1fr 1fr' }"
       >
         <div
           v-for="(slot, index) in slots"
           :key="index"
-          class="border border-#ddd rounded-6px p-10px bg-#f8f9fa dark:bg-#333 dark:border-#444"
+          style="border: 1px solid var(--border); border-radius: 8px; padding: 10px; background: var(--bg-2)"
         >
           <button
-            class="relative w-full h-150px bg-#222 hover:not-disabled:bg-#333 flex flex-col items-center justify-center text-center p-0 overflow-hidden"
+            type="button"
+            class="slot-preview"
             :disabled="isMerging"
             @click="selectVideo(index)"
           >
             <img
               v-if="slot.previewImage"
               :src="slot.previewImage"
-              class="absolute inset-0 w-full h-full object-cover"
+              class="slot-img"
               draggable="false"
             />
-            <div v-if="slot.previewImage" class="absolute inset-0 bg-black/28"></div>
-            <div class="relative z-1 px-10px max-w-full">
-              <span class="text-14px block truncate max-w-full">
-                {{ slot.isLoadingPreview ? '正在生成预览...' : slot.name || '点击添加视频' }}
+            <div v-if="slot.previewImage" class="slot-overlay"></div>
+            <div class="slot-label">
+              <span>
+                {{ slot.isLoadingPreview ? "正在生成预览..." : slot.name || "点击添加视频" }}
               </span>
-              <span v-if="slot.path && !slot.previewImage" class="text-11px color-#ccc mt-6px break-all block">{{ slot.path }}</span>
+              <span v-if="slot.path && !slot.previewImage" class="slot-path">{{ slot.path }}</span>
             </div>
           </button>
 
-          <div class="flex gap-8px mt-10px flex-wrap items-center">
-            <label class="text-12px color-#666 dark:color-#aaa">宽</label>
+          <div style="display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; align-items: center">
+            <label style="font-size: 12px; color: var(--text-3)">宽</label>
             <input
+              class="field"
               type="number"
               min="1"
               :value="slot.width ?? ''"
               :disabled="isMerging"
-              class="w-90px p-5px border border-#ddd rounded-4px dark:bg-#444 dark:border-#555 dark:color-#f6f6f6"
+              style="width: 90px"
               @input="updateSlotWidth(index, ($event.target as HTMLInputElement).value)"
             />
-            <label class="text-12px color-#666 dark:color-#aaa">高</label>
+            <label style="font-size: 12px; color: var(--text-3)">高</label>
             <input
+              class="field"
               type="number"
               min="1"
               :value="slot.height ?? ''"
               :disabled="isMerging"
-              class="w-90px p-5px border border-#ddd rounded-4px dark:bg-#444 dark:border-#555 dark:color-#f6f6f6"
+              style="width: 90px"
               @input="updateSlotHeight(index, ($event.target as HTMLInputElement).value)"
             />
-            <button class="p-4px-10px text-12px bg-#6c757d" :disabled="isMerging || !slot.path" @click="clearVideo(index)">清除</button>
+            <button class="modal-btn" type="button" :disabled="isMerging || !slot.path" @click="clearVideo(index)">清除</button>
           </div>
         </div>
       </div>
 
-      <div class="p-10px bg-#f9f9f9 rounded-4px mb-15px dark:bg-#333">
-        <div class="text-13px mb-10px color-#666 dark:color-#aaa">
+      <div style="padding: 10px 12px; background: var(--bg-2); border-radius: 8px; margin-bottom: 14px; border: 1px solid var(--border)">
+        <div style="font-size: 12px; margin-bottom: 10px; color: var(--text-3)">
           拼接后自然分辨率: {{ naturalSizeText }}
         </div>
-        <div class="flex gap-8px flex-wrap items-center">
-          <label class="text-12px color-#666 dark:color-#aaa">输出宽</label>
+        <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center">
+          <label style="font-size: 12px; color: var(--text-3)">输出宽</label>
           <input
+            class="field"
             type="number"
             min="1"
             v-model.number="outputWidth"
             :disabled="isMerging"
             placeholder="可选"
-            class="w-100px p-5px border border-#ddd rounded-4px dark:bg-#444 dark:border-#555 dark:color-#f6f6f6"
+            style="width: 100px"
           />
-          <label class="text-12px color-#666 dark:color-#aaa">输出高</label>
+          <label style="font-size: 12px; color: var(--text-3)">输出高</label>
           <input
+            class="field"
             type="number"
             min="1"
             v-model.number="outputHeight"
             :disabled="isMerging"
             placeholder="可选"
-            class="w-100px p-5px border border-#ddd rounded-4px dark:bg-#444 dark:border-#555 dark:color-#f6f6f6"
+            style="width: 100px"
           />
-          <button class="p-4px-10px text-12px bg-#6c757d" :disabled="isMerging" @click="clearOutputSize">清空</button>
+          <button class="modal-btn" type="button" :disabled="isMerging" @click="clearOutputSize">清空</button>
         </div>
-        <div class="text-12px color-#999 mt-8px dark:color-#888">
+        <div style="font-size: 11px; color: var(--text-3); margin-top: 8px">
           不填写输出分辨率时使用自然分辨率，输出文件不包含音轨。
         </div>
       </div>
 
-      <div v-if="statusMessage" class="mb-15px bg-#f8f9fa p-10px rounded-4px whitespace-pre-wrap text-12px dark:bg-#333">
+      <div
+        v-if="statusMessage"
+        style="margin-bottom: 14px; background: var(--bg-0); padding: 10px; border-radius: 6px; white-space: pre-wrap; font-size: 12px; border: 1px solid var(--border); color: var(--text-2)"
+      >
         {{ statusMessage }}
       </div>
 
-      <div class="flex justify-end gap-10px">
-        <button class="bg-#6c757d" :disabled="isMerging" @click="closeModal">取消</button>
-        <button class="bg-#007bff hover:not-disabled:bg-#0056b3" :disabled="!canMerge" @click="startMerge">
-          {{ isMerging ? '拼接中...' : '开始拼接' }}
+      <div style="display: flex; justify-content: flex-end; gap: 8px">
+        <button class="modal-btn" type="button" :disabled="isMerging" @click="closeModal">取消</button>
+        <button class="modal-btn primary" type="button" :disabled="!canMerge" @click="startMerge">
+          {{ isMerging ? "拼接中..." : "开始拼接" }}
         </button>
       </div>
     </div>
   </div>
 </template>
+
+<style scoped>
+.slot-preview {
+  position: relative;
+  width: 100%;
+  height: 150px;
+  background: #111;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 0;
+  overflow: hidden;
+  color: var(--text-2);
+}
+
+.slot-preview:hover:not(:disabled) {
+  background: #1a1a1a;
+}
+
+.slot-img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.slot-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.28);
+}
+
+.slot-label {
+  position: relative;
+  z-index: 1;
+  padding: 0 10px;
+  max-width: 100%;
+  font-size: 13px;
+}
+
+.slot-label span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.slot-path {
+  font-size: 11px;
+  color: var(--text-3);
+  margin-top: 6px;
+  white-space: normal !important;
+  word-break: break-all;
+}
+</style>

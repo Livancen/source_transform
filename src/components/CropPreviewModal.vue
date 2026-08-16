@@ -22,17 +22,19 @@ const emit = defineEmits<{
 
 <template>
   <div
-    class="fixed inset-0 bg-black/70 flex items-center justify-center z-1000"
     v-if="visible"
+    class="modal-mask"
     @mousemove="emit('mouseMove', $event)"
     @mouseup="emit('mouseUp')"
     @mouseleave="emit('mouseUp')"
   >
-    <div class="bg-white rounded-8px p-20px max-w-90% max-h-90% overflow-auto dark:bg-#2d2d2d dark:color-#f6f6f6">
-      <h3 class="mb-10px text-18px">设置裁剪区域</h3>
-      <p class="text-12px color-#666 mb-15px dark:color-#aaa">拖拽移动裁剪框，拖拽边角调整大小</p>
+    <div class="modal-panel" style="padding: 20px; max-width: 90%">
+      <h3 style="margin-bottom: 8px">设置裁剪区域</h3>
+      <p style="font-size: 12px; color: var(--text-3); margin-bottom: 14px">
+        拖拽移动裁剪框，拖拽边角调整大小
+      </p>
 
-      <div class="relative inline-block bg-black mb-15px">
+      <div style="position: relative; display: inline-block; background: #000; margin-bottom: 14px">
         <img
           :src="cropFrameImage"
           :style="{
@@ -40,17 +42,16 @@ const emit = defineEmits<{
             height: cropVideoHeight * previewScale + 'px',
           }"
           draggable="false"
-          class="block select-none"
+          style="display: block; user-select: none"
         />
 
-        <!-- 裁剪区域遮罩 -->
-        <div class="absolute inset-0 w-full h-full pointer-events-none">
+        <div style="position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none">
           <div
-            class="absolute top-0 left-0 w-full bg-black/50"
+            style="position: absolute; top: 0; left: 0; width: 100%; background: rgba(0,0,0,0.5)"
             :style="{ height: options.crop_y * previewScale + 'px' }"
           ></div>
           <div
-            class="absolute bottom-0 left-0 w-full bg-black/50"
+            style="position: absolute; bottom: 0; left: 0; width: 100%; background: rgba(0,0,0,0.5)"
             :style="{
               height:
                 (cropVideoHeight - options.crop_y - options.crop_height) *
@@ -59,7 +60,7 @@ const emit = defineEmits<{
             }"
           ></div>
           <div
-            class="absolute left-0 bg-black/50"
+            style="position: absolute; left: 0; background: rgba(0,0,0,0.5)"
             :style="{
               top: options.crop_y * previewScale + 'px',
               height: options.crop_height * previewScale + 'px',
@@ -67,7 +68,7 @@ const emit = defineEmits<{
             }"
           ></div>
           <div
-            class="absolute right-0 bg-black/50"
+            style="position: absolute; right: 0; background: rgba(0,0,0,0.5)"
             :style="{
               top: options.crop_y * previewScale + 'px',
               height: options.crop_height * previewScale + 'px',
@@ -79,9 +80,8 @@ const emit = defineEmits<{
           ></div>
         </div>
 
-        <!-- 裁剪选择框 -->
         <div
-          class="crop-area absolute border-2 border-#007bff cursor-move box-border"
+          class="crop-area"
           :style="{
             left: options.crop_x * previewScale + 'px',
             top: options.crop_y * previewScale + 'px',
@@ -90,54 +90,60 @@ const emit = defineEmits<{
           }"
           @mousedown="emit('startDrag', $event)"
         >
-          <div class="resize-handle absolute w-10px h-10px bg-#007bff border border-white cursor-n-resize -top-5px left-50% -translate-x-50%" @mousedown.stop="emit('startResize', $event, 'n')"></div>
-          <div class="resize-handle absolute w-10px h-10px bg-#007bff border border-white cursor-s-resize -bottom-5px left-50% -translate-x-50%" @mousedown.stop="emit('startResize', $event, 's')"></div>
-          <div class="resize-handle absolute w-10px h-10px bg-#007bff border border-white cursor-e-resize -right-5px top-50% -translate-y-50%" @mousedown.stop="emit('startResize', $event, 'e')"></div>
-          <div class="resize-handle absolute w-10px h-10px bg-#007bff border border-white cursor-w-resize -left-5px top-50% -translate-y-50%" @mousedown.stop="emit('startResize', $event, 'w')"></div>
-          <div class="resize-handle absolute w-10px h-10px bg-#007bff border border-white cursor-ne-resize -top-5px -right-5px" @mousedown.stop="emit('startResize', $event, 'ne')"></div>
-          <div class="resize-handle absolute w-10px h-10px bg-#007bff border border-white cursor-nw-resize -top-5px -left-5px" @mousedown.stop="emit('startResize', $event, 'nw')"></div>
-          <div class="resize-handle absolute w-10px h-10px bg-#007bff border border-white cursor-se-resize -bottom-5px -right-5px" @mousedown.stop="emit('startResize', $event, 'se')"></div>
-          <div class="resize-handle absolute w-10px h-10px bg-#007bff border border-white cursor-sw-resize -bottom-5px -left-5px" @mousedown.stop="emit('startResize', $event, 'sw')"></div>
+          <div class="resize-handle n" @mousedown.stop="emit('startResize', $event, 'n')"></div>
+          <div class="resize-handle s" @mousedown.stop="emit('startResize', $event, 's')"></div>
+          <div class="resize-handle e" @mousedown.stop="emit('startResize', $event, 'e')"></div>
+          <div class="resize-handle w" @mousedown.stop="emit('startResize', $event, 'w')"></div>
+          <div class="resize-handle ne" @mousedown.stop="emit('startResize', $event, 'ne')"></div>
+          <div class="resize-handle nw" @mousedown.stop="emit('startResize', $event, 'nw')"></div>
+          <div class="resize-handle se" @mousedown.stop="emit('startResize', $event, 'se')"></div>
+          <div class="resize-handle sw" @mousedown.stop="emit('startResize', $event, 'sw')"></div>
 
-          <div class="absolute bottom-5px left-50% -translate-x-50% bg-black/70 color-white p-2px-8px rounded-3px text-12px whitespace-nowrap">
+          <div class="crop-size-label">
             {{ options.crop_width }} x {{ options.crop_height }}
           </div>
         </div>
       </div>
 
-      <!-- 精确输入 -->
-      <div class="flex gap-15px mb-10px flex-wrap">
-        <div class="flex items-center gap-5px">
-          <label class="text-12px color-#666 dark:color-#aaa">宽度:</label>
-          <input type="number" v-model.number="options.crop_width" min="100" :max="cropVideoWidth" class="w-80px p-5px border border-#ddd rounded-4px dark:bg-#444 dark:border-#555 dark:color-#f6f6f6" />
+      <div style="display: flex; gap: 14px; margin-bottom: 10px; flex-wrap: wrap">
+        <div style="display: flex; align-items: center; gap: 6px">
+          <label style="font-size: 12px; color: var(--text-3)">宽度</label>
+          <input class="field" type="number" v-model.number="options.crop_width" min="100" :max="cropVideoWidth" style="width: 80px" />
         </div>
-        <div class="flex items-center gap-5px">
-          <label class="text-12px color-#666 dark:color-#aaa">高度:</label>
-          <input type="number" v-model.number="options.crop_height" min="100" :max="cropVideoHeight" class="w-80px p-5px border border-#ddd rounded-4px dark:bg-#444 dark:border-#555 dark:color-#f6f6f6" />
+        <div style="display: flex; align-items: center; gap: 6px">
+          <label style="font-size: 12px; color: var(--text-3)">高度</label>
+          <input class="field" type="number" v-model.number="options.crop_height" min="100" :max="cropVideoHeight" style="width: 80px" />
         </div>
-        <div class="flex items-center gap-5px">
-          <label class="text-12px color-#666 dark:color-#aaa">X:</label>
-          <input type="number" v-model.number="options.crop_x" min="0" :max="cropVideoWidth - options.crop_width" class="w-80px p-5px border border-#ddd rounded-4px dark:bg-#444 dark:border-#555 dark:color-#f6f6f6" />
+        <div style="display: flex; align-items: center; gap: 6px">
+          <label style="font-size: 12px; color: var(--text-3)">X</label>
+          <input class="field" type="number" v-model.number="options.crop_x" min="0" :max="cropVideoWidth - options.crop_width" style="width: 80px" />
         </div>
-        <div class="flex items-center gap-5px">
-          <label class="text-12px color-#666 dark:color-#aaa">Y:</label>
-          <input type="number" v-model.number="options.crop_y" min="0" :max="cropVideoHeight - options.crop_height" class="w-80px p-5px border border-#ddd rounded-4px dark:bg-#444 dark:border-#555 dark:color-#f6f6f6" />
+        <div style="display: flex; align-items: center; gap: 6px">
+          <label style="font-size: 12px; color: var(--text-3)">Y</label>
+          <input class="field" type="number" v-model.number="options.crop_y" min="0" :max="cropVideoHeight - options.crop_height" style="width: 80px" />
         </div>
       </div>
 
-      <div class="text-12px color-#999 mb-15px dark:color-#888">
+      <div style="font-size: 12px; color: var(--text-3); margin-bottom: 14px">
         原始尺寸: {{ cropVideoWidth }} x {{ cropVideoHeight }}
       </div>
 
-      <div class="flex justify-end gap-10px">
-        <button @click="emit('close')">取消</button>
-        <button class="w-auto! p-8px-20px! bg-#007bff hover:not-disabled:bg-#0056b3" @click="emit('confirm')">确认</button>
+      <div style="display: flex; justify-content: flex-end; gap: 8px">
+        <button class="modal-btn" type="button" @click="emit('close')">取消</button>
+        <button class="modal-btn primary" type="button" @click="emit('confirm')">确认</button>
       </div>
     </div>
   </div>
 </template>
 
 <style scoped>
+.crop-area {
+  position: absolute;
+  border: 2px solid var(--accent);
+  cursor: move;
+  box-sizing: border-box;
+}
+
 .crop-area::before {
   content: "";
   position: absolute;
@@ -147,6 +153,7 @@ const emit = defineEmits<{
   height: 1px;
   background: rgba(255, 255, 255, 0.5);
 }
+
 .crop-area::after {
   content: "";
   position: absolute;
@@ -156,6 +163,73 @@ const emit = defineEmits<{
   height: 1px;
   background: rgba(255, 255, 255, 0.5);
 }
+
+.resize-handle {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  background: var(--accent);
+  border: 1px solid #fff;
+}
+
+.resize-handle.n {
+  top: -5px;
+  left: 50%;
+  transform: translateX(-50%);
+  cursor: n-resize;
+}
+.resize-handle.s {
+  bottom: -5px;
+  left: 50%;
+  transform: translateX(-50%);
+  cursor: s-resize;
+}
+.resize-handle.e {
+  right: -5px;
+  top: 50%;
+  transform: translateY(-50%);
+  cursor: e-resize;
+}
+.resize-handle.w {
+  left: -5px;
+  top: 50%;
+  transform: translateY(-50%);
+  cursor: w-resize;
+}
+.resize-handle.ne {
+  top: -5px;
+  right: -5px;
+  cursor: ne-resize;
+}
+.resize-handle.nw {
+  top: -5px;
+  left: -5px;
+  cursor: nw-resize;
+}
+.resize-handle.se {
+  bottom: -5px;
+  right: -5px;
+  cursor: se-resize;
+}
+.resize-handle.sw {
+  bottom: -5px;
+  left: -5px;
+  cursor: sw-resize;
+}
+
+.crop-size-label {
+  position: absolute;
+  bottom: 5px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.7);
+  color: white;
+  padding: 2px 8px;
+  border-radius: 3px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
 img {
   -webkit-user-drag: none;
 }

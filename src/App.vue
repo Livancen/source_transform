@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, computed, watch } from "vue";
+import { ref, onMounted, onUnmounted, computed, watch } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
@@ -7,21 +7,20 @@ import { open } from "@tauri-apps/plugin-dialog";
 import type { FileInfo, ProcessProgress, ProcessOptions } from "./types";
 import { useCrop } from "./composables/useCrop";
 
-import DirectorySettings from "./components/DirectorySettings.vue";
-import FileStatistics from "./components/FileStatistics.vue";
-import ProcessingOptions from "./components/ProcessingOptions.vue";
-import ProcessingActions from "./components/ProcessingActions.vue";
+import AppToolbar from "./components/AppToolbar.vue";
+import OptionsStrip from "./components/OptionsStrip.vue";
+import FilePane from "./components/FilePane.vue";
+import StatusBar from "./components/StatusBar.vue";
 import CropPreviewModal from "./components/CropPreviewModal.vue";
 import VideoMergeModal from "./components/VideoMergeModal.vue";
 
-// 目录状态
 const inputDir = ref("");
 const outputDir = ref("");
-
-// 文件列表
 const files = ref<FileInfo[]>([]);
+const outputFiles = ref<FileInfo[]>([]);
+const selectedInputPath = ref("");
+const selectedOutputPath = ref("");
 
-// 处理选项
 const options = ref<ProcessOptions>({
   compress: false,
   compress_quality: 80,
@@ -51,23 +50,19 @@ const options = ref<ProcessOptions>({
   target_framerate: 30,
 });
 
-// 处理状态
 const isProcessing = ref(false);
 const progress = ref<ProcessProgress | null>(null);
 const resultMessage = ref("");
 const videoMergeVisible = ref(false);
-
-// 上传服务器
 const uploadUrl = ref("");
+const optionsOpen = ref(true);
 
-// 比例裁剪
 const RATIO_STORAGE_KEY = "aspect-ratio-crop-ratios";
 const enableRatioCrop = ref(false);
 const ratios = ref<string[]>([]);
 const newRatio = ref("");
 const ratioError = ref("");
 
-// 计算属性
 const imageCount = computed(
   () => files.value.filter((f) => f.file_type === "image").length,
 );
@@ -78,16 +73,37 @@ const videoFiles = computed(() =>
   files.value.filter((f) => f.file_type === "video"),
 );
 
-// 比例管理
+const statusMessage = computed(() => {
+  if (isProcessing.value && progress.value) {
+    return `正在处理 ${progress.value.current}/${progress.value.total} · ${progress.value.current_file || progress.value.status || ""}`;
+  }
+  if (resultMessage.value) {
+    const oneLine = resultMessage.value.replace(/\s+/g, " ").trim();
+    return oneLine.length > 120 ? oneLine.slice(0, 120) + "…" : oneLine;
+  }
+  return "就绪";
+});
+
+const leftPanePct = ref(50);
+const isDraggingSplitter = ref(false);
+const panesRef = ref<HTMLElement | null>(null);
+
 function addRatio() {
   ratioError.value = "";
   const val = newRatio.value.trim();
-  if (!val) { ratioError.value = "请输入比例"; return; }
+  if (!val) {
+    ratioError.value = "请输入比例";
+    return;
+  }
   const parts = val.split(":");
   if (parts.length !== 2 || !Number(parts[0]) || !Number(parts[1])) {
-    ratioError.value = "格式错误，应为 W:H 如 1:1"; return;
+    ratioError.value = "格式错误，应为 W:H 如 1:1";
+    return;
   }
-  if (ratios.value.includes(val)) { ratioError.value = "该比例已存在"; return; }
+  if (ratios.value.includes(val)) {
+    ratioError.value = "该比例已存在";
+    return;
+  }
   ratios.value.push(val);
   newRatio.value = "";
 }
@@ -106,9 +122,9 @@ function openVideoMerge() {
 
 function handleVideoMergeCompleted(message: string) {
   resultMessage.value = message;
+  scanOutputFiles();
 }
 
-// 裁剪逻辑
 const {
   cropPreviewVisible,
   cropFrameImage,
@@ -126,18 +142,22 @@ const {
   resultMessage.value = msg;
 });
 
-// 初始化
 onMounted(async () => {
   const saved = localStorage.getItem(RATIO_STORAGE_KEY);
-  if (saved) { try { ratios.value = JSON.parse(saved); } catch { /* ignore */ } }
+  if (saved) {
+    try {
+      ratios.value = JSON.parse(saved);
+    } catch {
+      /* ignore */
+    }
+  }
 
   try {
     const dirs = await invoke<[string, string]>("get_custom_dirs");
     inputDir.value = dirs[0];
     outputDir.value = dirs[1];
-    await scanFiles();
+    await scanAllFiles();
 
-    // 启动上传服务器
     const url = await invoke<string>("start_upload_server", {
       inputDir: inputDir.value,
     });
@@ -152,14 +172,24 @@ onMounted(async () => {
   await listen<ProcessProgress>("crop-progress", (event) => {
     progress.value = event.payload;
   });
+
+  window.addEventListener("mousemove", onSplitterMove);
+  window.addEventListener("mouseup", onSplitterUp);
 });
 
-// 保存比例到 localStorage
-watch(ratios, (val) => {
-  localStorage.setItem(RATIO_STORAGE_KEY, JSON.stringify(val));
-}, { deep: true });
+onUnmounted(() => {
+  window.removeEventListener("mousemove", onSplitterMove);
+  window.removeEventListener("mouseup", onSplitterUp);
+});
 
-// 选择输入目录
+watch(
+  ratios,
+  (val) => {
+    localStorage.setItem(RATIO_STORAGE_KEY, JSON.stringify(val));
+  },
+  { deep: true },
+);
+
 async function selectInputDir() {
   const selected = await open({
     directory: true,
@@ -172,7 +202,6 @@ async function selectInputDir() {
   }
 }
 
-// 选择输出目录
 async function selectOutputDir() {
   const selected = await open({
     directory: true,
@@ -181,10 +210,10 @@ async function selectOutputDir() {
   if (selected) {
     outputDir.value = selected as string;
     await saveCustomDirs();
+    await scanOutputFiles();
   }
 }
 
-// 保存自定义目录
 async function saveCustomDirs() {
   try {
     await invoke("set_custom_dirs", {
@@ -196,7 +225,6 @@ async function saveCustomDirs() {
   }
 }
 
-// 扫描文件
 async function scanFiles() {
   if (!inputDir.value) return;
   try {
@@ -209,7 +237,25 @@ async function scanFiles() {
   }
 }
 
-// 开始处理
+async function scanOutputFiles() {
+  if (!outputDir.value) {
+    outputFiles.value = [];
+    return;
+  }
+  try {
+    outputFiles.value = await invoke<FileInfo[]>("scan_input_files", {
+      inputDir: outputDir.value,
+    });
+  } catch (e) {
+    console.error("扫描输出文件失败:", e);
+    outputFiles.value = [];
+  }
+}
+
+async function scanAllFiles() {
+  await Promise.all([scanFiles(), scanOutputFiles()]);
+}
+
 async function startProcess() {
   if (files.value.length === 0) {
     resultMessage.value = "没有可处理的文件";
@@ -222,7 +268,6 @@ async function startProcess() {
 
   const messages: string[] = [];
 
-  // 比例裁剪模式：仅裁剪视频，不处理其他文件
   if (enableRatioCrop.value && ratios.value.length > 0) {
     try {
       const cropResult = await invoke<string>("crop_videos_by_ratios", {
@@ -235,7 +280,6 @@ async function startProcess() {
       messages.push(`比例裁剪失败: ${e}`);
     }
   } else {
-    // 常规处理模式
     try {
       const result = await invoke<string>("process_files", {
         inputDir: inputDir.value,
@@ -250,9 +294,10 @@ async function startProcess() {
 
   resultMessage.value = messages.join("");
   isProcessing.value = false;
+  progress.value = null;
+  await scanOutputFiles();
 }
 
-// 打开文件夹
 async function openFolder(path: string) {
   try {
     await invoke("open_folder", { path });
@@ -260,51 +305,98 @@ async function openFolder(path: string) {
     console.error("打开文件夹失败:", e);
   }
 }
+
+function onSplitterDown(e: MouseEvent) {
+  isDraggingSplitter.value = true;
+  e.preventDefault();
+}
+
+function onSplitterMove(e: MouseEvent) {
+  if (!isDraggingSplitter.value || !panesRef.value) return;
+  const rect = panesRef.value.getBoundingClientRect();
+  let x = e.clientX - rect.left;
+  const min = 220;
+  const max = rect.width - 220;
+  x = Math.max(min, Math.min(max, x));
+  leftPanePct.value = (x / rect.width) * 100;
+}
+
+function onSplitterUp() {
+  isDraggingSplitter.value = false;
+}
 </script>
 
 <template>
-  <main
-    class="w-full h-full overflow-auto box-border p-12px font-sans text-14px bg-[#ddd]"
-    @contextmenu.prevent
-  >
-    <div class="flex gap-15px">
-      <DirectorySettings
-        :input-dir="inputDir"
-        :output-dir="outputDir"
-        :upload-url="uploadUrl"
-        @select-input="selectInputDir"
-        @select-output="selectOutputDir"
-        @open-folder="openFolder"
-      />
-      <FileStatistics
-        :image-count="imageCount"
-        :video-count="videoCount"
-        :total-count="files.length"
-        :is-processing="isProcessing"
-        :files-length="files.length"
-        @refresh="scanFiles"
-        @start-process="startProcess"
-      />
-      <ProcessingActions
-        :is-processing="isProcessing"
-        :progress="progress"
-        :result-message="resultMessage"
-      />
-    </div>
-    <div class="h-15px"></div>
-    <ProcessingOptions
+  <div class="app-shell" @contextmenu.prevent>
+    <AppToolbar
+      :options-open="optionsOpen"
+      :is-processing="isProcessing"
+      :can-start="files.length > 0"
+      :progress="progress"
+      @refresh="scanAllFiles"
+      @select-input="selectInputDir"
+      @select-output="selectOutputDir"
+      @toggle-options="optionsOpen = !optionsOpen"
+      @open-crop-preview="openCropPreview"
+      @open-video-merge="openVideoMerge"
+      @start-process="startProcess"
+    />
+
+    <OptionsStrip
+      :open="optionsOpen"
       :options="options"
-      :video-files="videoFiles"
       :enable-ratio-crop="enableRatioCrop"
       :ratios="ratios"
       :new-ratio="newRatio"
       :ratio-error="ratioError"
+      :video-files-length="videoFiles.length"
       @open-crop-preview="openCropPreview"
       @update:enable-ratio-crop="enableRatioCrop = $event"
       @update:new-ratio="newRatio = $event"
       @add-ratio="addRatio"
       @remove-ratio="removeRatio"
-      @open-video-merge="openVideoMerge"
+    />
+
+    <div
+      ref="panesRef"
+      class="panes"
+      :style="{ gridTemplateColumns: `${leftPanePct}% 6px 1fr` }"
+    >
+      <FilePane
+        kind="input"
+        :dir="inputDir"
+        :files="files"
+        :selected-path="selectedInputPath"
+        @select-dir="selectInputDir"
+        @open-folder="openFolder(inputDir)"
+        @select-file="selectedInputPath = $event.path"
+      />
+
+      <div
+        class="splitter"
+        :class="{ dragging: isDraggingSplitter }"
+        title="拖动调整宽度"
+        @mousedown="onSplitterDown"
+      ></div>
+
+      <FilePane
+        kind="output"
+        :dir="outputDir"
+        :files="outputFiles"
+        :selected-path="selectedOutputPath"
+        @select-dir="selectOutputDir"
+        @open-folder="openFolder(outputDir)"
+        @select-file="selectedOutputPath = $event.path"
+      />
+    </div>
+
+    <StatusBar
+      :input-count="files.length"
+      :image-count="imageCount"
+      :video-count="videoCount"
+      :output-count="outputFiles.length"
+      :message="statusMessage"
+      :upload-url="uploadUrl"
     />
 
     <CropPreviewModal
@@ -328,35 +420,5 @@ async function openFolder(path: string) {
       @close="videoMergeVisible = false"
       @completed="handleVideoMergeCompleted"
     />
-  </main>
+  </div>
 </template>
-
-<style>
-* {
-  padding: 0;
-  margin: 0;
-}
-html,
-body,
-#app {
-  width: 100%;
-  height: 100%;
-  user-select: none;
-}
-button {
-  padding: 8px 16px;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-  background: #20b42c;
-  color: white;
-  transition: background 0.2s;
-}
-button:hover:not(:disabled) {
-  background: #5a6268;
-}
-button:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-</style>

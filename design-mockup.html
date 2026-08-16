@@ -1,0 +1,1308 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>素材转换工具 · 双栏文件夹设计稿</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg-0: #0e1117;
+      --bg-1: #151a22;
+      --bg-2: #1b2130;
+      --bg-3: #232a3b;
+      --bg-hover: #2a3348;
+      --bg-selected: rgba(91, 140, 255, 0.16);
+      --border: rgba(255, 255, 255, 0.07);
+      --border-strong: rgba(255, 255, 255, 0.12);
+      --text-1: #eef1f6;
+      --text-2: #9aa3b5;
+      --text-3: #6b7385;
+      --accent: #5b8cff;
+      --accent-soft: rgba(91, 140, 255, 0.14);
+      --accent-hover: #7aa3ff;
+      --success: #34d399;
+      --success-soft: rgba(52, 211, 153, 0.12);
+      --warning: #fbbf24;
+      --danger: #f87171;
+      --image: #a78bfa;
+      --video: #38bdf8;
+      --folder: #f5c542;
+      --radius-sm: 6px;
+      --radius: 10px;
+      --radius-lg: 14px;
+      --font: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      --mono: "JetBrains Mono", ui-monospace, monospace;
+      --toolbar-h: 52px;
+      --pathbar-h: 40px;
+      --statusbar-h: 28px;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      height: 100%;
+      overflow: hidden;
+      font-family: var(--font);
+      background: var(--bg-0);
+      color: var(--text-1);
+      font-size: 13px;
+      line-height: 1.4;
+      -webkit-font-smoothing: antialiased;
+      user-select: none;
+    }
+
+    .app {
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+    }
+
+    /* ═══════════ TOP TOOLBAR ═══════════ */
+    .toolbar {
+      flex-shrink: 0;
+      height: var(--toolbar-h);
+      padding: 0 12px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      background: linear-gradient(180deg, #1a2030 0%, var(--bg-1) 100%);
+      border-bottom: 1px solid var(--border);
+      z-index: 20;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding-right: 12px;
+      margin-right: 4px;
+      border-right: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    .brand-icon {
+      width: 30px;
+      height: 30px;
+      border-radius: 8px;
+      background: linear-gradient(135deg, #5b8cff, #8b5cf6);
+      display: grid;
+      place-items: center;
+      box-shadow: 0 2px 10px rgba(91, 140, 255, 0.35);
+    }
+
+    .brand-icon svg { width: 16px; height: 16px; color: #fff; }
+
+    .brand-text {
+      display: flex;
+      flex-direction: column;
+      line-height: 1.15;
+    }
+
+    .brand-text strong {
+      font-size: 12.5px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+
+    .brand-text span {
+      font-size: 10px;
+      color: var(--text-3);
+    }
+
+    .tb-sep {
+      width: 1px;
+      height: 28px;
+      background: var(--border);
+      margin: 0 4px;
+      flex-shrink: 0;
+    }
+
+    .tb-group {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      flex-shrink: 0;
+    }
+
+    .tb-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      height: 34px;
+      padding: 0 11px;
+      border: 1px solid transparent;
+      border-radius: var(--radius-sm);
+      background: transparent;
+      color: var(--text-2);
+      font-family: var(--font);
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.12s ease;
+      white-space: nowrap;
+    }
+
+    .tb-btn svg { width: 15px; height: 15px; flex-shrink: 0; }
+
+    .tb-btn:hover {
+      background: var(--bg-3);
+      color: var(--text-1);
+      border-color: var(--border);
+    }
+
+    .tb-btn.active {
+      background: var(--accent-soft);
+      color: var(--accent-hover);
+      border-color: rgba(91, 140, 255, 0.3);
+    }
+
+    .tb-btn.primary {
+      background: linear-gradient(135deg, #5b8cff, #4f7af0);
+      color: #fff;
+      border-color: transparent;
+      box-shadow: 0 2px 10px rgba(91, 140, 255, 0.3);
+    }
+
+    .tb-btn.primary:hover {
+      filter: brightness(1.08);
+      color: #fff;
+    }
+
+    .tb-btn.success {
+      background: linear-gradient(135deg, #34d399, #10b981);
+      color: #042f1e;
+      font-weight: 600;
+      border-color: transparent;
+      box-shadow: 0 2px 10px rgba(52, 211, 153, 0.28);
+    }
+
+    .tb-btn.success:hover {
+      filter: brightness(1.06);
+      color: #042f1e;
+    }
+
+    .tb-btn:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+      filter: none !important;
+      box-shadow: none !important;
+    }
+
+    .tb-btn.icon-only {
+      width: 34px;
+      padding: 0;
+      justify-content: center;
+    }
+
+    .tb-spacer { flex: 1; min-width: 8px; }
+
+    .tb-status {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 11px;
+      color: var(--text-3);
+      flex-shrink: 0;
+    }
+
+    .tb-status .dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--success);
+      box-shadow: 0 0 8px var(--success);
+    }
+
+    /* progress mini in toolbar */
+    .tb-progress {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 160px;
+      padding: 0 10px;
+      height: 34px;
+      border-radius: var(--radius-sm);
+      background: var(--bg-0);
+      border: 1px solid var(--border);
+    }
+
+    .tb-progress .bar {
+      flex: 1;
+      height: 4px;
+      border-radius: 999px;
+      background: var(--bg-3);
+      overflow: hidden;
+    }
+
+    .tb-progress .bar > i {
+      display: block;
+      height: 100%;
+      width: 0%;
+      border-radius: 999px;
+      background: linear-gradient(90deg, #5b8cff, #8b5cf6);
+      transition: width 0.3s ease;
+    }
+
+    .tb-progress .pct {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--text-2);
+      min-width: 32px;
+      text-align: right;
+    }
+
+    /* ═══════════ OPTIONS STRIP (collapsible under toolbar) ═══════════ */
+    .options-strip {
+      flex-shrink: 0;
+      background: var(--bg-1);
+      border-bottom: 1px solid var(--border);
+      max-height: 0;
+      overflow: hidden;
+      transition: max-height 0.25s ease, padding 0.25s ease;
+    }
+
+    .options-strip.open {
+      max-height: 280px;
+      overflow-y: auto;
+    }
+
+    .options-inner {
+      padding: 12px 14px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .opt-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: flex-start;
+    }
+
+    .opt-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      min-height: 34px;
+      padding: 4px 10px 4px 8px;
+      border-radius: 8px;
+      background: var(--bg-2);
+      border: 1px solid var(--border);
+      transition: all 0.12s;
+      cursor: default;
+    }
+
+    .opt-chip:hover { border-color: var(--border-strong); background: var(--bg-3); }
+
+    .opt-chip.on {
+      border-color: rgba(91, 140, 255, 0.4);
+      background: var(--accent-soft);
+    }
+
+    .opt-chip label.switch {
+      position: relative;
+      width: 32px;
+      height: 18px;
+      flex-shrink: 0;
+    }
+
+    .opt-chip label.switch input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+      position: absolute;
+    }
+
+    .opt-chip label.switch .slider {
+      position: absolute;
+      inset: 0;
+      background: var(--bg-0);
+      border: 1px solid var(--border-strong);
+      border-radius: 999px;
+      cursor: pointer;
+      transition: 0.15s;
+    }
+
+    .opt-chip label.switch .slider::before {
+      content: "";
+      position: absolute;
+      width: 12px;
+      height: 12px;
+      left: 2px;
+      top: 2px;
+      background: var(--text-3);
+      border-radius: 50%;
+      transition: 0.15s;
+    }
+
+    .opt-chip label.switch input:checked + .slider {
+      background: var(--accent);
+      border-color: var(--accent);
+    }
+
+    .opt-chip label.switch input:checked + .slider::before {
+      transform: translateX(14px);
+      background: #fff;
+    }
+
+    .opt-chip .name {
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--text-2);
+      white-space: nowrap;
+    }
+
+    .opt-chip.on .name { color: var(--text-1); }
+
+    .opt-chip .params {
+      display: none;
+      align-items: center;
+      gap: 6px;
+      padding-left: 6px;
+      border-left: 1px solid var(--border);
+      margin-left: 2px;
+    }
+
+    .opt-chip.on .params { display: inline-flex; }
+
+    .opt-chip .params input,
+    .opt-chip .params select {
+      height: 24px;
+      padding: 0 6px;
+      border-radius: 5px;
+      border: 1px solid var(--border);
+      background: var(--bg-0);
+      color: var(--text-1);
+      font-family: var(--font);
+      font-size: 11px;
+      outline: none;
+      width: 64px;
+    }
+
+    .opt-chip .params select { width: auto; min-width: 72px; }
+    .opt-chip .params input:focus,
+    .opt-chip .params select:focus { border-color: var(--accent); }
+
+    .opt-chip .params .hint {
+      font-size: 10px;
+      color: var(--text-3);
+    }
+
+    .opt-actions {
+      display: flex;
+      gap: 6px;
+      margin-left: auto;
+      align-items: center;
+    }
+
+    .opt-actions .tb-btn {
+      height: 30px;
+      font-size: 11px;
+    }
+
+    /* ═══════════ DUAL PANE ═══════════ */
+    .panes {
+      flex: 1;
+      min-height: 0;
+      display: grid;
+      grid-template-columns: 1fr 6px 1fr;
+      background: var(--bg-0);
+    }
+
+    .pane {
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+      min-height: 0;
+      background: var(--bg-1);
+    }
+
+    .pane.input { border-right: none; }
+    .pane.output { border-left: none; }
+
+    /* path bar like explorer address bar */
+    .pathbar {
+      flex-shrink: 0;
+      height: var(--pathbar-h);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 0 8px;
+      background: var(--bg-2);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .pane-tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      height: 24px;
+      padding: 0 8px;
+      border-radius: 5px;
+      font-size: 11px;
+      font-weight: 600;
+      flex-shrink: 0;
+      letter-spacing: 0.02em;
+    }
+
+    .pane.input .pane-tag {
+      background: rgba(56, 189, 248, 0.12);
+      color: var(--video);
+    }
+
+    .pane.output .pane-tag {
+      background: rgba(52, 211, 153, 0.12);
+      color: var(--success);
+    }
+
+    .pathbar .path-input {
+      flex: 1;
+      min-width: 0;
+      height: 28px;
+      padding: 0 10px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: var(--bg-0);
+      color: var(--text-2);
+      font-family: var(--mono);
+      font-size: 11px;
+      outline: none;
+    }
+
+    .pathbar .path-input:focus {
+      border-color: var(--accent);
+      color: var(--text-1);
+    }
+
+    .pathbar .icon-btn {
+      width: 28px;
+      height: 28px;
+      display: grid;
+      place-items: center;
+      border: 1px solid transparent;
+      border-radius: 6px;
+      background: transparent;
+      color: var(--text-3);
+      cursor: pointer;
+      transition: all 0.12s;
+    }
+
+    .pathbar .icon-btn:hover {
+      background: var(--bg-3);
+      color: var(--text-1);
+      border-color: var(--border);
+    }
+
+    .pathbar .icon-btn svg { width: 14px; height: 14px; }
+
+    /* column headers */
+    .file-header {
+      flex-shrink: 0;
+      display: grid;
+      grid-template-columns: 28px minmax(0, 1fr) 72px 88px 110px;
+      gap: 0;
+      height: 28px;
+      align-items: center;
+      padding: 0 8px 0 4px;
+      background: var(--bg-2);
+      border-bottom: 1px solid var(--border);
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--text-3);
+    }
+
+    .file-header > span {
+      padding: 0 6px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      border-right: 1px solid transparent;
+    }
+
+    .file-header > span:hover {
+      background: var(--bg-3);
+      color: var(--text-2);
+    }
+
+    /* file list */
+    .file-list {
+      flex: 1;
+      min-height: 0;
+      overflow-y: auto;
+      overflow-x: hidden;
+      padding: 2px 0;
+    }
+
+    .file-list::-webkit-scrollbar { width: 10px; }
+    .file-list::-webkit-scrollbar-track { background: transparent; }
+    .file-list::-webkit-scrollbar-thumb {
+      background: var(--bg-3);
+      border-radius: 999px;
+      border: 2px solid var(--bg-1);
+    }
+    .file-list::-webkit-scrollbar-thumb:hover { background: var(--bg-hover); }
+
+    .file-row {
+      display: grid;
+      grid-template-columns: 28px minmax(0, 1fr) 72px 88px 110px;
+      align-items: center;
+      height: 32px;
+      padding: 0 8px 0 4px;
+      margin: 0 4px;
+      border-radius: 6px;
+      cursor: default;
+      color: var(--text-1);
+      transition: background 0.08s;
+    }
+
+    .file-row:hover { background: var(--bg-3); }
+
+    .file-row.selected {
+      background: var(--bg-selected);
+      outline: 1px solid rgba(91, 140, 255, 0.35);
+    }
+
+    .file-row .check {
+      display: grid;
+      place-items: center;
+    }
+
+    .file-row .check input {
+      width: 14px;
+      height: 14px;
+      accent-color: var(--accent);
+      cursor: pointer;
+    }
+
+    .file-row .name {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+      padding: 0 6px;
+    }
+
+    .file-row .name .icon {
+      width: 18px;
+      height: 18px;
+      flex-shrink: 0;
+      display: grid;
+      place-items: center;
+    }
+
+    .file-row .name .icon svg { width: 16px; height: 16px; }
+
+    .file-row .name .icon.image { color: var(--image); }
+    .file-row .name .icon.video { color: var(--video); }
+    .file-row .name .icon.folder { color: var(--folder); }
+
+    .file-row .name .text {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-size: 12.5px;
+    }
+
+    .file-row .col {
+      padding: 0 6px;
+      font-size: 11.5px;
+      color: var(--text-2);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .file-row .col.type-badge {
+      display: flex;
+      align-items: center;
+    }
+
+    .type-pill {
+      display: inline-flex;
+      align-items: center;
+      height: 18px;
+      padding: 0 6px;
+      border-radius: 4px;
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+    }
+
+    .type-pill.image {
+      background: rgba(167, 139, 250, 0.15);
+      color: var(--image);
+    }
+
+    .type-pill.video {
+      background: rgba(56, 189, 248, 0.15);
+      color: var(--video);
+    }
+
+    .file-row .col.size { font-variant-numeric: tabular-nums; }
+    .file-row .col.date {
+      font-size: 11px;
+      color: var(--text-3);
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* empty state */
+    .empty-state {
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      color: var(--text-3);
+      padding: 32px;
+      text-align: center;
+    }
+
+    .empty-state svg {
+      width: 48px;
+      height: 48px;
+      opacity: 0.35;
+      color: var(--text-3);
+    }
+
+    .empty-state p { font-size: 13px; }
+    .empty-state span { font-size: 11px; color: var(--text-3); opacity: 0.8; }
+
+    /* splitter */
+    .splitter {
+      background: var(--bg-0);
+      border-left: 1px solid var(--border);
+      border-right: 1px solid var(--border);
+      cursor: col-resize;
+      position: relative;
+      z-index: 5;
+      transition: background 0.12s;
+    }
+
+    .splitter:hover,
+    .splitter.dragging {
+      background: var(--accent);
+    }
+
+    .splitter::after {
+      content: "";
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 2px;
+      height: 28px;
+      border-radius: 2px;
+      background: rgba(255, 255, 255, 0.15);
+    }
+
+    .splitter:hover::after,
+    .splitter.dragging::after {
+      background: rgba(255, 255, 255, 0.6);
+    }
+
+    /* ═══════════ STATUS BAR ═══════════ */
+    .statusbar {
+      flex-shrink: 0;
+      height: var(--statusbar-h);
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      padding: 0 12px;
+      background: var(--bg-2);
+      border-top: 1px solid var(--border);
+      font-size: 11px;
+      color: var(--text-3);
+    }
+
+    .statusbar .item {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .statusbar .item strong {
+      color: var(--text-2);
+      font-weight: 500;
+    }
+
+    .statusbar .sep {
+      width: 1px;
+      height: 12px;
+      background: var(--border);
+    }
+
+    .statusbar .grow { flex: 1; }
+
+    .statusbar .upload {
+      color: var(--accent-hover);
+      font-family: var(--mono);
+      font-size: 10.5px;
+      text-decoration: none;
+    }
+
+    .statusbar .upload:hover { text-decoration: underline; }
+
+    /* ═══════════ MODAL (options detail / crop preview hint) ═══════════ */
+    .modal-mask {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.55);
+      backdrop-filter: blur(4px);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+      padding: 24px;
+    }
+
+    .modal-mask.show { display: flex; }
+
+    .modal {
+      width: min(720px, 100%);
+      max-height: min(80vh, 560px);
+      background: var(--bg-1);
+      border: 1px solid var(--border-strong);
+      border-radius: var(--radius-lg);
+      box-shadow: 0 24px 64px rgba(0, 0, 0, 0.5);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .modal-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .modal-head h2 {
+      font-size: 14px;
+      font-weight: 600;
+    }
+
+    .modal-body {
+      padding: 16px;
+      overflow-y: auto;
+      flex: 1;
+    }
+
+    .modal-foot {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      padding: 12px 16px;
+      border-top: 1px solid var(--border);
+      background: var(--bg-2);
+    }
+
+    .hint-box {
+      padding: 12px 14px;
+      border-radius: 8px;
+      background: var(--accent-soft);
+      border: 1px solid rgba(91, 140, 255, 0.25);
+      color: var(--text-2);
+      font-size: 12px;
+      line-height: 1.55;
+    }
+
+    .hint-box strong { color: var(--accent-hover); }
+
+    /* selection count floating */
+    .selection-bar {
+      position: absolute;
+      bottom: 40px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: none;
+      align-items: center;
+      gap: 10px;
+      height: 36px;
+      padding: 0 14px;
+      border-radius: 999px;
+      background: var(--bg-3);
+      border: 1px solid var(--border-strong);
+      box-shadow: 0 8px 28px rgba(0, 0, 0, 0.4);
+      font-size: 12px;
+      color: var(--text-2);
+      z-index: 10;
+    }
+
+    .pane { position: relative; }
+
+    .selection-bar.show { display: inline-flex; }
+    .selection-bar strong { color: var(--accent-hover); }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <!-- ═══════ TOOLBAR ═══════ -->
+    <header class="toolbar">
+      <div class="brand">
+        <div class="brand-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/>
+            <circle cx="12" cy="13" r="3"/>
+          </svg>
+        </div>
+        <div class="brand-text">
+          <strong>素材转换</strong>
+          <span>v5.2.0</span>
+        </div>
+      </div>
+
+      <div class="tb-group">
+        <button class="tb-btn" title="刷新文件列表" id="btnRefresh">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+          刷新
+        </button>
+        <button class="tb-btn" title="选择输入目录">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+          输入目录
+        </button>
+        <button class="tb-btn" title="选择输出目录">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><path d="M12 11v6M9 14h6"/></svg>
+          输出目录
+        </button>
+      </div>
+
+      <div class="tb-sep"></div>
+
+      <div class="tb-group">
+        <button class="tb-btn active" id="btnToggleOptions" title="处理选项">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+          处理选项
+        </button>
+        <button class="tb-btn" title="裁剪预览">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2v14a2 2 0 0 0 2 2h14"/><path d="M18 22V8a2 2 0 0 0-2-2H2"/></svg>
+          裁剪预览
+        </button>
+        <button class="tb-btn" title="视频拼接">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="8" height="10" rx="1"/><rect x="14" y="7" width="8" height="10" rx="1"/><path d="M10 12h4"/></svg>
+          视频拼接
+        </button>
+        <button class="tb-btn" title="比例裁剪">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 3v18"/></svg>
+          比例裁剪
+        </button>
+      </div>
+
+      <div class="tb-sep"></div>
+
+      <button class="tb-btn success" id="btnStart">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+        开始处理
+      </button>
+
+      <div class="tb-spacer"></div>
+
+      <div class="tb-progress" id="tbProgress" style="display:none">
+        <div class="bar"><i id="progressFill"></i></div>
+        <span class="pct" id="progressPct">0%</span>
+      </div>
+
+      <div class="tb-status">
+        <span class="dot"></span>
+        FFmpeg 就绪
+      </div>
+    </header>
+
+    <!-- ═══════ OPTIONS STRIP ═══════ -->
+    <div class="options-strip open" id="optionsStrip">
+      <div class="options-inner">
+        <div class="opt-row" id="optChips">
+          <!-- chips generated / static -->
+          <div class="opt-chip on" data-key="compress">
+            <label class="switch"><input type="checkbox" checked /><span class="slider"></span></label>
+            <span class="name">压缩</span>
+            <span class="params">
+              <span class="hint">质量</span>
+              <input type="number" value="80" min="1" max="100" />
+            </span>
+          </div>
+
+          <div class="opt-chip" data-key="resolution">
+            <label class="switch"><input type="checkbox" /><span class="slider"></span></label>
+            <span class="name">降分辨率</span>
+            <span class="params">
+              <input type="number" value="1920" title="宽" />
+              <span class="hint">×</span>
+              <input type="number" value="1080" title="高" />
+            </span>
+          </div>
+
+          <div class="opt-chip" data-key="bitrate">
+            <label class="switch"><input type="checkbox" /><span class="slider"></span></label>
+            <span class="name">降码率</span>
+            <span class="params">
+              <input type="text" value="2M" style="width:56px" />
+            </span>
+          </div>
+
+          <div class="opt-chip" data-key="level">
+            <label class="switch"><input type="checkbox" /><span class="slider"></span></label>
+            <span class="name">Profile/Level</span>
+            <span class="params">
+              <select>
+                <option>baseline</option>
+                <option>main</option>
+                <option selected>high</option>
+              </select>
+              <select>
+                <option>3.0</option>
+                <option selected>4.0</option>
+                <option>5.1</option>
+              </select>
+            </span>
+          </div>
+
+          <div class="opt-chip" data-key="h265">
+            <label class="switch"><input type="checkbox" /><span class="slider"></span></label>
+            <span class="name">H.265→H.264</span>
+          </div>
+
+          <div class="opt-chip" data-key="format">
+            <label class="switch"><input type="checkbox" /><span class="slider"></span></label>
+            <span class="name">转格式</span>
+            <span class="params">
+              <select>
+                <option selected>mp4</option>
+                <option>mkv</option>
+                <option>avi</option>
+                <option>webm</option>
+              </select>
+            </span>
+          </div>
+
+          <div class="opt-chip" data-key="crop">
+            <label class="switch"><input type="checkbox" /><span class="slider"></span></label>
+            <span class="name">裁剪</span>
+            <span class="params">
+              <input type="number" value="1280" title="宽" />
+              <span class="hint">×</span>
+              <input type="number" value="720" title="高" />
+            </span>
+          </div>
+
+          <div class="opt-chip" data-key="rotate">
+            <label class="switch"><input type="checkbox" /><span class="slider"></span></label>
+            <span class="name">旋转</span>
+            <span class="params">
+              <select>
+                <option>90°</option>
+                <option>180°</option>
+                <option>270°</option>
+              </select>
+            </span>
+          </div>
+
+          <div class="opt-chip" data-key="mute">
+            <label class="switch"><input type="checkbox" /><span class="slider"></span></label>
+            <span class="name">静音</span>
+          </div>
+
+          <div class="opt-chip" data-key="fps">
+            <label class="switch"><input type="checkbox" /><span class="slider"></span></label>
+            <span class="name">帧率</span>
+            <span class="params">
+              <input type="number" value="30" style="width:48px" />
+              <span class="hint">fps</span>
+            </span>
+          </div>
+
+          <div class="opt-actions">
+            <button class="tb-btn" style="height:30px;font-size:11px">全选选项</button>
+            <button class="tb-btn" style="height:30px;font-size:11px">清空</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════ DUAL FILE PANES ═══════ -->
+    <div class="panes" id="panes">
+      <!-- LEFT: INPUT -->
+      <section class="pane input">
+        <div class="pathbar">
+          <span class="pane-tag">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+            输入
+          </span>
+          <input class="path-input" readonly value="D:\Media\input" />
+          <button class="icon-btn" title="选择目录">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7v10a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-6l-2-2H5a2 2 0 0 0-2 2z"/></svg>
+          </button>
+          <button class="icon-btn" title="在资源管理器中打开">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+          </button>
+        </div>
+
+        <div class="file-header">
+          <span class="check" style="display:grid;place-items:center">
+            <input type="checkbox" id="selectAllInput" title="全选" style="accent-color:var(--accent)" />
+          </span>
+          <span>名称</span>
+          <span>类型</span>
+          <span>大小</span>
+          <span>修改日期</span>
+        </div>
+
+        <div class="file-list" id="inputList">
+          <!-- rows injected by JS for demo -->
+        </div>
+
+        <div class="selection-bar" id="inputSelBar">
+          已选 <strong id="inputSelCount">0</strong> 项
+        </div>
+      </section>
+
+      <!-- SPLITTER -->
+      <div class="splitter" id="splitter" title="拖动调整宽度"></div>
+
+      <!-- RIGHT: OUTPUT -->
+      <section class="pane output">
+        <div class="pathbar">
+          <span class="pane-tag">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><path d="M12 11v6M9 14h6"/></svg>
+            输出
+          </span>
+          <input class="path-input" readonly value="D:\Media\output" />
+          <button class="icon-btn" title="选择目录">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7v10a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-6l-2-2H5a2 2 0 0 0-2 2z"/></svg>
+          </button>
+          <button class="icon-btn" title="在资源管理器中打开">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+          </button>
+        </div>
+
+        <div class="file-header">
+          <span></span>
+          <span>名称</span>
+          <span>类型</span>
+          <span>大小</span>
+          <span>修改日期</span>
+        </div>
+
+        <div class="file-list" id="outputList">
+          <!-- rows injected -->
+        </div>
+      </section>
+    </div>
+
+    <!-- ═══════ STATUS BAR ═══════ -->
+    <footer class="statusbar">
+      <span class="item">输入 <strong id="statInput">32 项</strong></span>
+      <span class="sep"></span>
+      <span class="item">图片 <strong id="statImg">24</strong></span>
+      <span class="item">视频 <strong id="statVid">8</strong></span>
+      <span class="sep"></span>
+      <span class="item">输出 <strong id="statOut">12 项</strong></span>
+      <span class="sep"></span>
+      <span class="item" id="statMsg">就绪</span>
+      <span class="grow"></span>
+      <span class="item">上传
+        <a class="upload" href="#">http://192.168.1.8:3847</a>
+      </span>
+    </footer>
+  </div>
+
+  <script>
+    const ICON_IMAGE = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>`;
+    const ICON_VIDEO = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="15" height="16" rx="2"/><path d="M17 10l5-3v10l-5-3z"/></svg>`;
+
+    const inputFiles = [
+      { name: "beach_sunset.jpg", type: "image", size: "4.2 MB", date: "2026-08-12 14:22" },
+      { name: "product_01.png", type: "image", size: "1.8 MB", date: "2026-08-12 11:05" },
+      { name: "product_02.png", type: "image", size: "2.1 MB", date: "2026-08-12 11:06" },
+      { name: "logo_transparent.webp", type: "image", size: "86 KB", date: "2026-08-10 09:30" },
+      { name: "banner_hero.jpg", type: "image", size: "3.4 MB", date: "2026-08-09 18:44" },
+      { name: "clip_intro.mp4", type: "video", size: "128 MB", date: "2026-08-14 20:11" },
+      { name: "clip_sunset_4k.mp4", type: "video", size: "512 MB", date: "2026-08-14 21:03" },
+      { name: "interview_raw.mov", type: "video", size: "890 MB", date: "2026-08-13 16:40" },
+      { name: "demo_reel.mkv", type: "video", size: "256 MB", date: "2026-08-11 10:18" },
+      { name: "thumb_a.jpg", type: "image", size: "420 KB", date: "2026-08-08 08:12" },
+      { name: "thumb_b.jpg", type: "image", size: "390 KB", date: "2026-08-08 08:13" },
+      { name: "cover_art.png", type: "image", size: "980 KB", date: "2026-08-07 15:55" },
+      { name: "vlog_day3.mp4", type: "video", size: "340 MB", date: "2026-08-15 22:01" },
+      { name: "screenshot_01.png", type: "image", size: "210 KB", date: "2026-08-15 09:20" },
+      { name: "screenshot_02.png", type: "image", size: "198 KB", date: "2026-08-15 09:21" },
+      { name: "bg_texture.jpg", type: "image", size: "1.2 MB", date: "2026-08-06 12:00" },
+    ];
+
+    const outputFiles = [
+      { name: "beach_sunset.jpg", type: "image", size: "680 KB", date: "2026-08-16 10:02" },
+      { name: "product_01.png", type: "image", size: "320 KB", date: "2026-08-16 10:02" },
+      { name: "product_02.png", type: "image", size: "350 KB", date: "2026-08-16 10:02" },
+      { name: "clip_intro.mp4", type: "video", size: "42 MB", date: "2026-08-16 10:05" },
+      { name: "clip_sunset_4k.mp4", type: "video", size: "96 MB", date: "2026-08-16 10:08" },
+      { name: "logo_transparent.webp", type: "image", size: "42 KB", date: "2026-08-16 10:01" },
+      { name: "banner_hero.jpg", type: "image", size: "510 KB", date: "2026-08-16 10:02" },
+      { name: "demo_reel.mkv", type: "video", size: "88 MB", date: "2026-08-16 10:10" },
+    ];
+
+    function fileRow(f, withCheck) {
+      const icon = f.type === "image" ? ICON_IMAGE : ICON_VIDEO;
+      const check = withCheck
+        ? `<span class="check"><input type="checkbox" class="row-check" /></span>`
+        : `<span></span>`;
+      return `
+        <div class="file-row" data-name="${f.name}">
+          ${check}
+          <div class="name">
+            <span class="icon ${f.type}">${icon}</span>
+            <span class="text" title="${f.name}">${f.name}</span>
+          </div>
+          <div class="col type-badge"><span class="type-pill ${f.type}">${f.type === "image" ? "图片" : "视频"}</span></div>
+          <div class="col size">${f.size}</div>
+          <div class="col date">${f.date}</div>
+        </div>`;
+    }
+
+    function renderList(el, files, withCheck) {
+      el.innerHTML = files.map((f) => fileRow(f, withCheck)).join("");
+    }
+
+    const inputList = document.getElementById("inputList");
+    const outputList = document.getElementById("outputList");
+    renderList(inputList, inputFiles, true);
+    renderList(outputList, outputFiles, false);
+
+    // stats
+    const imgCount = inputFiles.filter((f) => f.type === "image").length;
+    const vidCount = inputFiles.filter((f) => f.type === "video").length;
+    document.getElementById("statInput").textContent = inputFiles.length + " 项";
+    document.getElementById("statImg").textContent = imgCount;
+    document.getElementById("statVid").textContent = vidCount;
+    document.getElementById("statOut").textContent = outputFiles.length + " 项";
+
+    // row selection
+    function bindListSelection(listEl, selBar, countEl) {
+      listEl.addEventListener("click", (e) => {
+        const row = e.target.closest(".file-row");
+        if (!row) return;
+        if (e.target.matches("input.row-check")) {
+          row.classList.toggle("selected", e.target.checked);
+        } else {
+          const multi = e.ctrlKey || e.metaKey;
+          if (!multi) {
+            listEl.querySelectorAll(".file-row.selected").forEach((r) => {
+              r.classList.remove("selected");
+              const c = r.querySelector(".row-check");
+              if (c) c.checked = false;
+            });
+          }
+          row.classList.toggle("selected");
+          const c = row.querySelector(".row-check");
+          if (c) c.checked = row.classList.contains("selected");
+        }
+        updateSel();
+      });
+
+      function updateSel() {
+        const n = listEl.querySelectorAll(".file-row.selected").length;
+        if (countEl) countEl.textContent = n;
+        if (selBar) selBar.classList.toggle("show", n > 0);
+      }
+      return updateSel;
+    }
+
+    const updateInputSel = bindListSelection(
+      inputList,
+      document.getElementById("inputSelBar"),
+      document.getElementById("inputSelCount")
+    );
+
+    bindListSelection(outputList, null, null);
+
+    document.getElementById("selectAllInput").addEventListener("change", (e) => {
+      inputList.querySelectorAll(".file-row").forEach((row) => {
+        row.classList.toggle("selected", e.target.checked);
+        const c = row.querySelector(".row-check");
+        if (c) c.checked = e.target.checked;
+      });
+      updateInputSel();
+    });
+
+    // option chips toggle
+    document.querySelectorAll(".opt-chip").forEach((chip) => {
+      const input = chip.querySelector("input[type=checkbox]");
+      const sync = () => chip.classList.toggle("on", input.checked);
+      input.addEventListener("change", sync);
+      sync();
+    });
+
+    // toggle options strip
+    const strip = document.getElementById("optionsStrip");
+    const btnOpt = document.getElementById("btnToggleOptions");
+    btnOpt.addEventListener("click", () => {
+      strip.classList.toggle("open");
+      btnOpt.classList.toggle("active", strip.classList.contains("open"));
+    });
+
+    // splitter drag
+    const panes = document.getElementById("panes");
+    const splitter = document.getElementById("splitter");
+    let dragging = false;
+
+    splitter.addEventListener("mousedown", (e) => {
+      dragging = true;
+      splitter.classList.add("dragging");
+      document.body.style.cursor = "col-resize";
+      e.preventDefault();
+    });
+
+    window.addEventListener("mousemove", (e) => {
+      if (!dragging) return;
+      const rect = panes.getBoundingClientRect();
+      let x = e.clientX - rect.left;
+      const min = 240;
+      const max = rect.width - 240;
+      x = Math.max(min, Math.min(max, x));
+      const leftPct = (x / rect.width) * 100;
+      panes.style.gridTemplateColumns = `${leftPct}% 6px 1fr`;
+    });
+
+    window.addEventListener("mouseup", () => {
+      if (!dragging) return;
+      dragging = false;
+      splitter.classList.remove("dragging");
+      document.body.style.cursor = "";
+    });
+
+    // fake process
+    document.getElementById("btnStart").addEventListener("click", () => {
+      const bar = document.getElementById("tbProgress");
+      const fill = document.getElementById("progressFill");
+      const pct = document.getElementById("progressPct");
+      const msg = document.getElementById("statMsg");
+      const btn = document.getElementById("btnStart");
+      bar.style.display = "flex";
+      btn.disabled = true;
+      btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> 处理中…`;
+
+      let p = 0;
+      const timer = setInterval(() => {
+        p += 4;
+        if (p > 100) p = 100;
+        fill.style.width = p + "%";
+        pct.textContent = p + "%";
+        msg.textContent = `正在处理 ${Math.ceil((p / 100) * inputFiles.length)} / ${inputFiles.length}`;
+        if (p >= 100) {
+          clearInterval(timer);
+          msg.textContent = "处理完成 · 成功 " + inputFiles.length;
+          btn.disabled = false;
+          btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg> 开始处理`;
+          setTimeout(() => { bar.style.display = "none"; fill.style.width = "0%"; }, 2000);
+        }
+      }, 80);
+    });
+  </script>
+</body>
+</html>
