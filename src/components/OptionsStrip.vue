@@ -169,10 +169,26 @@ const showBatchOpts = () => showImageOpts() || showVideoOpts();
 
           <div class="opt-chip" :class="{ 'opt-chip-on': options.convert_h265_to_h264 }">
             <label class="switch">
-              <input type="checkbox" v-model="options.convert_h265_to_h264" />
+              <input
+                type="checkbox"
+                v-model="options.convert_h265_to_h264"
+                @change="options.convert_h265_to_h264 && (options.convert_h264_to_h265 = false)"
+              />
               <span class="slider"></span>
             </label>
             <span class="text-12px font-500" :class="options.convert_h265_to_h264 ? 'color-t1' : 'color-t2'">H.265→H.264</span>
+          </div>
+
+          <div class="opt-chip" :class="{ 'opt-chip-on': options.convert_h264_to_h265 }">
+            <label class="switch">
+              <input
+                type="checkbox"
+                v-model="options.convert_h264_to_h265"
+                @change="options.convert_h264_to_h265 && (options.convert_h265_to_h264 = false)"
+              />
+              <span class="slider"></span>
+            </label>
+            <span class="text-12px font-500" :class="options.convert_h264_to_h265 ? 'color-t1' : 'color-t2'">H.264→H.265</span>
           </div>
 
           <div class="opt-chip" :class="{ 'opt-chip-on': options.mute }">

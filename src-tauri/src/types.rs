@@ -20,6 +20,7 @@ pub struct ProcessOptions {
     pub target_level: String, // e.g., "3.0", "4.0", "5.1"
     pub target_profile: String, // e.g., "baseline", "main", "high"
     pub convert_h265_to_h264: bool,
+    pub convert_h264_to_h265: bool,
     pub convert_format: bool,
     pub target_format: String, // e.g., "mp4", "avi", "mkv" / "jpg", "png"
     pub rotate: bool,

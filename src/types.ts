@@ -37,6 +37,7 @@ export interface ProcessOptions {
   target_level: string;
   target_profile: string;
   convert_h265_to_h264: boolean;
+  convert_h264_to_h265: boolean;
   convert_format: boolean;
   target_format: string;
   rotate: boolean;
@@ -99,6 +100,7 @@ export function defaultProcessOptions(): ProcessOptions {
     target_level: "4.0",
     target_profile: "high",
     convert_h265_to_h264: false,
+    convert_h264_to_h265: false,
     convert_format: false,
     target_format: "mp4",
     rotate: false,

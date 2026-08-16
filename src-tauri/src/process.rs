@@ -139,10 +139,15 @@ pub async fn process_video(
         args.push(&profile);
     }
 
-    // H.265 转 H.264
+    // H.265 转 H.264 / H.264 转 H.265（互斥，优先 H.265→H.264）
     if options.convert_h265_to_h264 {
         args.push("-c:v");
         args.push("libx264");
+    } else if options.convert_h264_to_h265 {
+        args.push("-c:v");
+        args.push("libx265");
+        args.push("-tag:v");
+        args.push("hvc1");
     }
 
     // 压缩（使用CRF）
