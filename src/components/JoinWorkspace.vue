@@ -9,7 +9,13 @@ import {
   watch,
 } from "vue";
 import { invoke } from "@tauri-apps/api/core";
-import type { FileInfo, JoinFit, JoinItem, JoinOptions, NamingOptions } from "../types";
+import type {
+  FileInfo,
+  JoinFit,
+  JoinItem,
+  JoinOptions,
+  NamingOptions,
+} from "../types";
 import { formatFileSizeMb } from "../types";
 import { useFileThumbs } from "../composables/useFileThumbs";
 import MediaPreviewModal from "./MediaPreviewModal.vue";
@@ -79,9 +85,7 @@ const selectedItem = computed(
   () => items.value.find((i) => i.id === selectedId.value) || null,
 );
 
-const sortedItems = computed(() =>
-  [...items.value].sort((a, b) => a.z - b.z),
-);
+const sortedItems = computed(() => [...items.value].sort((a, b) => a.z - b.z));
 
 const usedPaths = computed(() => new Set(items.value.map((i) => i.path)));
 
@@ -176,7 +180,9 @@ async function loadPreview(path: string, kind: "image" | "video") {
 
 async function loadNativeSize(path: string, kind: "image" | "video") {
   if (kind === "video") {
-    return invoke<[number, number]>("get_video_dimensions", { videoPath: path });
+    return invoke<[number, number]>("get_video_dimensions", {
+      videoPath: path,
+    });
   }
   return invoke<[number, number]>("get_image_dimensions", { imagePath: path });
 }
@@ -237,26 +243,99 @@ async function addFile(file: FileInfo) {
   }
 }
 
-function snapValue(
+type SnapCandidate = { pos: number; guide: number };
+
+function bestSnap(
   value: number,
-  targets: number[],
+  candidates: SnapCandidate[],
   threshold: number,
 ): { value: number; guide: number | null } {
   let best = value;
   let guide: number | null = null;
   let bestDist = threshold + 1;
-  for (const t of targets) {
-    const d = Math.abs(value - t);
+  for (const c of candidates) {
+    const d = Math.abs(value - c.pos);
     if (d <= threshold && d < bestDist) {
       bestDist = d;
-      best = t;
-      guide = t;
+      best = c.pos;
+      guide = c.guide;
     }
   }
   return { value: best, guide };
 }
 
-/** 移动时吸附画布边缘（左/中/右，上/中/下） */
+/** 其它图层的垂直参考线（x） */
+function otherVerticalEdges(excludeId: string): number[] {
+  const edges: number[] = [];
+  for (const o of items.value) {
+    if (o.id === excludeId) continue;
+    edges.push(o.x, o.x + o.width / 2, o.x + o.width);
+  }
+  return edges;
+}
+
+/** 其它图层的水平参考线（y） */
+function otherHorizontalEdges(excludeId: string): number[] {
+  const edges: number[] = [];
+  for (const o of items.value) {
+    if (o.id === excludeId) continue;
+    edges.push(o.y, o.y + o.height / 2, o.y + o.height);
+  }
+  return edges;
+}
+
+/**
+ * 将「当前边」吸附到目标参考线：候选为 (应落到的坐标 pos, 辅助线位置 guide)
+ * edge 为 left/right/centerX 或 top/bottom/centerY
+ */
+function snapEdgeToRefs(
+  edgeValue: number,
+  edgeKind: "left" | "right" | "cx",
+  itemSize: number,
+  canvasSize: number,
+  otherEdges: number[],
+  thr: number,
+): { delta: number; guide: number | null } {
+  const candidates: SnapCandidate[] = [];
+  // 画布
+  if (edgeKind === "left") {
+    candidates.push({ pos: 0, guide: 0 });
+    candidates.push({
+      pos: (canvasSize - itemSize) / 2,
+      guide: canvasSize / 2,
+    });
+  } else if (edgeKind === "right") {
+    candidates.push({ pos: canvasSize, guide: canvasSize });
+    candidates.push({
+      pos: (canvasSize + itemSize) / 2,
+      guide: canvasSize / 2,
+    });
+  } else {
+    candidates.push({ pos: canvasSize / 2, guide: canvasSize / 2 });
+    candidates.push({ pos: itemSize / 2, guide: 0 });
+    candidates.push({ pos: canvasSize - itemSize / 2, guide: canvasSize });
+  }
+  // 其它素材边
+  for (const e of otherEdges) {
+    if (edgeKind === "left") {
+      candidates.push({ pos: e, guide: e });
+      candidates.push({ pos: e - itemSize, guide: e }); // 右对齐到 e → left = e - w
+    } else if (edgeKind === "right") {
+      candidates.push({ pos: e, guide: e });
+      candidates.push({ pos: e + itemSize, guide: e }); // 左对齐到 e → right = e + w
+    } else {
+      candidates.push({ pos: e, guide: e });
+    }
+  }
+  // 对 left：edgeValue 是 left，pos 是目标 left
+  // 对 right：edgeValue 是 right，pos 是目标 right
+  // 对 cx：edgeValue 是 center，pos 是目标 center
+  const hit = bestSnap(edgeValue, candidates, thr);
+  if (hit.guide == null) return { delta: 0, guide: null };
+  return { delta: hit.value - edgeValue, guide: hit.guide };
+}
+
+/** 移动：画布边 + 素材边/中线 吸附 */
 function applyMoveSnap(item: JoinItem, x: number, y: number) {
   if (!snapEnabled.value) {
     snapGuides.value = { v: null, h: null };
@@ -269,46 +348,46 @@ function applyMoveSnap(item: JoinItem, x: number, y: number) {
   const ch = canvasHeight.value;
   const w = item.width;
   const h = item.height;
+  const vEdges = otherVerticalEdges(item.id);
+  const hEdges = otherHorizontalEdges(item.id);
 
-  const xLeft = snapValue(x, [0], thr);
-  const xRight = snapValue(x, [cw - w], thr);
-  const xCenter = snapValue(x, [(cw - w) / 2], thr);
-  // 优先边，其次中线
-  let nx = x;
-  let gv: number | null = null;
-  if (xLeft.guide != null) {
-    nx = xLeft.value;
-    gv = 0;
-  } else if (xRight.guide != null) {
-    nx = xRight.value;
-    gv = cw;
-  } else if (xCenter.guide != null) {
-    nx = xCenter.value;
-    gv = cw / 2;
+  // X：左 / 右 / 中 三者取最近
+  type AxisHit = { delta: number; guide: number | null; dist: number };
+  const xHits: AxisHit[] = [];
+  for (const kind of ["left", "right", "cx"] as const) {
+    const edge = kind === "left" ? x : kind === "right" ? x + w : x + w / 2;
+    const r = snapEdgeToRefs(edge, kind, w, cw, vEdges, thr);
+    if (r.guide != null) {
+      xHits.push({ delta: r.delta, guide: r.guide, dist: Math.abs(r.delta) });
+    }
   }
+  xHits.sort((a, b) => a.dist - b.dist);
+  const xBest = xHits[0];
+  const nx = xBest ? x + xBest.delta : x;
+  const gv = xBest?.guide ?? null;
 
-  const yTop = snapValue(y, [0], thr);
-  const yBottom = snapValue(y, [ch - h], thr);
-  const yCenter = snapValue(y, [(ch - h) / 2], thr);
-  let ny = y;
-  let gh: number | null = null;
-  if (yTop.guide != null) {
-    ny = yTop.value;
-    gh = 0;
-  } else if (yBottom.guide != null) {
-    ny = yBottom.value;
-    gh = ch;
-  } else if (yCenter.guide != null) {
-    ny = yCenter.value;
-    gh = ch / 2;
+  const yHits: AxisHit[] = [];
+  for (const kind of ["left", "right", "cx"] as const) {
+    // 复用逻辑：left→top, right→bottom, cx→cy
+    const edgeKind =
+      kind === "left" ? "left" : kind === "right" ? "right" : "cx";
+    const edge = kind === "left" ? y : kind === "right" ? y + h : y + h / 2;
+    const r = snapEdgeToRefs(edge, edgeKind, h, ch, hEdges, thr);
+    if (r.guide != null) {
+      yHits.push({ delta: r.delta, guide: r.guide, dist: Math.abs(r.delta) });
+    }
   }
+  yHits.sort((a, b) => a.dist - b.dist);
+  const yBest = yHits[0];
+  const ny = yBest ? y + yBest.delta : y;
+  const gh = yBest?.guide ?? null;
 
   item.x = Math.floor(nx);
   item.y = Math.floor(ny);
   snapGuides.value = { v: gv, h: gh };
 }
 
-/** 缩放时吸附对边贴齐画布 */
+/** 缩放：画布边 + 素材边 吸附 */
 function applyResizeSnap(
   item: JoinItem,
   x: number,
@@ -328,6 +407,8 @@ function applyResizeSnap(
   const thr = SNAP_THRESHOLD;
   const cw = canvasWidth.value;
   const ch = canvasHeight.value;
+  const vEdges = otherVerticalEdges(item.id);
+  const hEdges = otherHorizontalEdges(item.id);
   let nx = x;
   let ny = y;
   let nw = w;
@@ -337,36 +418,52 @@ function applyResizeSnap(
 
   if (handle.includes("e")) {
     const right = x + w;
-    const s = snapValue(right, [cw], thr);
+    const targets: SnapCandidate[] = [
+      { pos: cw, guide: cw },
+      ...vEdges.map((e) => ({ pos: e, guide: e })),
+    ];
+    const s = bestSnap(right, targets, thr);
     if (s.guide != null) {
       nw = Math.max(2, s.value - x);
-      gv = cw;
+      gv = s.guide;
     }
   }
   if (handle.includes("w")) {
-    const s = snapValue(x, [0], thr);
+    const targets: SnapCandidate[] = [
+      { pos: 0, guide: 0 },
+      ...vEdges.map((e) => ({ pos: e, guide: e })),
+    ];
+    const s = bestSnap(x, targets, thr);
     if (s.guide != null) {
       const right = x + w;
       nx = s.value;
       nw = Math.max(2, right - nx);
-      gv = 0;
+      gv = s.guide;
     }
   }
   if (handle.includes("s")) {
     const bottom = y + h;
-    const s = snapValue(bottom, [ch], thr);
+    const targets: SnapCandidate[] = [
+      { pos: ch, guide: ch },
+      ...hEdges.map((e) => ({ pos: e, guide: e })),
+    ];
+    const s = bestSnap(bottom, targets, thr);
     if (s.guide != null) {
       nh = Math.max(2, s.value - y);
-      gh = ch;
+      gh = s.guide;
     }
   }
   if (handle.includes("n")) {
-    const s = snapValue(y, [0], thr);
+    const targets: SnapCandidate[] = [
+      { pos: 0, guide: 0 },
+      ...hEdges.map((e) => ({ pos: e, guide: e })),
+    ];
+    const s = bestSnap(y, targets, thr);
     if (s.guide != null) {
       const bottom = y + h;
       ny = s.value;
       nh = Math.max(2, bottom - ny);
-      gh = 0;
+      gh = s.guide;
     }
   }
 
@@ -389,7 +486,9 @@ function removeSelected() {
 function bringForward() {
   const item = selectedItem.value;
   if (!item) return;
-  const higher = items.value.filter((i) => i.z > item.z).sort((a, b) => a.z - b.z)[0];
+  const higher = items.value
+    .filter((i) => i.z > item.z)
+    .sort((a, b) => a.z - b.z)[0];
   if (!higher) return;
   const tz = item.z;
   item.z = higher.z;
@@ -399,7 +498,9 @@ function bringForward() {
 function sendBackward() {
   const item = selectedItem.value;
   if (!item) return;
-  const lower = items.value.filter((i) => i.z < item.z).sort((a, b) => b.z - a.z)[0];
+  const lower = items.value
+    .filter((i) => i.z < item.z)
+    .sort((a, b) => b.z - a.z)[0];
   if (!lower) return;
   const tz = item.z;
   item.z = lower.z;
@@ -428,7 +529,14 @@ function setFit(fit: JoinFit) {
 
 // --- drag / resize ---
 type DragMode =
-  | { kind: "move"; id: string; startX: number; startY: number; origX: number; origY: number }
+  | {
+      kind: "move";
+      id: string;
+      startX: number;
+      startY: number;
+      origX: number;
+      origY: number;
+    }
   | {
       kind: "resize";
       id: string;
@@ -530,7 +638,8 @@ function buildOutputName() {
       `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`,
     );
   }
-  if (props.naming.custom_text.trim()) parts.push(props.naming.custom_text.trim());
+  if (props.naming.custom_text.trim())
+    parts.push(props.naming.custom_text.trim());
   if (parts.length === 0) parts.push(`join_${Date.now()}`);
   const ext = outputKind.value === "image" ? "png" : "mp4";
   return `${parts.join("-")}.${ext}`;
@@ -611,13 +720,11 @@ onBeforeUnmount(() => {
       <div class="flex items-center gap-16px flex-wrap min-w-0">
         <div class="min-w-140px">
           <div class="text-13px font-600">自定义拼接</div>
-          <div class="text-11px color-t3 mt-2px">
-            图/视频可混排 · 最多 6 层
-          </div>
+          <div class="text-11px color-t3 mt-2px">图/视频可混排 · 最多 6 层</div>
         </div>
 
         <div
-          class="flex flex-wrap items-center gap-12px py-8px px-12px bg-bg0 rounded-8px border border-border"
+          class="flex h-36px flex-wrap items-center gap-12px px-12px bg-bg0 rounded-8px border border-border"
         >
           <span class="text-12px color-t3">画布</span>
           <select
@@ -672,6 +779,7 @@ onBeforeUnmount(() => {
               class="accent-secondary"
             />
             边缘吸附
+            <span class="text-10px color-t3">（画布+素材）</span>
           </label>
         </div>
 
@@ -805,10 +913,9 @@ onBeforeUnmount(() => {
                 : background === 'transparent'
                   ? '#000000'
                   : background,
-            outline: '2px dashed rgba(255,255,255,0.75)',
+            outline: '1px dashed red',
             outlineOffset: '0px',
-            boxShadow:
-              '0 0 0 1px rgba(0,0,0,0.5), 0 8px 24px rgba(0,0,0,0.35)',
+            boxShadow: '0 0 0 1px rgba(0,0,0,0.5), 0 8px 24px rgba(0,0,0,0.35)',
           }"
           @click.stop
         >
@@ -835,7 +942,7 @@ onBeforeUnmount(() => {
             class="absolute box-border select-none"
             :class="
               selectedId === item.id
-                ? 'outline outline-2 outline-secondary z-50'
+                ? 'outline outline-1 outline-secondary z-50'
                 : 'outline outline-1 outline-white/30'
             "
             :style="{
@@ -844,7 +951,10 @@ onBeforeUnmount(() => {
               width: item.width * viewScale + 'px',
               height: item.height * viewScale + 'px',
               zIndex: item.z,
-              cursor: drag?.kind === 'move' && drag.id === item.id ? 'grabbing' : 'grab',
+              cursor:
+                drag?.kind === 'move' && drag.id === item.id
+                  ? 'grabbing'
+                  : 'grab',
             }"
             @pointerdown="onItemPointerDown($event, item.id)"
             @click.stop="selectedId = item.id"
@@ -921,7 +1031,9 @@ onBeforeUnmount(() => {
         >
           属性
         </div>
-        <div class="flex-1 min-h-0 overflow-y-auto p-12px flex flex-col gap-10px">
+        <div
+          class="flex-1 min-h-0 overflow-y-auto p-12px flex flex-col gap-10px"
+        >
           <template v-if="selectedItem">
             <div class="text-12px font-500 truncate" :title="selectedItem.name">
               <span class="color-t3 font-400 mr-4px">
