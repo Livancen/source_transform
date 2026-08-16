@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { computed, toRef } from "vue";
+import { computed, ref, toRef } from "vue";
 import type { FileInfo } from "../types";
 import { formatFileSizeMb } from "../types";
 import { useFileThumbs } from "../composables/useFileThumbs";
+import MediaPreviewModal from "./MediaPreviewModal.vue";
 
 const props = defineProps<{
   kind: "input" | "output";
@@ -27,6 +28,9 @@ const title = computed(() => (props.kind === "input" ? "输入" : "输出"));
 const filesRef = toRef(props, "files");
 const { thumbs } = useFileThumbs(filesRef);
 
+const previewVisible = ref(false);
+const previewFile = ref<FileInfo | null>(null);
+
 function fileExt(name: string) {
   const i = name.lastIndexOf(".");
   return i >= 0 ? name.slice(i + 1) : "";
@@ -34,6 +38,24 @@ function fileExt(name: string) {
 
 function isRowChecked(path: string) {
   return props.checkedPaths?.has(path) ?? false;
+}
+
+function onRowClick(file: FileInfo) {
+  emit("selectFile", file);
+  if (props.selectable) {
+    emit("toggleCheck", file.path);
+  }
+}
+
+function openPreview(file: FileInfo, e: Event) {
+  e.stopPropagation();
+  previewFile.value = file;
+  previewVisible.value = true;
+}
+
+function closePreview() {
+  previewVisible.value = false;
+  previewFile.value = null;
 }
 </script>
 
@@ -109,38 +131,46 @@ function isRowChecked(path: string) {
         <div
           v-for="file in files"
           :key="file.path"
-          class="grid items-center min-h-52px px-10px mx-4px my-1px rounded-6px color-t1 transition-colors duration-100 cursor-default hover:bg-bg3"
+          class="grid items-center min-h-52px px-10px mx-4px my-1px rounded-6px color-t1 transition-colors duration-100 hover:bg-bg3"
           :class="[
             selectable
-              ? 'grid-cols-[28px_48px_minmax(0,1fr)_56px_64px]'
-              : 'grid-cols-[48px_minmax(0,1fr)_56px_64px]',
-            { 'bg-bg-selected outline outline-1 outline-secondary/25': selectedPath === file.path },
+              ? 'grid-cols-[28px_48px_minmax(0,1fr)_56px_64px] cursor-pointer'
+              : 'grid-cols-[48px_minmax(0,1fr)_56px_64px] cursor-default',
+            {
+              'bg-bg-selected outline outline-1 outline-secondary/25': selectedPath === file.path,
+              'bg-secondary-soft/40': selectable && isRowChecked(file.path),
+            },
           ]"
-          @click="emit('selectFile', file)"
+          @click="onRowClick(file)"
         >
-          <label
+          <div
             v-if="selectable"
-            class="flex items-center justify-center h-full"
-            @click.stop
+            class="flex items-center justify-center h-full pointer-events-none"
           >
             <input
               type="checkbox"
-              class="accent-secondary w-14px h-14px cursor-pointer"
+              class="accent-secondary w-14px h-14px pointer-events-none"
               :checked="isRowChecked(file.path)"
-              @change="emit('toggleCheck', file.path)"
+              tabindex="-1"
+              readonly
             />
-          </label>
+          </div>
 
-          <div class="w-40px h-40px rounded-4px overflow-hidden bg-bg0 border border-border shrink-0">
+          <button
+            type="button"
+            class="w-40px h-40px rounded-4px overflow-hidden bg-bg0 border border-border shrink-0 p-0 cursor-zoom-in hover:border-secondary hover:ring-1 hover:ring-secondary/30 transition-all"
+            title="点击预览"
+            @click="openPreview(file, $event)"
+          >
             <img
               v-if="thumbs[file.path]"
               :src="thumbs[file.path]"
-              class="w-full h-full object-cover"
+              class="w-full h-full object-cover pointer-events-none"
               draggable="false"
             />
             <div
               v-else
-              class="w-full h-full grid place-items-center"
+              class="w-full h-full grid place-items-center pointer-events-none"
               :class="file.file_type === 'image' ? 'color-image' : 'color-video'"
             >
               <svg v-if="file.file_type === 'image'" class="w-16px h-16px opacity-50" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -153,7 +183,7 @@ function isRowChecked(path: string) {
                 <path d="M17 10l5-3v10l-5-3z"/>
               </svg>
             </div>
-          </div>
+          </button>
 
           <div class="min-w-0 px-6px">
             <div class="truncate text-13px" :title="file.path">{{ file.name }}</div>
@@ -189,5 +219,11 @@ function isRowChecked(path: string) {
         </span>
       </div>
     </div>
+
+    <MediaPreviewModal
+      :visible="previewVisible"
+      :file="previewFile"
+      @close="closePreview"
+    />
   </section>
 </template>

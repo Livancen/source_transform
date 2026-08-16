@@ -10,6 +10,7 @@ import type {
 } from "../types";
 import { formatFileSizeMb } from "../types";
 import { useFileThumbs } from "../composables/useFileThumbs";
+import MediaPreviewModal from "./MediaPreviewModal.vue";
 
 type MergeSlotState = {
   path: string;
@@ -110,6 +111,20 @@ const pickerFiles = computed(() =>
 
 const pickerFilesRef = computed(() => pickerFiles.value);
 const { thumbs } = useFileThumbs(pickerFilesRef);
+
+const mediaPreviewVisible = ref(false);
+const mediaPreviewFile = ref<FileInfo | null>(null);
+
+function openMediaPreview(file: FileInfo, e: Event) {
+  e.stopPropagation();
+  mediaPreviewFile.value = file;
+  mediaPreviewVisible.value = true;
+}
+
+function closeMediaPreview() {
+  mediaPreviewVisible.value = false;
+  mediaPreviewFile.value = null;
+}
 
 const slotPaths = computed(() => new Set(slots.map((s) => s.path).filter(Boolean)));
 
@@ -385,14 +400,18 @@ async function startMerge() {
             :disabled="isMerging"
             @click="onPickFromList(f)"
           >
-            <div class="w-44px h-44px rounded-4px overflow-hidden bg-bg1 border border-border shrink-0">
+            <div
+              class="w-44px h-44px rounded-4px overflow-hidden bg-bg1 border border-border shrink-0 cursor-zoom-in hover:border-secondary"
+              title="点击预览"
+              @click="openMediaPreview(f, $event)"
+            >
               <img
                 v-if="thumbs[f.path]"
                 :src="thumbs[f.path]"
-                class="w-full h-full object-cover"
+                class="w-full h-full object-cover pointer-events-none"
                 draggable="false"
               />
-              <div v-else class="w-full h-full grid place-items-center text-10px color-t3">…</div>
+              <div v-else class="w-full h-full grid place-items-center text-10px color-t3 pointer-events-none">…</div>
             </div>
             <div class="min-w-0 flex-1">
               <div class="truncate font-500" :title="f.name">{{ f.name }}</div>
@@ -612,5 +631,11 @@ async function startMerge() {
         </div>
       </div>
     </div>
+
+    <MediaPreviewModal
+      :visible="mediaPreviewVisible"
+      :file="mediaPreviewFile"
+      @close="closeMediaPreview"
+    />
   </div>
 </template>

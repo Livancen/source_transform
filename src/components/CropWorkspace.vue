@@ -3,6 +3,7 @@ import { ref, watch, onMounted, onBeforeUnmount, nextTick, toRef } from "vue";
 import type { FileInfo } from "../types";
 import { formatFileSizeMb } from "../types";
 import { useFileThumbs } from "../composables/useFileThumbs";
+import MediaPreviewModal from "./MediaPreviewModal.vue";
 
 const props = defineProps<{
   files: FileInfo[];
@@ -37,6 +38,20 @@ const emit = defineEmits<{
 
 const filesRef = toRef(props, "files");
 const { thumbs } = useFileThumbs(filesRef);
+
+const mediaPreviewVisible = ref(false);
+const mediaPreviewFile = ref<FileInfo | null>(null);
+
+function openMediaPreview(file: FileInfo, e: Event) {
+  e.stopPropagation();
+  mediaPreviewFile.value = file;
+  mediaPreviewVisible.value = true;
+}
+
+function closeMediaPreview() {
+  mediaPreviewVisible.value = false;
+  mediaPreviewFile.value = null;
+}
 
 const previewHostRef = ref<HTMLElement | null>(null);
 let resizeObserver: ResizeObserver | null = null;
@@ -129,14 +144,18 @@ watch(
             "
             @click="emit('selectFile', f)"
           >
-            <div class="w-44px h-44px rounded-4px overflow-hidden bg-bg1 border border-border shrink-0">
+            <div
+              class="w-44px h-44px rounded-4px overflow-hidden bg-bg1 border border-border shrink-0 cursor-zoom-in hover:border-secondary"
+              title="点击预览"
+              @click="openMediaPreview(f, $event)"
+            >
               <img
                 v-if="thumbs[f.path]"
                 :src="thumbs[f.path]"
-                class="w-full h-full object-cover"
+                class="w-full h-full object-cover pointer-events-none"
                 draggable="false"
               />
-              <div v-else class="w-full h-full grid place-items-center text-10px color-t3">…</div>
+              <div v-else class="w-full h-full grid place-items-center text-10px color-t3 pointer-events-none">…</div>
             </div>
             <div class="min-w-0 flex-1">
               <div class="truncate font-500" :title="f.name">{{ f.name }}</div>
@@ -308,5 +327,10 @@ watch(
         </div>
       </div>
     </div>
+    <MediaPreviewModal
+      :visible="mediaPreviewVisible"
+      :file="mediaPreviewFile"
+      @close="closeMediaPreview"
+    />
   </div>
 </template>
