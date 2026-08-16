@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "source_transform",
-  "version": "8.2.4",
+  "version": "8.2.5",
   "identifier": "com.tauri-app.source-transform",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -48,7 +48,7 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDk0QTFFRkY0QjhBMTM3QTIKUldTaU42RzQ5TytobE1UUUJRc2JrOUpzWG45T2lGYzFTSFMyT0FlQTdoUFJrMEh2Y2FGM3dHdW4K",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEFDQ0VEMUE1QTJGNDg3NDQKUldSRWgvU2lwZEhPckNQUG4yOSt0TUdrZmgybUhwSGpkb2M4SG5jQ1J0aHhpY0I5K3hKVEFzTXIK",
       "endpoints": [
         "https://github.com/Livancen/source_transform/releases/latest/download/latest.json"
       ],
