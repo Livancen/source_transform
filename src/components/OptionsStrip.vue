@@ -1,29 +1,36 @@
 <script setup lang="ts">
-import type { ProcessOptions } from "../types";
+import type { ProcessOptions, WorkMode } from "../types";
 
-defineProps<{
+const props = defineProps<{
   open: boolean;
+  workMode: WorkMode;
   options: ProcessOptions;
-  enableRatioCrop: boolean;
   ratios: string[];
   newRatio: string;
   ratioError: string;
-  videoFilesLength: number;
 }>();
 
 const emit = defineEmits<{
-  openCropPreview: [];
-  "update:enableRatioCrop": [value: boolean];
   "update:newRatio": [value: string];
   addRatio: [];
   removeRatio: [index: number];
 }>();
+
+const showImageOpts = () => props.workMode === "image";
+const showVideoOpts = () => props.workMode === "video";
+const showRatioOpts = () => props.workMode === "ratio";
+const showBatchOpts = () => showImageOpts() || showVideoOpts();
 </script>
 
 <template>
-  <div class="options-strip-body shrink-0 bg-bg1 border-b border-border" :class="{ 'is-open': open }">
+  <div
+    v-if="showBatchOpts() || showRatioOpts()"
+    class="options-strip-body shrink-0 bg-bg1 border-b border-border"
+    :class="{ 'is-open': open }"
+  >
     <div class="pt-12px px-14px pb-14px flex flex-col gap-10px">
-      <div class="flex flex-wrap gap-8px items-start">
+      <!-- 图片 / 视频 批量选项 -->
+      <div v-if="showBatchOpts()" class="flex flex-wrap gap-8px items-start">
         <!-- 压缩 -->
         <div class="opt-chip" :class="{ 'opt-chip-on': options.compress }">
           <label class="switch">
@@ -67,66 +74,7 @@ const emit = defineEmits<{
           </span>
         </div>
 
-        <!-- 降码率 -->
-        <div class="opt-chip" :class="{ 'opt-chip-on': options.reduce_bitrate }">
-          <label class="switch">
-            <input type="checkbox" v-model="options.reduce_bitrate" />
-            <span class="slider"></span>
-          </label>
-          <span class="text-12px font-500" :class="options.reduce_bitrate ? 'color-t1' : 'color-t2'">降码率</span>
-          <span v-show="options.reduce_bitrate" class="inline-flex items-center gap-6px pl-6px ml-2px border-l border-border">
-            <select class="field w-auto! min-w-72px h-24px! px-6px! text-11px!" v-model="options.target_bitrate">
-              <option value="200k">200 Kbps</option>
-              <option value="500k">500 Kbps</option>
-              <option value="800k">800 Kbps</option>
-              <option value="1M">1 Mbps</option>
-              <option value="2M">2 Mbps</option>
-              <option value="3M">3 Mbps</option>
-              <option value="5M">5 Mbps</option>
-              <option value="8M">8 Mbps</option>
-              <option value="10M">10 Mbps</option>
-              <option value="15M">15 Mbps</option>
-              <option value="20M">20 Mbps</option>
-            </select>
-          </span>
-        </div>
-
-        <!-- Profile/Level -->
-        <div class="opt-chip" :class="{ 'opt-chip-on': options.reduce_level }">
-          <label class="switch">
-            <input type="checkbox" v-model="options.reduce_level" />
-            <span class="slider"></span>
-          </label>
-          <span class="text-12px font-500" :class="options.reduce_level ? 'color-t1' : 'color-t2'">Profile/Level</span>
-          <span v-show="options.reduce_level" class="inline-flex items-center gap-6px pl-6px ml-2px border-l border-border">
-            <select class="field w-auto! min-w-72px h-24px! px-6px! text-11px!" v-model="options.target_profile">
-              <option value="baseline">Baseline</option>
-              <option value="main">Main</option>
-              <option value="high">High</option>
-            </select>
-            <select class="field w-auto! min-w-72px h-24px! px-6px! text-11px!" v-model="options.target_level">
-              <option value="3.0">3.0</option>
-              <option value="3.1">3.1</option>
-              <option value="4.0">4.0</option>
-              <option value="4.1">4.1</option>
-              <option value="4.2">4.2</option>
-              <option value="5.0">5.0</option>
-              <option value="5.1">5.1</option>
-              <option value="5.2">5.2</option>
-            </select>
-          </span>
-        </div>
-
-        <!-- H265 -->
-        <div class="opt-chip" :class="{ 'opt-chip-on': options.convert_h265_to_h264 }">
-          <label class="switch">
-            <input type="checkbox" v-model="options.convert_h265_to_h264" />
-            <span class="slider"></span>
-          </label>
-          <span class="text-12px font-500" :class="options.convert_h265_to_h264 ? 'color-t1' : 'color-t2'">H.265→H.264</span>
-        </div>
-
-        <!-- 格式 -->
+        <!-- 转格式 -->
         <div class="opt-chip" :class="{ 'opt-chip-on': options.convert_format }">
           <label class="switch">
             <input type="checkbox" v-model="options.convert_format" />
@@ -134,7 +82,14 @@ const emit = defineEmits<{
           </label>
           <span class="text-12px font-500" :class="options.convert_format ? 'color-t1' : 'color-t2'">转格式</span>
           <span v-show="options.convert_format" class="inline-flex items-center gap-6px pl-6px ml-2px border-l border-border">
-            <select class="field w-auto! min-w-72px h-24px! px-6px! text-11px!" v-model="options.target_format">
+            <select v-if="showImageOpts()" class="field w-auto! min-w-72px h-24px! px-6px! text-11px!" v-model="options.target_format">
+              <option value="jpg">JPG</option>
+              <option value="png">PNG</option>
+              <option value="webp">WebP</option>
+              <option value="bmp">BMP</option>
+              <option value="tiff">TIFF</option>
+            </select>
+            <select v-else class="field w-auto! min-w-72px h-24px! px-6px! text-11px!" v-model="options.target_format">
               <option value="mp4">MP4</option>
               <option value="avi">AVI</option>
               <option value="mkv">MKV</option>
@@ -142,27 +97,6 @@ const emit = defineEmits<{
               <option value="webm">WebM</option>
               <option value="flv">FLV</option>
             </select>
-          </span>
-        </div>
-
-        <!-- 裁剪 -->
-        <div class="opt-chip" :class="{ 'opt-chip-on': options.crop }">
-          <label class="switch">
-            <input type="checkbox" v-model="options.crop" />
-            <span class="slider"></span>
-          </label>
-          <span class="text-12px font-500" :class="options.crop ? 'color-t1' : 'color-t2'">裁剪</span>
-          <span v-show="options.crop" class="inline-flex items-center gap-6px pl-6px ml-2px border-l border-border">
-            <span class="text-10px color-t3">{{ options.crop_width }}×{{ options.crop_height }}</span>
-            <span class="text-10px color-t3">@{{ options.crop_x }},{{ options.crop_y }}</span>
-            <button
-              class="tb-btn h-24px! px-8px! text-11px!"
-              type="button"
-              :disabled="videoFilesLength === 0"
-              @click="emit('openCropPreview')"
-            >
-              设置区域
-            </button>
           </span>
         </div>
 
@@ -183,41 +117,94 @@ const emit = defineEmits<{
           </span>
         </div>
 
-        <!-- 静音 -->
-        <div class="opt-chip" :class="{ 'opt-chip-on': options.mute }">
-          <label class="switch">
-            <input type="checkbox" v-model="options.mute" />
-            <span class="slider"></span>
-          </label>
-          <span class="text-12px font-500" :class="options.mute ? 'color-t1' : 'color-t2'">静音</span>
-        </div>
+        <!-- 仅视频 -->
+        <template v-if="showVideoOpts()">
+          <div class="opt-chip" :class="{ 'opt-chip-on': options.reduce_bitrate }">
+            <label class="switch">
+              <input type="checkbox" v-model="options.reduce_bitrate" />
+              <span class="slider"></span>
+            </label>
+            <span class="text-12px font-500" :class="options.reduce_bitrate ? 'color-t1' : 'color-t2'">降码率</span>
+            <span v-show="options.reduce_bitrate" class="inline-flex items-center gap-6px pl-6px ml-2px border-l border-border">
+              <select class="field w-auto! min-w-72px h-24px! px-6px! text-11px!" v-model="options.target_bitrate">
+                <option value="200k">200 Kbps</option>
+                <option value="500k">500 Kbps</option>
+                <option value="800k">800 Kbps</option>
+                <option value="1M">1 Mbps</option>
+                <option value="2M">2 Mbps</option>
+                <option value="3M">3 Mbps</option>
+                <option value="5M">5 Mbps</option>
+                <option value="8M">8 Mbps</option>
+                <option value="10M">10 Mbps</option>
+                <option value="15M">15 Mbps</option>
+                <option value="20M">20 Mbps</option>
+              </select>
+            </span>
+          </div>
 
-        <!-- 帧率 -->
-        <div class="opt-chip" :class="{ 'opt-chip-on': options.change_framerate }">
-          <label class="switch">
-            <input type="checkbox" v-model="options.change_framerate" />
-            <span class="slider"></span>
-          </label>
-          <span class="text-12px font-500" :class="options.change_framerate ? 'color-t1' : 'color-t2'">帧率</span>
-          <span v-show="options.change_framerate" class="inline-flex items-center gap-6px pl-6px ml-2px border-l border-border">
-            <input class="field w-48px! h-24px! px-6px! text-11px!" type="number" v-model.number="options.target_framerate" min="1" max="120" step="1" />
-            <span class="text-10px color-t3">fps</span>
-          </span>
-        </div>
+          <div class="opt-chip" :class="{ 'opt-chip-on': options.reduce_level }">
+            <label class="switch">
+              <input type="checkbox" v-model="options.reduce_level" />
+              <span class="slider"></span>
+            </label>
+            <span class="text-12px font-500" :class="options.reduce_level ? 'color-t1' : 'color-t2'">Profile/Level</span>
+            <span v-show="options.reduce_level" class="inline-flex items-center gap-6px pl-6px ml-2px border-l border-border">
+              <select class="field w-auto! min-w-72px h-24px! px-6px! text-11px!" v-model="options.target_profile">
+                <option value="baseline">Baseline</option>
+                <option value="main">Main</option>
+                <option value="high">High</option>
+              </select>
+              <select class="field w-auto! min-w-72px h-24px! px-6px! text-11px!" v-model="options.target_level">
+                <option value="3.0">3.0</option>
+                <option value="3.1">3.1</option>
+                <option value="4.0">4.0</option>
+                <option value="4.1">4.1</option>
+                <option value="4.2">4.2</option>
+                <option value="5.0">5.0</option>
+                <option value="5.1">5.1</option>
+                <option value="5.2">5.2</option>
+              </select>
+            </span>
+          </div>
+
+          <div class="opt-chip" :class="{ 'opt-chip-on': options.convert_h265_to_h264 }">
+            <label class="switch">
+              <input type="checkbox" v-model="options.convert_h265_to_h264" />
+              <span class="slider"></span>
+            </label>
+            <span class="text-12px font-500" :class="options.convert_h265_to_h264 ? 'color-t1' : 'color-t2'">H.265→H.264</span>
+          </div>
+
+          <div class="opt-chip" :class="{ 'opt-chip-on': options.mute }">
+            <label class="switch">
+              <input type="checkbox" v-model="options.mute" />
+              <span class="slider"></span>
+            </label>
+            <span class="text-12px font-500" :class="options.mute ? 'color-t1' : 'color-t2'">静音</span>
+          </div>
+
+          <div class="opt-chip" :class="{ 'opt-chip-on': options.change_framerate }">
+            <label class="switch">
+              <input type="checkbox" v-model="options.change_framerate" />
+              <span class="slider"></span>
+            </label>
+            <span class="text-12px font-500" :class="options.change_framerate ? 'color-t1' : 'color-t2'">帧率</span>
+            <span v-show="options.change_framerate" class="inline-flex items-center gap-6px pl-6px ml-2px border-l border-border">
+              <input class="field w-48px! h-24px! px-6px! text-11px!" type="number" v-model.number="options.target_framerate" min="1" max="120" step="1" />
+              <span class="text-10px color-t3">fps</span>
+            </span>
+          </div>
+        </template>
       </div>
 
       <!-- 比例裁剪 -->
-      <div class="flex flex-wrap items-center gap-10px py-10px px-12px rounded-8px bg-bg0 border border-dashed border-border">
-        <div class="flex items-center gap-8px font-500 text-12px">
-          <label class="switch">
-            <input
-              type="checkbox"
-              :checked="enableRatioCrop"
-              @change="emit('update:enableRatioCrop', ($event.target as HTMLInputElement).checked)"
-            />
-            <span class="slider"></span>
-          </label>
-          比例裁剪
+      <div
+        v-if="showRatioOpts()"
+        class="flex flex-wrap items-center gap-10px py-10px px-12px rounded-8px bg-bg0 border border-dashed border-border"
+      >
+        <div class="flex items-center gap-8px font-500 text-12px color-t1">
+          比例列表
+          <span class="text-11px color-t3 font-400">（图+视频批量 · 专用命名）</span>
         </div>
         <div class="flex flex-wrap gap-6px flex-1">
           <span

@@ -21,17 +21,31 @@ pub struct ProcessOptions {
     pub target_profile: String, // e.g., "baseline", "main", "high"
     pub convert_h265_to_h264: bool,
     pub convert_format: bool,
-    pub target_format: String, // e.g., "mp4", "avi", "mkv"
-    pub crop: bool,
-    pub crop_width: u32,
-    pub crop_height: u32,
-    pub crop_x: u32,
-    pub crop_y: u32,
+    pub target_format: String, // e.g., "mp4", "avi", "mkv" / "jpg", "png"
     pub rotate: bool,
     pub rotation_degrees: i32, // 90, 180, 270, -90
     pub mute: bool,            // 视频静音（去除音频）
     pub change_framerate: bool, // 调整帧率
     pub target_framerate: f32,  // 目标帧率
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct NamingOptions {
+    pub use_original_name: bool,
+    pub use_timestamp: bool,
+    pub use_datetime: bool,
+    pub custom_text: String,
+}
+
+impl Default for NamingOptions {
+    fn default() -> Self {
+        Self {
+            use_original_name: true,
+            use_timestamp: false,
+            use_datetime: false,
+            custom_text: String::new(),
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -64,4 +78,22 @@ pub struct VideoMergeOptions {
     pub output_width: Option<u32>,
     pub output_height: Option<u32>,
     pub output_path: String,
+    /// "video" or "image"
+    #[serde(default = "default_media_kind")]
+    pub media_kind: String,
+}
+
+fn default_media_kind() -> String {
+    "video".to_string()
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct CustomCropOptions {
+    pub input_path: String,
+    pub output_dir: String,
+    pub crop_x: u32,
+    pub crop_y: u32,
+    pub crop_width: u32,
+    pub crop_height: u32,
+    pub naming: NamingOptions,
 }

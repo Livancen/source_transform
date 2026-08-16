@@ -1,23 +1,29 @@
 <script setup lang="ts">
-import type { ProcessProgress } from "../types";
+import type { ProcessProgress, WorkMode } from "../types";
 
 const props = defineProps<{
-  optionsOpen: boolean;
+  workMode: WorkMode;
   isProcessing: boolean;
   canStart: boolean;
   progress: ProcessProgress | null;
+  primaryLabel: string;
+  showStart: boolean;
 }>();
 
 defineEmits<{
   refresh: [];
-  selectInput: [];
-  selectOutput: [];
-  toggleOptions: [];
-  openCropPreview: [];
-  openVideoMerge: [];
+  "update:workMode": [mode: WorkMode];
   startProcess: [];
   openSettings: [];
 }>();
+
+const modes: { id: WorkMode; label: string }[] = [
+  { id: "image", label: "图片" },
+  { id: "video", label: "视频" },
+  { id: "ratio", label: "比例裁剪" },
+  { id: "crop", label: "自定义裁剪" },
+  { id: "merge", label: "拼接" },
+];
 
 function progressPercent() {
   if (!props.progress || props.progress.total <= 0) return 0;
@@ -54,69 +60,28 @@ function progressPercent() {
 
     <div class="w-1px h-28px bg-border mx-4px shrink-0"></div>
 
-    <div class="flex items-center gap-4px shrink-0">
+    <div class="flex items-center gap-2px shrink-0 p-2px rounded-8px bg-bg0 border border-border">
       <button
-        class="tb-btn"
-        :class="{ 'tb-btn-active': optionsOpen }"
-        title="处理选项"
-        @click="$emit('toggleOptions')"
-      >
-        <svg
-          class="w-15px h-15px shrink-0"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-        >
-          <circle cx="12" cy="12" r="3" />
-          <path
-            d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"
-          />
-        </svg>
-        处理选项
-      </button>
-      <button
-        class="tb-btn"
-        title="裁剪预览"
+        v-for="m in modes"
+        :key="m.id"
+        type="button"
+        class="h-30px px-12px rounded-6px text-12px font-500 border-none cursor-pointer transition-all duration-150"
+        :class="
+          workMode === m.id
+            ? 'bg-secondary color-white'
+            : 'bg-transparent color-t2 hover:color-t1 hover:bg-bg2'
+        "
         :disabled="isProcessing"
-        @click="$emit('openCropPreview')"
+        @click="$emit('update:workMode', m.id)"
       >
-        <svg
-          class="w-15px h-15px shrink-0"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-        >
-          <path d="M6 2v14a2 2 0 0 0 2 2h14" />
-          <path d="M18 22V8a2 2 0 0 0-2-2H2" />
-        </svg>
-        裁剪预览
-      </button>
-      <button
-        class="tb-btn"
-        title="视频拼接"
-        :disabled="isProcessing"
-        @click="$emit('openVideoMerge')"
-      >
-        <svg
-          class="w-15px h-15px shrink-0"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-        >
-          <rect x="2" y="7" width="8" height="10" rx="1" />
-          <rect x="14" y="7" width="8" height="10" rx="1" />
-          <path d="M10 12h4" />
-        </svg>
-        视频拼接
+        {{ m.label }}
       </button>
     </div>
 
     <div class="w-1px h-28px bg-border mx-4px shrink-0"></div>
 
     <button
+      v-if="showStart"
       class="tb-btn tb-btn-success"
       :disabled="isProcessing || !canStart"
       @click="$emit('startProcess')"
@@ -142,7 +107,7 @@ function progressPercent() {
         <circle cx="12" cy="12" r="10" />
         <polyline points="12 6 12 12 16 14" />
       </svg>
-      {{ isProcessing ? "处理中…" : "开始处理" }}
+      {{ primaryLabel }}
     </button>
 
     <div class="flex-1 min-w-8px"></div>

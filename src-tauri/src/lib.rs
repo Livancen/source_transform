@@ -1,6 +1,7 @@
-mod types;
-mod process;
 mod commands;
+mod naming;
+mod process;
+mod types;
 mod upload_server;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -15,11 +16,17 @@ pub fn run() {
             commands::get_output_dir,
             commands::set_custom_dirs,
             commands::get_custom_dirs,
+            commands::set_naming_options,
+            commands::get_naming_options,
             commands::scan_input_files,
             commands::get_video_dimensions,
+            commands::get_image_dimensions,
             commands::extract_video_frame,
+            commands::load_image_preview,
             commands::process_files,
+            commands::crop_by_ratios,
             commands::crop_videos_by_ratios,
+            commands::custom_crop,
             commands::merge_videos,
             commands::open_folder,
             commands::start_upload_server,

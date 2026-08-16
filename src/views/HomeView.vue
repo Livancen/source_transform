@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from "vue";
+import { computed, watch } from "vue";
 import { useRouter } from "vue-router";
 import { useWorkspace } from "../composables/useWorkspace";
 import { useCrop } from "../composables/useCrop";
@@ -9,33 +9,36 @@ import AppToolbar from "../components/AppToolbar.vue";
 import OptionsStrip from "../components/OptionsStrip.vue";
 import FilePane from "../components/FilePane.vue";
 import StatusBar from "../components/StatusBar.vue";
-import CropPreviewModal from "../components/CropPreviewModal.vue";
-import VideoMergeModal from "../components/VideoMergeModal.vue";
+import CropWorkspace from "../components/CropWorkspace.vue";
+import MergeWorkspace from "../components/MergeWorkspace.vue";
+import type { FileInfo } from "../types";
 
 const router = useRouter();
-const videoMergeVisible = ref(false);
 
 const {
   inputDir,
   outputDir,
   files,
+  allInputFiles,
   outputFiles,
   selectedInputPath,
   selectedOutputPath,
+  workMode,
   options,
+  naming,
   isProcessing,
   progress,
   resultMessage,
   uploadUrl,
   optionsOpen,
-  enableRatioCrop,
   ratios,
   newRatio,
   ratioError,
   imageCount,
   videoCount,
-  videoFiles,
   statusMessage,
+  primaryActionLabel,
+  canStart,
   addRatio,
   removeRatio,
   scanAllFiles,
@@ -49,70 +52,124 @@ const {
 const { leftPanePct, isDragging, panesRef, onSplitterDown } = useSplitter();
 
 const {
-  cropPreviewVisible,
+  selectedFile,
   cropFrameImage,
-  cropVideoWidth,
-  cropVideoHeight,
+  mediaWidth,
+  mediaHeight,
   previewScale,
-  openCropPreview,
-  closeCropPreview,
-  confirmCrop,
+  cropX,
+  cropY,
+  cropWidth,
+  cropHeight,
+  isExporting,
+  isLoading,
+  loadFile,
+  clearFile,
   startDrag,
   startResize,
   handleMouseMove,
   handleMouseUp,
-} = useCrop(options, videoFiles, (msg) => {
+  exportCrop,
+} = useCrop((msg) => {
   resultMessage.value = msg;
 });
 
-function openVideoMerge() {
-  if (!outputDir.value) {
-    resultMessage.value = "请先选择输出目录";
-    return;
-  }
-  videoMergeVisible.value = true;
-}
+const showStart = computed(
+  () => workMode.value === "image" || workMode.value === "video" || workMode.value === "ratio",
+);
 
-function handleVideoMergeCompleted(message: string) {
-  resultMessage.value = message;
-  scanOutputFiles();
-}
+const listFiles = computed(() => {
+  if (workMode.value === "crop" || workMode.value === "merge") {
+    return allInputFiles.value;
+  }
+  return files.value;
+});
+
+watch(workMode, () => {
+  clearFile();
+});
 
 function goSettings() {
   router.push({ name: "settings" });
+}
+
+async function onCropSelect(file: FileInfo) {
+  selectedInputPath.value = file.path;
+  await loadFile(file);
+}
+
+async function onExportCrop() {
+  await exportCrop(outputDir.value, naming.value);
+  await scanOutputFiles();
+}
+
+function handleMergeCompleted(message: string) {
+  resultMessage.value = message;
+  scanOutputFiles();
 }
 </script>
 
 <template>
   <div class="app-shell" @contextmenu.prevent>
     <AppToolbar
-      :options-open="optionsOpen"
+      :work-mode="workMode"
       :is-processing="isProcessing"
-      :can-start="files.length > 0"
+      :can-start="canStart"
       :progress="progress"
+      :primary-label="primaryActionLabel"
+      :show-start="showStart"
       @refresh="scanAllFiles"
-      @select-input="selectInputDir"
-      @select-output="selectOutputDir"
-      @toggle-options="optionsOpen = !optionsOpen"
-      @open-crop-preview="openCropPreview"
-      @open-video-merge="openVideoMerge"
+      @update:work-mode="workMode = $event"
       @start-process="startProcess"
       @open-settings="goSettings"
     />
 
     <OptionsStrip
-      :open="optionsOpen"
+      :open="optionsOpen || workMode === 'ratio'"
+      :work-mode="workMode"
       :options="options"
-      :enable-ratio-crop="enableRatioCrop"
       :ratios="ratios"
       :new-ratio="newRatio"
       :ratio-error="ratioError"
-      :video-files-length="videoFiles.length"
-      @open-crop-preview="openCropPreview"
-      @update:enable-ratio-crop="enableRatioCrop = $event"
       @update:new-ratio="newRatio = $event"
       @add-ratio="addRatio"
       @remove-ratio="removeRatio"
+    />
+
+    <CropWorkspace
+      v-if="workMode === 'crop'"
+      :files="allInputFiles"
+      :selected-path="selectedFile?.path || ''"
+      :crop-frame-image="cropFrameImage"
+      :media-width="mediaWidth"
+      :media-height="mediaHeight"
+      :preview-scale="previewScale"
+      :crop-x="cropX"
+      :crop-y="cropY"
+      :crop-width="cropWidth"
+      :crop-height="cropHeight"
+      :is-loading="isLoading"
+      :is-exporting="isExporting"
+      :has-selection="!!selectedFile"
+      @select-file="onCropSelect"
+      @clear-file="clearFile"
+      @export-crop="onExportCrop"
+      @start-drag="startDrag"
+      @start-resize="startResize"
+      @mouse-move="handleMouseMove"
+      @mouse-up="handleMouseUp"
+      @update:crop-x="cropX = $event"
+      @update:crop-y="cropY = $event"
+      @update:crop-width="cropWidth = $event"
+      @update:crop-height="cropHeight = $event"
+    />
+
+    <MergeWorkspace
+      v-if="workMode === 'merge'"
+      :output-dir="outputDir"
+      :input-files="allInputFiles"
+      :naming="naming"
+      @completed="handleMergeCompleted"
     />
 
     <div
@@ -123,7 +180,7 @@ function goSettings() {
       <FilePane
         kind="input"
         :dir="inputDir"
-        :files="files"
+        :files="listFiles"
         :selected-path="selectedInputPath"
         @select-dir="selectInputDir"
         @open-folder="openFolder(inputDir)"
@@ -149,34 +206,12 @@ function goSettings() {
     </div>
 
     <StatusBar
-      :input-count="files.length"
+      :input-count="listFiles.length"
       :image-count="imageCount"
       :video-count="videoCount"
       :output-count="outputFiles.length"
       :message="statusMessage"
       :upload-url="uploadUrl"
-    />
-
-    <CropPreviewModal
-      :visible="cropPreviewVisible"
-      :options="options"
-      :crop-frame-image="cropFrameImage"
-      :crop-video-width="cropVideoWidth"
-      :crop-video-height="cropVideoHeight"
-      :preview-scale="previewScale"
-      @close="closeCropPreview"
-      @confirm="confirmCrop"
-      @start-drag="startDrag"
-      @start-resize="startResize"
-      @mouse-move="handleMouseMove"
-      @mouse-up="handleMouseUp"
-    />
-
-    <VideoMergeModal
-      :visible="videoMergeVisible"
-      :output-dir="outputDir"
-      @close="videoMergeVisible = false"
-      @completed="handleVideoMergeCompleted"
     />
   </div>
 </template>

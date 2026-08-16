@@ -28,17 +28,21 @@ export interface ProcessOptions {
   convert_h265_to_h264: boolean;
   convert_format: boolean;
   target_format: string;
-  crop: boolean;
-  crop_width: number;
-  crop_height: number;
-  crop_x: number;
-  crop_y: number;
   rotate: boolean;
   rotation_degrees: number;
   mute: boolean;
   change_framerate: boolean;
   target_framerate: number;
 }
+
+export interface NamingOptions {
+  use_original_name: boolean;
+  use_timestamp: boolean;
+  use_datetime: boolean;
+  custom_text: string;
+}
+
+export type WorkMode = "image" | "video" | "ratio" | "crop" | "merge";
 
 export type VideoMergeLayout = "vertical" | "horizontal";
 
@@ -55,4 +59,50 @@ export interface VideoMergeOptions {
   output_width?: number;
   output_height?: number;
   output_path: string;
+  media_kind: "video" | "image";
+}
+
+export interface CustomCropOptions {
+  input_path: string;
+  output_dir: string;
+  crop_x: number;
+  crop_y: number;
+  crop_width: number;
+  crop_height: number;
+  naming: NamingOptions;
+}
+
+export function defaultProcessOptions(): ProcessOptions {
+  return {
+    compress: false,
+    compress_quality: 80,
+    compress_resize: false,
+    compress_width: 1280,
+    compress_height: 720,
+    reduce_resolution: false,
+    target_width: 1920,
+    target_height: 1080,
+    reduce_bitrate: false,
+    target_bitrate: "2M",
+    reduce_level: false,
+    target_level: "4.0",
+    target_profile: "high",
+    convert_h265_to_h264: false,
+    convert_format: false,
+    target_format: "mp4",
+    rotate: false,
+    rotation_degrees: 90,
+    mute: false,
+    change_framerate: false,
+    target_framerate: 30,
+  };
+}
+
+export function defaultNamingOptions(): NamingOptions {
+  return {
+    use_original_name: true,
+    use_timestamp: false,
+    use_datetime: false,
+    custom_text: "",
+  };
 }

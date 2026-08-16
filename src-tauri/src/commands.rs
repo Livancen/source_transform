@@ -5,8 +5,14 @@ use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_shell::ShellExt;
 use walkdir::WalkDir;
 
-use crate::process::{process_image, process_video};
-use crate::types::{FileInfo, ProcessOptions, ProcessProgress, VideoMergeOptions, IMAGE_EXTENSIONS, VIDEO_EXTENSIONS};
+use crate::naming::{build_output_name, join_output_path, ratio_output_name};
+use crate::process::{
+    crop_image_by_ratio, crop_image_region, crop_video_region, process_image, process_video,
+};
+use crate::types::{
+    CustomCropOptions, FileInfo, NamingOptions, ProcessOptions, ProcessProgress, VideoMergeOptions,
+    IMAGE_EXTENSIONS, VIDEO_EXTENSIONS,
+};
 
 fn get_file_type(path: &PathBuf) -> Option<String> {
     let ext = path.extension()?.to_str()?.to_lowercase();
@@ -26,16 +32,43 @@ fn generate_timestamp() -> String {
     format!("{}", now.as_millis())
 }
 
-fn change_extension(path: &PathBuf, new_ext: &str) -> PathBuf {
-    path.with_extension(new_ext)
+fn default_naming() -> NamingOptions {
+    NamingOptions::default()
+}
+
+fn even_dim(v: u32) -> u32 {
+    (v & !1u32).max(2)
+}
+
+fn compute_cover_crop(width: u32, height: u32, target_ratio: f64) -> (u32, u32, u32, u32) {
+    let video_ratio = width as f64 / height as f64;
+    let (mut crop_w, mut crop_h, mut crop_x, mut crop_y) = if target_ratio < video_ratio {
+        let ch = height;
+        let cw = (height as f64 * target_ratio) as u32;
+        let cx = (width.saturating_sub(cw)) / 2;
+        (cw, ch, cx, 0u32)
+    } else {
+        let cw = width;
+        let ch = (width as f64 / target_ratio) as u32;
+        let cy = (height.saturating_sub(ch)) / 2;
+        (cw, ch, 0u32, cy)
+    };
+    crop_w = even_dim(crop_w);
+    crop_h = even_dim(crop_h);
+    crop_x = crop_x & !1u32;
+    crop_y = crop_y & !1u32;
+    if crop_x + crop_w > width {
+        crop_x = even_dim(width.saturating_sub(crop_w)) & !1u32;
+    }
+    if crop_y + crop_h > height {
+        crop_y = even_dim(height.saturating_sub(crop_h)) & !1u32;
+    }
+    (crop_w, crop_h, crop_x, crop_y)
 }
 
 #[tauri::command]
 pub fn get_input_dir(app: AppHandle) -> Result<String, String> {
-    let app_dir = app
-        .path()
-        .app_data_dir()
-        .map_err(|e| e.to_string())?;
+    let app_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
     let input_dir = app_dir.join("input");
     std::fs::create_dir_all(&input_dir).map_err(|e| e.to_string())?;
     Ok(input_dir.to_string_lossy().to_string())
@@ -43,10 +76,7 @@ pub fn get_input_dir(app: AppHandle) -> Result<String, String> {
 
 #[tauri::command]
 pub fn get_output_dir(app: AppHandle) -> Result<String, String> {
-    let app_dir = app
-        .path()
-        .app_data_dir()
-        .map_err(|e| e.to_string())?;
+    let app_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
     let output_dir = app_dir.join("output");
     std::fs::create_dir_all(&output_dir).map_err(|e| e.to_string())?;
     Ok(output_dir.to_string_lossy().to_string())
@@ -54,16 +84,18 @@ pub fn get_output_dir(app: AppHandle) -> Result<String, String> {
 
 #[tauri::command]
 pub fn set_custom_dirs(app: AppHandle, input_path: String, output_path: String) -> Result<(), String> {
-    let app_dir = app
-        .path()
-        .app_data_dir()
-        .map_err(|e| e.to_string())?;
+    let app_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
     let config_path = app_dir.join("config.json");
 
-    let config = serde_json::json!({
-        "input_dir": input_path,
-        "output_dir": output_path
-    });
+    let mut config = if config_path.exists() {
+        let content = std::fs::read_to_string(&config_path).unwrap_or_default();
+        serde_json::from_str(&content).unwrap_or_else(|_| serde_json::json!({}))
+    } else {
+        serde_json::json!({})
+    };
+
+    config["input_dir"] = serde_json::json!(input_path);
+    config["output_dir"] = serde_json::json!(output_path);
 
     std::fs::write(&config_path, serde_json::to_string_pretty(&config).unwrap())
         .map_err(|e| e.to_string())?;
@@ -73,10 +105,7 @@ pub fn set_custom_dirs(app: AppHandle, input_path: String, output_path: String) 
 
 #[tauri::command]
 pub fn get_custom_dirs(app: AppHandle) -> Result<(String, String), String> {
-    let app_dir = app
-        .path()
-        .app_data_dir()
-        .map_err(|e| e.to_string())?;
+    let app_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
     let config_path = app_dir.join("config.json");
 
     if config_path.exists() {
@@ -84,15 +113,54 @@ pub fn get_custom_dirs(app: AppHandle) -> Result<(String, String), String> {
         let config: serde_json::Value = serde_json::from_str(&content).map_err(|e| e.to_string())?;
         let input = config["input_dir"].as_str().unwrap_or("").to_string();
         let output = config["output_dir"].as_str().unwrap_or("").to_string();
-        Ok((input, output))
-    } else {
-        // 返回默认目录
-        let input_dir = app_dir.join("input");
-        let output_dir = app_dir.join("output");
-        std::fs::create_dir_all(&input_dir).map_err(|e| e.to_string())?;
-        std::fs::create_dir_all(&output_dir).map_err(|e| e.to_string())?;
-        Ok((input_dir.to_string_lossy().to_string(), output_dir.to_string_lossy().to_string()))
+        if !input.is_empty() && !output.is_empty() {
+            return Ok((input, output));
+        }
     }
+
+    let input_dir = app_dir.join("input");
+    let output_dir = app_dir.join("output");
+    std::fs::create_dir_all(&input_dir).map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(&output_dir).map_err(|e| e.to_string())?;
+    Ok((
+        input_dir.to_string_lossy().to_string(),
+        output_dir.to_string_lossy().to_string(),
+    ))
+}
+
+#[tauri::command]
+pub fn set_naming_options(app: AppHandle, naming: NamingOptions) -> Result<(), String> {
+    let app_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    let config_path = app_dir.join("config.json");
+
+    let mut config = if config_path.exists() {
+        let content = std::fs::read_to_string(&config_path).unwrap_or_default();
+        serde_json::from_str(&content).unwrap_or_else(|_| serde_json::json!({}))
+    } else {
+        serde_json::json!({})
+    };
+
+    config["naming"] = serde_json::to_value(&naming).map_err(|e| e.to_string())?;
+    std::fs::write(&config_path, serde_json::to_string_pretty(&config).unwrap())
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn get_naming_options(app: AppHandle) -> Result<NamingOptions, String> {
+    let app_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    let config_path = app_dir.join("config.json");
+
+    if config_path.exists() {
+        let content = std::fs::read_to_string(&config_path).map_err(|e| e.to_string())?;
+        let config: serde_json::Value = serde_json::from_str(&content).map_err(|e| e.to_string())?;
+        if let Some(naming) = config.get("naming") {
+            if let Ok(opts) = serde_json::from_value::<NamingOptions>(naming.clone()) {
+                return Ok(opts);
+            }
+        }
+    }
+    Ok(default_naming())
 }
 
 #[tauri::command]
@@ -110,7 +178,11 @@ pub fn scan_input_files(input_dir: String) -> Result<Vec<FileInfo>, String> {
             if let Some(file_type) = get_file_type(&path) {
                 files.push(FileInfo {
                     path: path.to_string_lossy().to_string(),
-                    name: path.file_name().unwrap_or_default().to_string_lossy().to_string(),
+                    name: path
+                        .file_name()
+                        .unwrap_or_default()
+                        .to_string_lossy()
+                        .to_string(),
                     file_type,
                 });
             }
@@ -122,16 +194,19 @@ pub fn scan_input_files(input_dir: String) -> Result<Vec<FileInfo>, String> {
 
 #[tauri::command]
 pub async fn get_video_dimensions(app: AppHandle, video_path: String) -> Result<(u32, u32), String> {
-    // 使用ffprobe获取视频尺寸
     let output = app
         .shell()
         .sidecar("ffprobe")
         .map_err(|e| format!("无法找到FFprobe: {}", e))?
         .args(&[
-            "-v", "error",
-            "-select_streams", "v:0",
-            "-show_entries", "stream=width,height",
-            "-of", "csv=p=0",
+            "-v",
+            "error",
+            "-select_streams",
+            "v:0",
+            "-show_entries",
+            "stream=width,height",
+            "-of",
+            "csv=p=0",
             &video_path,
         ])
         .output()
@@ -156,24 +231,43 @@ pub async fn get_video_dimensions(app: AppHandle, video_path: String) -> Result<
 }
 
 #[tauri::command]
+pub async fn get_image_dimensions(app: AppHandle, image_path: String) -> Result<(u32, u32), String> {
+    let output = app
+        .shell()
+        .sidecar("magick")
+        .map_err(|e| format!("无法找到ImageMagick: {}", e))?
+        .args(&["identify", "-format", "%w %h", &image_path])
+        .output()
+        .await
+        .map_err(|e| format!("无法执行ImageMagick: {}", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("读取图片尺寸失败: {}", stderr));
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let parts: Vec<&str> = stdout.trim().split_whitespace().collect();
+    if parts.len() >= 2 {
+        let width = parts[0].parse::<u32>().map_err(|_| "无法解析图片宽度")?;
+        let height = parts[1].parse::<u32>().map_err(|_| "无法解析图片高度")?;
+        Ok((width, height))
+    } else {
+        Err("无法获取图片尺寸".to_string())
+    }
+}
+
+#[tauri::command]
 pub async fn extract_video_frame(app: AppHandle, video_path: String) -> Result<String, String> {
-    // 获取临时目录
     let temp_dir = std::env::temp_dir();
     let frame_path = temp_dir.join(format!("crop_preview_{}.jpg", generate_timestamp()));
     let frame_path_str = frame_path.to_string_lossy().to_string();
 
-    // 使用ffmpeg提取第一帧
     let output = app
         .shell()
         .sidecar("ffmpeg")
         .map_err(|e| format!("无法找到FFmpeg: {}", e))?
-        .args(&[
-            "-i", &video_path,
-            "-vframes", "1",
-            "-q:v", "2",
-            "-y",
-            &frame_path_str,
-        ])
+        .args(&["-i", &video_path, "-vframes", "1", "-q:v", "2", "-y", &frame_path_str])
         .output()
         .await
         .map_err(|e| format!("无法执行FFmpeg: {}", e))?;
@@ -183,17 +277,32 @@ pub async fn extract_video_frame(app: AppHandle, video_path: String) -> Result<S
         return Err(format!("提取视频帧失败: {}", stderr));
     }
 
-    // 读取图片文件并转换为Base64
-    let image_data = std::fs::read(&frame_path)
-        .map_err(|e| format!("读取帧图片失败: {}", e))?;
-
-    // 删除临时文件
+    let image_data = std::fs::read(&frame_path).map_err(|e| format!("读取帧图片失败: {}", e))?;
     let _ = std::fs::remove_file(&frame_path);
 
-    // 返回Base64数据URL
-    use base64::{Engine as _, engine::general_purpose::STANDARD};
+    use base64::{engine::general_purpose::STANDARD, Engine as _};
     let base64_data = STANDARD.encode(&image_data);
     Ok(format!("data:image/jpeg;base64,{}", base64_data))
+}
+
+#[tauri::command]
+pub async fn load_image_preview(image_path: String) -> Result<String, String> {
+    let image_data = std::fs::read(&image_path).map_err(|e| format!("读取图片失败: {}", e))?;
+    let ext = PathBuf::from(&image_path)
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("jpg")
+        .to_lowercase();
+    let mime = match ext.as_str() {
+        "png" => "image/png",
+        "gif" => "image/gif",
+        "webp" => "image/webp",
+        "bmp" => "image/bmp",
+        _ => "image/jpeg",
+    };
+    use base64::{engine::general_purpose::STANDARD, Engine as _};
+    let base64_data = STANDARD.encode(&image_data);
+    Ok(format!("data:{};base64,{}", mime, base64_data))
 }
 
 #[tauri::command]
@@ -202,16 +311,21 @@ pub async fn process_files(
     input_dir: String,
     output_dir: String,
     options: ProcessOptions,
+    file_type_filter: Option<String>,
+    naming: Option<NamingOptions>,
 ) -> Result<String, String> {
-    // 确保输出目录存在
     std::fs::create_dir_all(&output_dir).map_err(|e| e.to_string())?;
 
-    // 扫描文件
-    let files = scan_input_files(input_dir.clone())?;
-    let total = files.len();
+    let naming = naming.unwrap_or_else(default_naming);
+    let mut files = scan_input_files(input_dir.clone())?;
 
+    if let Some(ref filter) = file_type_filter {
+        files.retain(|f| f.file_type == *filter);
+    }
+
+    let total = files.len();
     if total == 0 {
-        return Err("输入目录中没有找到支持的媒体文件".to_string());
+        return Err("没有找到可处理的媒体文件".to_string());
     }
 
     let mut success_count = 0;
@@ -219,7 +333,6 @@ pub async fn process_files(
     let mut errors: Vec<String> = Vec::new();
 
     for (index, file) in files.iter().enumerate() {
-        // 发送进度事件
         let progress = ProcessProgress {
             current: index + 1,
             total,
@@ -228,29 +341,34 @@ pub async fn process_files(
         };
         let _ = app.emit("process-progress", &progress);
 
-        // 构建输出路径（直接使用原文件名，已存在则覆盖）
-        let input_path = PathBuf::from(&file.path);
-        let relative_path = input_path
-            .strip_prefix(&input_dir)
-            .unwrap_or(&input_path);
-        let output_path = PathBuf::from(&output_dir).join(relative_path);
+        let force_ext = if file.file_type == "video"
+            && options.convert_format
+            && !options.target_format.is_empty()
+        {
+            Some(options.target_format.as_str())
+        } else if file.file_type == "image"
+            && options.convert_format
+            && !options.target_format.is_empty()
+        {
+            Some(options.target_format.as_str())
+        } else {
+            None
+        };
 
-        // 确保输出文件的父目录存在
+        let out_name = build_output_name(&file.name, &naming, force_ext);
+        let output_path = join_output_path(&output_dir, &out_name);
+
         if let Some(parent) = output_path.parent() {
             let _ = std::fs::create_dir_all(parent);
         }
 
         let result = match file.file_type.as_str() {
-            "image" => process_image(&app, &file.path, &output_path.to_string_lossy(), &options).await,
+            "image" => {
+                process_image(&app, &file.path, &output_path.to_string_lossy(), &options).await
+            }
             "video" => {
-                // 如果启用格式转换，更改输出文件扩展名
-                let final_output_path = if options.convert_format && !options.target_format.is_empty() {
-                    change_extension(&output_path, &options.target_format)
-                } else {
-                    output_path.clone()
-                };
-                process_video(&app, &file.path, &final_output_path.to_string_lossy(), &options).await
-            },
+                process_video(&app, &file.path, &output_path.to_string_lossy(), &options).await
+            }
             _ => Err("不支持的文件类型".to_string()),
         };
 
@@ -263,7 +381,6 @@ pub async fn process_files(
         }
     }
 
-    // 发送完成事件
     let progress = ProcessProgress {
         current: total,
         total,
@@ -285,11 +402,12 @@ pub async fn process_files(
 }
 
 #[tauri::command]
-pub async fn crop_videos_by_ratios(
+pub async fn crop_by_ratios(
     app: AppHandle,
     input_dir: String,
     output_dir: String,
     ratios: Vec<String>,
+    file_type_filter: Option<String>,
 ) -> Result<String, String> {
     if ratios.is_empty() {
         return Err("请至少添加一个比例".to_string());
@@ -297,80 +415,70 @@ pub async fn crop_videos_by_ratios(
 
     std::fs::create_dir_all(&output_dir).map_err(|e| e.to_string())?;
 
-    let files = scan_input_files(input_dir.clone())?;
-    let video_files: Vec<_> = files.into_iter().filter(|f| f.file_type == "video").collect();
-
-    if video_files.is_empty() {
-        return Err("输入目录中没有找到视频文件".to_string());
+    let mut files = scan_input_files(input_dir.clone())?;
+    if let Some(ref filter) = file_type_filter {
+        files.retain(|f| f.file_type == *filter);
     }
 
-    let total = video_files.len() * ratios.len();
+    if files.is_empty() {
+        return Err("没有找到可裁剪的媒体文件".to_string());
+    }
+
+    let total = files.len() * ratios.len();
     let mut success_count = 0;
     let mut error_count = 0;
     let mut errors: Vec<String> = Vec::new();
     let mut current = 0;
 
-    for file in &video_files {
-        // 获取视频信息（尺寸、编码、profile、level、像素格式、帧率、色彩参数）
-        let info_output = app
-            .shell()
-            .sidecar("ffprobe")
-            .map_err(|e| format!("无法找到FFprobe: {}", e))?
-            .args(&[
-                "-v", "error",
-                "-select_streams", "v:0",
-                "-show_entries", "stream=width,height,color_space,color_range,color_primaries,color_trc",
-                "-of", "json",
-                &file.path,
-            ])
-            .output()
-            .await
-            .map_err(|e| format!("无法执行FFprobe: {}", e))?;
-
-        if !info_output.status.success() {
-            for ratio in &ratios {
-                current += 1;
-                errors.push(format!("{} ({}): 无法获取视频信息", file.name, ratio));
-                error_count += 1;
-            }
-            continue;
-        }
-
-        let info_str = String::from_utf8_lossy(&info_output.stdout);
-        let info_json: serde_json::Value = serde_json::from_str(&info_str).unwrap_or_default();
-
-        let stream = match info_json.get("streams").and_then(|s| s.as_array()).and_then(|a| a.first()) {
-            Some(s) => s,
-            None => {
-                for ratio in &ratios {
-                    current += 1;
-                    errors.push(format!("{} ({}): 无法解析视频流", file.name, ratio));
-                    error_count += 1;
+    for file in &files {
+        let (width, height) = match file.file_type.as_str() {
+            "video" => match get_video_dimensions(app.clone(), file.path.clone()).await {
+                Ok(d) => d,
+                Err(e) => {
+                    for ratio in &ratios {
+                        current += 1;
+                        errors.push(format!("{} ({}): {}", file.name, ratio, e));
+                        error_count += 1;
+                    }
+                    continue;
                 }
-                continue;
-            }
+            },
+            "image" => match get_image_dimensions(app.clone(), file.path.clone()).await {
+                Ok(d) => d,
+                Err(e) => {
+                    for ratio in &ratios {
+                        current += 1;
+                        errors.push(format!("{} ({}): {}", file.name, ratio, e));
+                        error_count += 1;
+                    }
+                    continue;
+                }
+            },
+            _ => continue,
         };
-
-        let width = stream.get("width").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
-        let height = stream.get("height").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
-        let color_space = stream.get("color_space").and_then(|v| v.as_str()).unwrap_or("");
-        let color_range = stream.get("color_range").and_then(|v| v.as_str()).unwrap_or("");
-        let color_primaries = stream.get("color_primaries").and_then(|v| v.as_str()).unwrap_or("");
-        let color_trc = stream.get("color_trc").and_then(|v| v.as_str()).unwrap_or("");
 
         if width == 0 || height == 0 {
             for ratio in &ratios {
                 current += 1;
-                errors.push(format!("{} ({}): 视频尺寸无效", file.name, ratio));
+                errors.push(format!("{} ({}): 尺寸无效", file.name, ratio));
                 error_count += 1;
             }
             continue;
         }
 
+        let file_stem = PathBuf::from(&file.name)
+            .file_stem()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_string();
+        let orig_ext = PathBuf::from(&file.name)
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or(if file.file_type == "video" { "mp4" } else { "jpg" })
+            .to_string();
+
         for ratio in &ratios {
             current += 1;
-
-            // 发送进度事件
             let progress = ProcessProgress {
                 current,
                 total,
@@ -379,7 +487,6 @@ pub async fn crop_videos_by_ratios(
             };
             let _ = app.emit("crop-progress", &progress);
 
-            // 解析比例 "W:H"
             let ratio_parts: Vec<&str> = ratio.split(':').collect();
             if ratio_parts.len() != 2 {
                 errors.push(format!("{} ({}): 比例格式无效", file.name, ratio));
@@ -396,129 +503,46 @@ pub async fn crop_videos_by_ratios(
             }
 
             let target_ratio = rw / rh;
-            let video_ratio = width as f64 / height as f64;
+            let (crop_w, crop_h, crop_x, crop_y) = compute_cover_crop(width, height, target_ratio);
 
-            // object-fit: cover 裁剪算法（4:2:0 要求宽高/起点均为偶数）
-            let even = |v: u32| v & !1u32;
-            let (mut crop_w, mut crop_h, mut crop_x, mut crop_y) = if target_ratio < video_ratio {
-                // 目标更窄，以高度为基准裁剪宽度
-                let ch = height;
-                let cw = (height as f64 * target_ratio) as u32;
-                let cx = (width.saturating_sub(cw)) / 2;
-                (cw, ch, cx, 0u32)
+            let out_ext = if file.file_type == "video" {
+                "mp4"
             } else {
-                // 目标更宽，以宽度为基准裁剪高度
-                let cw = width;
-                let ch = (width as f64 / target_ratio) as u32;
-                let cy = (height.saturating_sub(ch)) / 2;
-                (cw, ch, 0u32, cy)
+                orig_ext.as_str()
             };
-            crop_w = even(crop_w).max(2);
-            crop_h = even(crop_h).max(2);
-            crop_x = even(crop_x);
-            crop_y = even(crop_y);
-            if crop_x + crop_w > width {
-                crop_x = even(width.saturating_sub(crop_w));
-            }
-            if crop_y + crop_h > height {
-                crop_y = even(height.saturating_sub(crop_h));
-            }
-
-            // 构建输出文件名
-            let file_stem = PathBuf::from(&file.name)
-                .file_stem()
-                .unwrap_or_default()
-                .to_string_lossy()
-                .to_string();
-            let ratio_dash = ratio.replace(':', "-");
-            let ratio_value = rw / rh;
-            let ratio_value_str = format!("{:.2}", ratio_value);
-
-            // 日期 YYMMDD
-            let now = chrono::Local::now();
-            let date_str = now.format("%y%m%d").to_string();
-
-            // 比例范围枚举匹配
-            let range_enum: &[(&str, f64, f64)] = &[
-                ("0.94～1.05", 0.94, 1.05),
-                ("1.29～1.41", 1.29, 1.41),
-                ("1.11～1.25", 1.11, 1.25),
-                ("1.67～1.83", 1.67, 1.83),
-                ("2.00～3.00", 2.00, 3.00),
-                ("0.44～0.50", 0.44, 0.50),
-                ("0.30～0.43", 0.30, 0.43),
-                ("0.63～0.71", 0.63, 0.71),
-                ("0.75～0.83", 0.75, 0.83),
-                ("0.84～0.94", 0.84, 0.94),
-                ("0.53～0.60", 0.53, 0.60),
-            ];
-
-            let matched_range = range_enum.iter().find(|(_, lo, hi)| {
-                ratio_value >= *lo && ratio_value <= *hi
-            });
-
-            let output_filename = if let Some((range_name, _, _)) = matched_range {
-                format!("{}-{}({})-({})-({}).mp4", file_stem, ratio_dash, ratio_value_str, range_name, date_str)
-            } else {
-                format!("{}-{}({})-({}).mp4", file_stem, ratio_dash, ratio_value_str, date_str)
-            };
-
+            let output_filename = ratio_output_name(&file_stem, ratio, target_ratio, out_ext);
             let output_path = PathBuf::from(&output_dir).join(&output_filename);
 
-            let crop_filter = format!("crop={}:{}:{}:{}", crop_w, crop_h, crop_x, crop_y);
-            // 强制 H.264 Main@L5.1 以下，避免 Windows 播放器对 L6 花屏；完全移除音轨
-            let mut args: Vec<String> = vec![
-                "-i".into(), file.path.clone(),
-                "-vf".into(), crop_filter,
-                "-an".into(),
-                "-c:v".into(), "libx264".into(),
-                "-profile:v".into(), "main".into(),
-                "-level:v".into(), "5.1".into(),
-                "-pix_fmt".into(), "yuv420p".into(),
-                "-crf".into(), "23".into(),
-                "-preset".into(), "medium".into(),
-                "-movflags".into(), "+faststart".into(),
-            ];
-
-            // 保留色彩参数
-            if !color_space.is_empty() && color_space != "unknown" {
-                args.push("-colorspace".into());
-                args.push(color_space.to_string());
-            }
-            if !color_range.is_empty() && color_range != "unknown" {
-                args.push("-color_range".into());
-                args.push(color_range.to_string());
-            }
-            if !color_primaries.is_empty() && color_primaries != "unknown" {
-                args.push("-color_primaries".into());
-                args.push(color_primaries.to_string());
-            }
-            if !color_trc.is_empty() && color_trc != "unknown" {
-                args.push("-color_trc".into());
-                args.push(color_trc.to_string());
-            }
-
-            args.push("-y".into());
-            args.push(output_path.to_string_lossy().to_string());
-
-            let args_ref: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-
-            let result = app
-                .shell()
-                .sidecar("ffmpeg")
-                .map_err(|e| format!("无法找到FFmpeg: {}", e))?
-                .args(&args_ref)
-                .output()
-                .await
-                .map_err(|e| format!("无法执行FFmpeg: {}", e));
+            let result = match file.file_type.as_str() {
+                "video" => {
+                    crop_video_region(
+                        &app,
+                        &file.path,
+                        &output_path.to_string_lossy(),
+                        crop_x,
+                        crop_y,
+                        crop_w,
+                        crop_h,
+                    )
+                    .await
+                }
+                "image" => {
+                    crop_image_by_ratio(
+                        &app,
+                        &file.path,
+                        &output_path.to_string_lossy(),
+                        crop_w,
+                        crop_h,
+                        crop_x,
+                        crop_y,
+                    )
+                    .await
+                }
+                _ => Err("不支持的文件类型".to_string()),
+            };
 
             match result {
-                Ok(output) if output.status.success() => success_count += 1,
-                Ok(output) => {
-                    let stderr = String::from_utf8_lossy(&output.stderr);
-                    errors.push(format!("{} ({}): {}", file.name, ratio, stderr));
-                    error_count += 1;
-                }
+                Ok(_) => success_count += 1,
                 Err(e) => {
                     errors.push(format!("{} ({}): {}", file.name, ratio, e));
                     error_count += 1;
@@ -527,7 +551,6 @@ pub async fn crop_videos_by_ratios(
         }
     }
 
-    // 发送完成事件
     let progress = ProcessProgress {
         current: total,
         total,
@@ -548,6 +571,83 @@ pub async fn crop_videos_by_ratios(
     }
 }
 
+// 兼容旧命令名
+#[tauri::command]
+pub async fn crop_videos_by_ratios(
+    app: AppHandle,
+    input_dir: String,
+    output_dir: String,
+    ratios: Vec<String>,
+) -> Result<String, String> {
+    crop_by_ratios(
+        app,
+        input_dir,
+        output_dir,
+        ratios,
+        Some("video".to_string()),
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn custom_crop(app: AppHandle, options: CustomCropOptions) -> Result<String, String> {
+    if options.crop_width == 0 || options.crop_height == 0 {
+        return Err("裁剪尺寸无效".to_string());
+    }
+
+    let input = PathBuf::from(&options.input_path);
+    if !input.is_file() {
+        return Err("输入文件不存在".to_string());
+    }
+
+    std::fs::create_dir_all(&options.output_dir).map_err(|e| e.to_string())?;
+
+    let file_name = input
+        .file_name()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_else(|| "crop_output".to_string());
+    let file_type = get_file_type(&input).unwrap_or_else(|| "image".to_string());
+
+    let force_ext = if file_type == "video" {
+        Some("mp4")
+    } else {
+        None
+    };
+    let out_name = build_output_name(&file_name, &options.naming, force_ext);
+    let output_path = join_output_path(&options.output_dir, &out_name);
+
+    let result = match file_type.as_str() {
+        "video" => {
+            crop_video_region(
+                &app,
+                &options.input_path,
+                &output_path.to_string_lossy(),
+                options.crop_x,
+                options.crop_y,
+                options.crop_width,
+                options.crop_height,
+            )
+            .await
+        }
+        "image" => {
+            crop_image_region(
+                &app,
+                &options.input_path,
+                &output_path.to_string_lossy(),
+                options.crop_x,
+                options.crop_y,
+                options.crop_width,
+                options.crop_height,
+            )
+            .await
+        }
+        _ => Err("不支持的文件类型".to_string()),
+    };
+
+    result?;
+    Ok(format!("裁剪完成: {}", output_path.to_string_lossy()))
+}
+
 #[tauri::command]
 pub async fn merge_videos(app: AppHandle, options: VideoMergeOptions) -> Result<String, String> {
     validate_merge_options(&options)?;
@@ -558,56 +658,67 @@ pub async fn merge_videos(app: AppHandle, options: VideoMergeOptions) -> Result<
 
     let first = &options.slots[0];
     let second = &options.slots[1];
-    let stack_filter = if options.layout == "vertical" { "vstack" } else { "hstack" };
+    let is_image = options.media_kind == "image";
+    let stack_filter = if options.layout == "vertical" {
+        "vstack"
+    } else {
+        "hstack"
+    };
 
     let mut filter = format!(
-        "[0:v]scale={}:{},setsar=1[v0];[1:v]scale={}:{},setsar=1[v1];[v0][v1]{}=inputs=2:shortest=1[v]",
+        "[0:v]scale={}:{},setsar=1[v0];[1:v]scale={}:{},setsar=1[v1];[v0][v1]{}=inputs=2{}[v]",
         first.width,
         first.height,
         second.width,
         second.height,
         stack_filter,
+        if is_image { "" } else { ":shortest=1" },
     );
 
-    let output_label = if let (Some(width), Some(height)) = (options.output_width, options.output_height) {
-        filter.push_str(&format!(";[v]scale={}:{},setsar=1[outv]", width, height));
-        "[outv]"
+    let output_label =
+        if let (Some(width), Some(height)) = (options.output_width, options.output_height) {
+            filter.push_str(&format!(";[v]scale={}:{},setsar=1[outv]", width, height));
+            "[outv]"
+        } else {
+            filter.push_str(";[v]setsar=1[outv]");
+            "[outv]"
+        };
+
+    let mut args: Vec<&str> = vec![
+        "-i",
+        &first.path,
+        "-i",
+        &second.path,
+        "-filter_complex",
+        &filter,
+        "-map",
+        output_label,
+    ];
+
+    if is_image {
+        args.extend_from_slice(&["-frames:v", "1"]);
     } else {
-        filter.push_str(";[v]setsar=1[outv]");
-        "[outv]"
-    };
+        args.extend_from_slice(&["-an", "-c:v", "libx264", "-pix_fmt", "yuv420p"]);
+    }
+
+    args.push("-y");
+    args.push(&options.output_path);
 
     let output = app
         .shell()
         .sidecar("ffmpeg")
         .map_err(|e| format!("无法找到FFmpeg: {}", e))?
-        .args(&[
-            "-i",
-            &first.path,
-            "-i",
-            &second.path,
-            "-filter_complex",
-            &filter,
-            "-map",
-            output_label,
-            "-an",
-            "-c:v",
-            "libx264",
-            "-pix_fmt",
-            "yuv420p",
-            "-y",
-            &options.output_path,
-        ])
+        .args(&args)
         .output()
         .await
         .map_err(|e| format!("无法执行FFmpeg: {}", e))?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("视频拼接失败: {}", stderr));
+        return Err(format!("拼接失败: {}", stderr));
     }
 
-    Ok(format!("视频拼接完成: {}", options.output_path))
+    Ok(format!("拼接完成: {}", options.output_path))
 }
 
 fn validate_merge_options(options: &VideoMergeOptions) -> Result<(), String> {
@@ -617,13 +728,13 @@ fn validate_merge_options(options: &VideoMergeOptions) -> Result<(), String> {
 
     for (index, slot) in options.slots.iter().enumerate() {
         if slot.path.trim().is_empty() {
-            return Err(format!("请为第 {} 个坑位选择视频", index + 1));
+            return Err(format!("请为第 {} 个坑位选择文件", index + 1));
         }
         if slot.width == 0 || slot.height == 0 {
             return Err(format!("第 {} 个坑位尺寸无效", index + 1));
         }
         if !PathBuf::from(&slot.path).is_file() {
-            return Err(format!("第 {} 个视频不存在", index + 1));
+            return Err(format!("第 {} 个文件不存在", index + 1));
         }
     }
 

@@ -2,66 +2,61 @@ import { ref, computed, watch, onMounted } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
-import type { FileInfo, ProcessProgress, ProcessOptions } from "../types";
+import type {
+  FileInfo,
+  ProcessProgress,
+  ProcessOptions,
+  NamingOptions,
+  WorkMode,
+} from "../types";
+import { defaultProcessOptions, defaultNamingOptions } from "../types";
 
 const RATIO_STORAGE_KEY = "aspect-ratio-crop-ratios";
 const OPTIONS_OPEN_KEY = "options-strip-open";
+const WORK_MODE_KEY = "work-mode";
 
 const inputDir = ref("");
 const outputDir = ref("");
-const files = ref<FileInfo[]>([]);
+const allInputFiles = ref<FileInfo[]>([]);
 const outputFiles = ref<FileInfo[]>([]);
 const selectedInputPath = ref("");
 const selectedOutputPath = ref("");
 
-const options = ref<ProcessOptions>({
-  compress: false,
-  compress_quality: 80,
-  compress_resize: false,
-  compress_width: 1280,
-  compress_height: 720,
-  reduce_resolution: false,
-  target_width: 1920,
-  target_height: 1080,
-  reduce_bitrate: false,
-  target_bitrate: "2M",
-  reduce_level: false,
-  target_level: "4.0",
-  target_profile: "high",
-  convert_h265_to_h264: false,
-  convert_format: false,
-  target_format: "mp4",
-  crop: false,
-  crop_width: 1280,
-  crop_height: 720,
-  crop_x: 0,
-  crop_y: 0,
-  rotate: false,
-  rotation_degrees: 90,
-  mute: false,
-  change_framerate: false,
-  target_framerate: 30,
-});
+const workMode = ref<WorkMode>("image");
+const options = ref<ProcessOptions>(defaultProcessOptions());
+const naming = ref<NamingOptions>(defaultNamingOptions());
 
 const isProcessing = ref(false);
 const progress = ref<ProcessProgress | null>(null);
 const resultMessage = ref("");
 const uploadUrl = ref("");
 const optionsOpen = ref(true);
-const enableRatioCrop = ref(false);
 const ratios = ref<string[]>([]);
 const newRatio = ref("");
 const ratioError = ref("");
 const initialized = ref(false);
 
+const files = computed(() => {
+  switch (workMode.value) {
+    case "image":
+      return allInputFiles.value.filter((f) => f.file_type === "image");
+    case "video":
+      return allInputFiles.value.filter((f) => f.file_type === "video");
+    case "ratio":
+      return allInputFiles.value;
+    case "crop":
+    case "merge":
+      return allInputFiles.value;
+    default:
+      return allInputFiles.value;
+  }
+});
+
 const imageCount = computed(
-  () => files.value.filter((f) => f.file_type === "image").length,
+  () => allInputFiles.value.filter((f) => f.file_type === "image").length,
 );
 const videoCount = computed(
-  () => files.value.filter((f) => f.file_type === "video").length,
-);
-const videoFiles = computed(() =>
-  files.value.filter((f) => f.file_type === "video"),
+  () => allInputFiles.value.filter((f) => f.file_type === "video").length,
 );
 
 const statusMessage = computed(() => {
@@ -73,6 +68,41 @@ const statusMessage = computed(() => {
     return oneLine.length > 120 ? oneLine.slice(0, 120) + "…" : oneLine;
   }
   return "就绪";
+});
+
+const primaryActionLabel = computed(() => {
+  if (isProcessing.value) return "处理中…";
+  const n = files.value.length;
+  switch (workMode.value) {
+    case "image":
+      return `开始处理图片 (${n})`;
+    case "video":
+      return `开始处理视频 (${n})`;
+    case "ratio":
+      return `按比例裁剪 (${n}×${ratios.value.length || 0})`;
+    case "crop":
+      return "导出裁剪";
+    case "merge":
+      return "导出拼接";
+    default:
+      return "开始处理";
+  }
+});
+
+const canStart = computed(() => {
+  if (isProcessing.value) return false;
+  switch (workMode.value) {
+    case "image":
+    case "video":
+      return files.value.length > 0;
+    case "ratio":
+      return files.value.length > 0 && ratios.value.length > 0;
+    case "crop":
+    case "merge":
+      return true;
+    default:
+      return false;
+  }
 });
 
 function addRatio() {
@@ -110,15 +140,23 @@ async function saveCustomDirs() {
   }
 }
 
+async function saveNaming() {
+  try {
+    await invoke("set_naming_options", { naming: naming.value });
+  } catch (e) {
+    console.error("保存命名配置失败:", e);
+  }
+}
+
 async function scanFiles() {
   if (!inputDir.value) return;
   try {
-    files.value = await invoke<FileInfo[]>("scan_input_files", {
+    allInputFiles.value = await invoke<FileInfo[]>("scan_input_files", {
       inputDir: inputDir.value,
     });
   } catch (e) {
     console.error("扫描文件失败:", e);
-    files.value = [];
+    allInputFiles.value = [];
   }
 }
 
@@ -174,42 +212,56 @@ async function openFolder(path: string) {
 }
 
 async function startProcess() {
-  if (files.value.length === 0) {
-    resultMessage.value = "没有可处理的文件";
+  if (workMode.value === "crop" || workMode.value === "merge") {
     return;
+  }
+
+  if (workMode.value === "image" || workMode.value === "video") {
+    if (files.value.length === 0) {
+      resultMessage.value = "没有可处理的文件";
+      return;
+    }
+  }
+
+  if (workMode.value === "ratio") {
+    if (files.value.length === 0) {
+      resultMessage.value = "没有可裁剪的文件";
+      return;
+    }
+    if (ratios.value.length === 0) {
+      resultMessage.value = "请至少添加一个比例";
+      return;
+    }
   }
 
   isProcessing.value = true;
   progress.value = null;
   resultMessage.value = "";
 
-  const messages: string[] = [];
-
-  if (enableRatioCrop.value && ratios.value.length > 0) {
-    try {
-      const cropResult = await invoke<string>("crop_videos_by_ratios", {
+  try {
+    if (workMode.value === "ratio") {
+      const result = await invoke<string>("crop_by_ratios", {
         inputDir: inputDir.value,
         outputDir: outputDir.value,
         ratios: ratios.value,
+        fileTypeFilter: null,
       });
-      messages.push(cropResult);
-    } catch (e) {
-      messages.push(`比例裁剪失败: ${e}`);
-    }
-  } else {
-    try {
+      resultMessage.value = result;
+    } else {
+      const filter = workMode.value === "image" ? "image" : "video";
       const result = await invoke<string>("process_files", {
         inputDir: inputDir.value,
         outputDir: outputDir.value,
         options: options.value,
+        fileTypeFilter: filter,
+        naming: naming.value,
       });
-      messages.push(result);
-    } catch (e) {
-      messages.push(`处理失败: ${e}`);
+      resultMessage.value = result;
     }
+  } catch (e) {
+    resultMessage.value = `处理失败: ${e}`;
   }
 
-  resultMessage.value = messages.join("");
   isProcessing.value = false;
   progress.value = null;
   await scanOutputFiles();
@@ -233,11 +285,25 @@ async function initWorkspace() {
     optionsOpen.value = savedOpen === "1";
   }
 
+  const savedMode = localStorage.getItem(WORK_MODE_KEY) as WorkMode | null;
+  if (
+    savedMode &&
+    ["image", "video", "ratio", "crop", "merge"].includes(savedMode)
+  ) {
+    workMode.value = savedMode;
+  }
+
   try {
     const dirs = await invoke<[string, string]>("get_custom_dirs");
     inputDir.value = dirs[0];
     outputDir.value = dirs[1];
     await scanAllFiles();
+
+    try {
+      naming.value = await invoke<NamingOptions>("get_naming_options");
+    } catch {
+      naming.value = defaultNamingOptions();
+    }
 
     const url = await invoke<string>("start_upload_server", {
       inputDir: inputDir.value,
@@ -267,6 +333,30 @@ watch(optionsOpen, (val) => {
   localStorage.setItem(OPTIONS_OPEN_KEY, val ? "1" : "0");
 });
 
+watch(workMode, (val) => {
+  localStorage.setItem(WORK_MODE_KEY, val);
+  selectedInputPath.value = "";
+  if (val === "image") {
+    const imageExts = ["jpg", "png", "webp", "bmp", "tiff"];
+    if (!imageExts.includes(options.value.target_format)) {
+      options.value.target_format = "jpg";
+    }
+  } else if (val === "video") {
+    const videoExts = ["mp4", "avi", "mkv", "mov", "webm", "flv"];
+    if (!videoExts.includes(options.value.target_format)) {
+      options.value.target_format = "mp4";
+    }
+  }
+});
+
+watch(
+  naming,
+  () => {
+    saveNaming();
+  },
+  { deep: true },
+);
+
 export function useWorkspace() {
   onMounted(() => {
     initWorkspace();
@@ -276,26 +366,30 @@ export function useWorkspace() {
     inputDir,
     outputDir,
     files,
+    allInputFiles,
     outputFiles,
     selectedInputPath,
     selectedOutputPath,
+    workMode,
     options,
+    naming,
     isProcessing,
     progress,
     resultMessage,
     uploadUrl,
     optionsOpen,
-    enableRatioCrop,
     ratios,
     newRatio,
     ratioError,
     imageCount,
     videoCount,
-    videoFiles,
     statusMessage,
+    primaryActionLabel,
+    canStart,
     addRatio,
     removeRatio,
     saveCustomDirs,
+    saveNaming,
     scanFiles,
     scanOutputFiles,
     scanAllFiles,
