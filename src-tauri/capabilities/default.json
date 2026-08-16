@@ -27,11 +27,17 @@
         {
           "name": "ffprobe",
           "sidecar": true
+        },
+        {
+          "name": "magick",
+          "sidecar": true
         }
       ]
     },
     "core:event:default",
     "core:event:allow-listen",
-    "core:event:allow-emit"
+    "core:event:allow-emit",
+    "updater:default",
+    "process:default"
   ]
 }

@@ -1,7 +1,11 @@
 <script setup lang="ts">
 import { RouterView, useRoute } from "vue-router";
+import UpdateModal from "./components/UpdateModal.vue";
+import { useUpdater } from "./composables/useUpdater";
 
 const route = useRoute();
+// 挂载时自动检查更新
+useUpdater();
 </script>
 
 <template>
@@ -10,4 +14,5 @@ const route = useRoute();
       <component :is="Component" :key="String(route.name || route.path)" />
     </KeepAlive>
   </RouterView>
+  <UpdateModal />
 </template>
