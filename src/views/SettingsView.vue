@@ -12,6 +12,9 @@ const {
   uploadUrl,
   optionsOpen,
   naming,
+  hwAccel,
+  setHwAccelMode,
+  refreshHwEncoders,
   selectInputDir,
   selectOutputDir,
   openFolder,
@@ -93,7 +96,7 @@ const updateBtnLabel = computed(() => {
         <div class="flex flex-col leading-tight min-w-0">
           <strong class="text-13px font-700">设置</strong>
           <span class="text-10px color-t3 truncate"
-            >目录 · 命名 · 界面 · 更新</span
+            >目录 · 硬件加速 · 命名 · 界面 · 更新</span
           >
         </div>
       </div>
@@ -226,6 +229,56 @@ const updateBtnLabel = computed(() => {
               <span class="slider"></span>
             </span>
           </label>
+
+          <div
+            class="p-10px rounded-8px bg-bg2 border border-border flex flex-col gap-8px"
+          >
+            <div class="flex items-start justify-between gap-10px">
+              <div class="min-w-0">
+                <div class="text-12px font-500">视频硬件加速</div>
+                <div class="text-10px color-t3 mt-2px">
+                  优先使用 GPU 编码降低 CPU；失败自动回退软编
+                </div>
+              </div>
+              <button
+                class="tb-btn h-28px! text-11px! shrink-0"
+                type="button"
+                @click="refreshHwEncoders"
+              >
+                重新探测
+              </button>
+            </div>
+            <select
+              class="field w-full h-30px!"
+              :value="hwAccel?.mode || 'auto'"
+              @change="
+                setHwAccelMode(($event.target as HTMLSelectElement).value)
+              "
+            >
+              <option
+                v-for="enc in hwAccel?.encoders || [
+                  { id: 'auto', label: '自动（优先硬件）', available: true },
+                  { id: 'off', label: '关闭（仅 CPU）', available: true },
+                ]"
+                :key="enc.id"
+                :value="enc.id"
+                :disabled="!enc.available"
+              >
+                {{ enc.label
+                }}{{
+                  enc.available || enc.id === "auto" || enc.id === "off"
+                    ? ""
+                    : "（不可用）"
+                }}
+              </option>
+            </select>
+            <div v-if="hwAccel" class="text-10px color-t3 leading-relaxed">
+              当前生效：H.264
+              <span class="color-t1 font-mono">{{ hwAccel.active_h264 }}</span>
+              · H.265
+              <span class="color-t1 font-mono">{{ hwAccel.active_hevc }}</span>
+            </div>
+          </div>
 
           <div class="flex flex-wrap gap-8px">
             <button

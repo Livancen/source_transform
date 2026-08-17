@@ -1,4 +1,5 @@
 mod commands;
+mod hw;
 mod naming;
 mod process;
 mod types;
@@ -20,21 +21,15 @@ fn show_main_window(app: &tauri::AppHandle) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let mut builder = tauri::Builder::default()
+    tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_shell::init())
-        .plugin(tauri_plugin_process::init());
-
-    #[cfg(desktop)]
-    {
-        builder = builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+        .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             show_main_window(app);
-        }));
-    }
-
-    builder
+        }))
         .setup(|app| {
             #[cfg(desktop)]
             {
@@ -92,6 +87,9 @@ pub fn run() {
             commands::get_custom_dirs,
             commands::set_naming_options,
             commands::get_naming_options,
+            commands::get_hw_accel_options,
+            commands::set_hw_accel_mode,
+            commands::detect_hw_encoders,
             commands::scan_input_files,
             commands::get_video_dimensions,
             commands::get_image_dimensions,

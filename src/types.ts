@@ -54,6 +54,20 @@ export interface NamingOptions {
   custom_text: string;
 }
 
+export interface HwEncoderInfo {
+  id: string;
+  label: string;
+  codec: string;
+  available: boolean;
+}
+
+export interface HwAccelOptions {
+  mode: string;
+  active_h264: string;
+  active_hevc: string;
+  encoders: HwEncoderInfo[];
+}
+
 export type WorkMode = "image" | "video" | "ratio" | "crop" | "merge" | "join";
 
 export type VideoMergeLayout = "vertical" | "horizontal";

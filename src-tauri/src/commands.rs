@@ -5,6 +5,7 @@ use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_shell::ShellExt;
 use walkdir::WalkDir;
 
+use crate::hw::{self, HwAccelMode, append_video_encode_args, run_ffmpeg_with_fallback};
 use crate::naming::{build_output_name, join_output_path, ratio_output_name};
 use crate::process::{
     crop_image_by_ratio, crop_image_region, crop_video_region, process_image, process_video,
@@ -161,6 +162,72 @@ pub fn get_naming_options(app: AppHandle) -> Result<NamingOptions, String> {
         }
     }
     Ok(default_naming())
+}
+
+fn read_config_json(app: &AppHandle) -> Result<(PathBuf, serde_json::Value), String> {
+    let app_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    let config_path = app_dir.join("config.json");
+    let config = if config_path.exists() {
+        let content = std::fs::read_to_string(&config_path).unwrap_or_default();
+        serde_json::from_str(&content).unwrap_or_else(|_| serde_json::json!({}))
+    } else {
+        serde_json::json!({})
+    };
+    Ok((config_path, config))
+}
+
+fn load_hw_accel_preference(app: &AppHandle) {
+    if let Ok((_, config)) = read_config_json(app) {
+        if let Some(mode) = config.get("hw_accel_mode").and_then(|v| v.as_str()) {
+            hw::set_preference(HwAccelMode::from_config(mode));
+        }
+    }
+}
+
+#[derive(serde::Serialize)]
+pub struct HwAccelOptions {
+    pub mode: String,
+    pub active_h264: String,
+    pub active_hevc: String,
+    pub encoders: Vec<hw::HwEncoderInfo>,
+}
+
+#[tauri::command]
+pub async fn get_hw_accel_options(app: AppHandle) -> Result<HwAccelOptions, String> {
+    load_hw_accel_preference(&app);
+    let _ = hw::ensure_detected(&app, false).await;
+    Ok(HwAccelOptions {
+        mode: hw::get_preference().as_config(),
+        active_h264: hw::resolve_encoder("h264"),
+        active_hevc: hw::resolve_encoder("hevc"),
+        encoders: hw::list_encoder_infos(),
+    })
+}
+
+#[tauri::command]
+pub fn set_hw_accel_mode(app: AppHandle, mode: String) -> Result<(), String> {
+    let parsed = HwAccelMode::from_config(&mode);
+    hw::set_preference(parsed.clone());
+    let (config_path, mut config) = read_config_json(&app)?;
+    config["hw_accel_mode"] = serde_json::json!(parsed.as_config());
+    std::fs::write(
+        &config_path,
+        serde_json::to_string_pretty(&config).map_err(|e| e.to_string())?,
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn detect_hw_encoders(app: AppHandle) -> Result<HwAccelOptions, String> {
+    load_hw_accel_preference(&app);
+    hw::ensure_detected(&app, true).await?;
+    Ok(HwAccelOptions {
+        mode: hw::get_preference().as_config(),
+        active_h264: hw::resolve_encoder("h264"),
+        active_hevc: hw::resolve_encoder("hevc"),
+        encoders: hw::list_encoder_infos(),
+    })
 }
 
 #[tauri::command]
@@ -791,57 +858,51 @@ pub async fn merge_videos(app: AppHandle, options: VideoMergeOptions) -> Result<
     if is_image {
         args.extend(["-frames:v".to_string(), "1".to_string()]);
     } else {
-        args.extend([
-            "-an".to_string(),
-            "-c:v".to_string(),
-            "libx264".to_string(),
-            "-pix_fmt".to_string(),
-            "yuv420p".to_string(),
-        ]);
-        if let Some(fps) = out_fps {
-            args.push("-r".to_string());
-            args.push(fps.to_string());
-        }
-        if options.set_level {
-            let profile = options
+        args.push("-an".to_string());
+        let profile = if options.set_level {
+            let p = options
                 .video_profile
                 .as_deref()
                 .unwrap_or("high")
                 .to_lowercase();
-            let level = options.video_level.as_deref().unwrap_or("4.0");
-            if !validate_video_profile(&profile) {
+            if !validate_video_profile(&p) {
                 return Err("Profile 无效".to_string());
             }
-            if !validate_video_level(level) {
+            Some(p)
+        } else {
+            None
+        };
+        let level = if options.set_level {
+            let l = options.video_level.as_deref().unwrap_or("4.0");
+            if !validate_video_level(l) {
                 return Err("Level 无效".to_string());
             }
-            args.extend([
-                "-profile:v".to_string(),
-                profile,
-                "-level:v".to_string(),
-                level.to_string(),
-            ]);
+            Some(l.to_string())
+        } else {
+            None
+        };
+        append_video_encode_args(
+            &mut args,
+            "h264",
+            Some(80),
+            None,
+            profile.as_deref(),
+            level.as_deref(),
+            false,
+        );
+        if let Some(fps) = out_fps {
+            args.push("-r".to_string());
+            args.push(fps.to_string());
         }
     }
 
     args.push("-y".to_string());
     args.push(options.output_path.clone());
 
-    let arg_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-
-    let output = app
-        .shell()
-        .sidecar("ffmpeg")
-        .map_err(|e| format!("无法找到FFmpeg: {}", e))?
-        .args(&arg_refs)
-        .output()
+    let _ = hw::ensure_detected(&app, false).await;
+    run_ffmpeg_with_fallback(&app, &args)
         .await
-        .map_err(|e| format!("无法执行FFmpeg: {}", e))?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("拼接失败: {}", stderr));
-    }
+        .map_err(|e| format!("拼接失败: {}", e))?;
 
     Ok(format!("拼接完成: {}", options.output_path))
 }
@@ -1025,59 +1086,52 @@ pub async fn join_media(app: AppHandle, options: JoinOptions) -> Result<String, 
             },
         ]);
     } else {
-        args.extend([
-            "-an".to_string(),
-            "-c:v".to_string(),
-            "libx264".to_string(),
-            "-pix_fmt".to_string(),
-            "yuv420p".to_string(),
-            "-movflags".to_string(),
-            "+faststart".to_string(),
-        ]);
-        if let Some(fps) = out_fps {
-            args.push("-r".to_string());
-            args.push(fps.to_string());
-        }
-        if options.set_level {
-            let profile = options
+        args.push("-an".to_string());
+        let profile = if options.set_level {
+            let p = options
                 .video_profile
                 .as_deref()
                 .unwrap_or("high")
                 .to_lowercase();
-            let level = options.video_level.as_deref().unwrap_or("4.0");
-            if !validate_video_profile(&profile) {
+            if !validate_video_profile(&p) {
                 return Err("Profile 无效".to_string());
             }
-            if !validate_video_level(level) {
+            Some(p)
+        } else {
+            None
+        };
+        let level = if options.set_level {
+            let l = options.video_level.as_deref().unwrap_or("4.0");
+            if !validate_video_level(l) {
                 return Err("Level 无效".to_string());
             }
-            args.extend([
-                "-profile:v".to_string(),
-                profile,
-                "-level:v".to_string(),
-                level.to_string(),
-            ]);
+            Some(l.to_string())
+        } else {
+            None
+        };
+        append_video_encode_args(
+            &mut args,
+            "h264",
+            Some(80),
+            None,
+            profile.as_deref(),
+            level.as_deref(),
+            false,
+        );
+        args.extend(["-movflags".to_string(), "+faststart".to_string()]);
+        if let Some(fps) = out_fps {
+            args.push("-r".to_string());
+            args.push(fps.to_string());
         }
     }
 
     args.push("-y".to_string());
     args.push(options.output_path.clone());
 
-    let arg_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-
-    let output = app
-        .shell()
-        .sidecar("ffmpeg")
-        .map_err(|e| format!("无法找到FFmpeg: {}", e))?
-        .args(&arg_refs)
-        .output()
+    let _ = hw::ensure_detected(&app, false).await;
+    run_ffmpeg_with_fallback(&app, &args)
         .await
-        .map_err(|e| format!("无法执行FFmpeg: {}", e))?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("自定义拼接失败: {}", stderr));
-    }
+        .map_err(|e| format!("自定义拼接失败: {}", e))?;
 
     Ok(format!("自定义拼接完成: {}", options.output_path))
 }

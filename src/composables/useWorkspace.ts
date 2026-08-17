@@ -8,6 +8,7 @@ import type {
   ProcessOptions,
   NamingOptions,
   WorkMode,
+  HwAccelOptions,
 } from "../types";
 import { defaultProcessOptions, defaultNamingOptions } from "../types";
 import { useToast } from "./useToast";
@@ -83,6 +84,7 @@ const ratioError = ref("");
 const initialized = ref(false);
 /** 异步初始化完成（目录扫描等），用于关闭首屏 loading */
 const workspaceReady = ref(false);
+const hwAccel = ref<HwAccelOptions | null>(null);
 const { showToast } = useToast();
 
 const files = computed(() => {
@@ -396,6 +398,12 @@ async function initWorkspace() {
       naming.value = defaultNamingOptions();
     }
 
+    try {
+      hwAccel.value = await invoke<HwAccelOptions>("get_hw_accel_options");
+    } catch (e) {
+      console.error("加载硬件加速配置失败:", e);
+    }
+
     const url = await invoke<string>("start_upload_server", {
       inputDir: inputDir.value,
     });
@@ -456,6 +464,30 @@ watch(
   { deep: true },
 );
 
+async function setHwAccelMode(mode: string) {
+  try {
+    await invoke("set_hw_accel_mode", { mode });
+    hwAccel.value = await invoke<HwAccelOptions>("get_hw_accel_options");
+  } catch (e) {
+    console.error("保存硬件加速配置失败:", e);
+    showToast(`保存硬件加速失败: ${e}`, "error", 2000);
+  }
+}
+
+async function refreshHwEncoders() {
+  try {
+    hwAccel.value = await invoke<HwAccelOptions>("detect_hw_encoders");
+    showToast(
+      `当前编码: H.264=${hwAccel.value.active_h264}, H.265=${hwAccel.value.active_hevc}`,
+      "success",
+      2500,
+    );
+  } catch (e) {
+    console.error("探测硬件编码器失败:", e);
+    showToast(`探测失败: ${e}`, "error", 2000);
+  }
+}
+
 export function useWorkspace() {
   onMounted(() => {
     initWorkspace();
@@ -480,6 +512,9 @@ export function useWorkspace() {
     uploadUrl,
     optionsOpen,
     workspaceReady,
+    hwAccel,
+    setHwAccelMode,
+    refreshHwEncoders,
     ratios,
     newRatio,
     ratioError,

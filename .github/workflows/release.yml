@@ -73,7 +73,7 @@ jobs:
         with:
           tagName: v__VERSION__
           releaseName: "source_transform v__VERSION__"
-          releaseBody: "安装包命名：source_transform_版本_平台-架构.后缀"
+          releaseBody: "增加软硬编码适配"
           releaseDraft: false
           prerelease: false
           includeUpdaterJson: true
