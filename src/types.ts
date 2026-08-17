@@ -120,6 +120,10 @@ export interface JoinItem {
   height: number;
   z: number;
   fit: JoinFit;
+  /** 对该图层区域做高斯模糊（位置/大小即模糊区） */
+  blur?: boolean;
+  /** 模糊强度 sigma，约 1–50，默认 20 */
+  blur_sigma?: number;
 }
 
 export interface JoinOptions {

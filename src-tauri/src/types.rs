@@ -111,6 +111,14 @@ pub struct CustomCropOptions {
     pub naming: NamingOptions,
 }
 
+fn default_blur() -> bool {
+    false
+}
+
+fn default_blur_sigma() -> f64 {
+    20.0
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct JoinItem {
     pub id: String,
@@ -126,6 +134,12 @@ pub struct JoinItem {
     pub z: u32,
     /// "cover" | "contain" | "fill"
     pub fit: String,
+    /// 对该图层矩形区域做高斯模糊
+    #[serde(default = "default_blur")]
+    pub blur: bool,
+    /// gblur sigma，约 1–50
+    #[serde(default = "default_blur_sigma")]
+    pub blur_sigma: f64,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

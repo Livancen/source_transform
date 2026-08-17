@@ -943,6 +943,22 @@ fn join_item_scale_filter(fit: &str, w: u32, h: u32, pad_color: &str) -> Result<
     }
 }
 
+/// 模糊强度限制在合理范围，避免导出过慢或无效
+fn normalize_blur_sigma(sigma: f64) -> f64 {
+    if !sigma.is_finite() {
+        return 20.0;
+    }
+    sigma.clamp(1.0, 50.0)
+}
+
+fn join_item_blur_segment(blur: bool, sigma: f64) -> String {
+    if !blur {
+        return String::new();
+    }
+    let s = normalize_blur_sigma(sigma);
+    format!(",gblur=sigma={:.1}", s)
+}
+
 fn resolve_join_output_kind(items: &[crate::types::JoinItem]) -> String {
     if items.iter().any(|i| i.media_kind == "video") {
         "video".to_string()
@@ -1032,11 +1048,19 @@ pub async fn join_media(app: AppHandle, options: JoinOptions) -> Result<String, 
 
     for (i, item) in items.iter().enumerate() {
         let scale = join_item_scale_filter(&item.fit, item.width, item.height, &pad_color)?;
+        let blur = join_item_blur_segment(item.blur, item.blur_sigma);
         // 视频输出：各图层统一 fps（不足目标帧率时补帧），再统一像素格式
+        // 模糊接在 scale 之后、fps 之前，作用范围即该图层矩形
         let chain = if let Some(fps) = out_fps {
-            format!("{},{},{}", scale, fps_filter_segment(fps), base_fmt)
+            format!(
+                "{}{},{},{}",
+                scale,
+                blur,
+                fps_filter_segment(fps),
+                base_fmt
+            )
         } else {
-            format!("{},{}", scale, base_fmt)
+            format!("{}{},{}", scale, blur, base_fmt)
         };
         filter_parts.push(format!("[{}:v]{}[v{}]", i, chain, i));
     }

@@ -240,6 +240,8 @@ async function addFile(file: FileInfo) {
       height: h,
       z: maxZ + 1,
       fit: "cover",
+      blur: false,
+      blur_sigma: 20,
     };
     items.value.push(item);
     selectedId.value = item.id;
@@ -534,6 +536,30 @@ function setFit(fit: JoinFit) {
   if (item) item.fit = fit;
 }
 
+function setBlur(enabled: boolean) {
+  const item = selectedItem.value;
+  if (!item) return;
+  item.blur = enabled;
+  if (item.blur_sigma == null || item.blur_sigma <= 0) {
+    item.blur_sigma = 20;
+  }
+}
+
+function setBlurSigma(raw: string) {
+  const item = selectedItem.value;
+  if (!item) return;
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return;
+  item.blur_sigma = Math.max(1, Math.min(50, Math.round(n)));
+  if (item.blur_sigma > 0) item.blur = true;
+}
+
+/** 画布预览用 CSS blur，与导出 sigma 大致对应 */
+function previewBlurPx(sigma: number | undefined) {
+  const s = sigma != null && Number.isFinite(sigma) ? sigma : 20;
+  return Math.max(0, Math.min(40, s * 0.55));
+}
+
 // --- drag / resize ---
 type DragMode =
   | {
@@ -677,6 +703,11 @@ async function startExport() {
       y: Math.floor(i.y),
       width: evenDim(i.width),
       height: evenDim(i.height),
+      blur: !!i.blur,
+      blur_sigma:
+        i.blur_sigma != null && Number.isFinite(i.blur_sigma)
+          ? Math.max(1, Math.min(50, i.blur_sigma))
+          : 20,
     })),
     output_path: outputPath,
   };
@@ -955,7 +986,7 @@ onBeforeUnmount(() => {
           <div
             v-for="item in sortedItems"
             :key="item.id"
-            class="absolute box-border select-none"
+            class="absolute box-border select-none overflow-hidden"
             :class="
               selectedId === item.id
                 ? 'outline outline-1 outline-secondary z-50'
@@ -984,6 +1015,14 @@ onBeforeUnmount(() => {
                 'object-contain': item.fit === 'contain',
                 'object-fill': item.fit === 'fill',
               }"
+              :style="
+                item.blur
+                  ? {
+                      filter: `blur(${previewBlurPx(item.blur_sigma)}px)`,
+                      transform: 'scale(1.06)',
+                    }
+                  : undefined
+              "
               draggable="false"
             />
             <div
@@ -1004,6 +1043,12 @@ onBeforeUnmount(() => {
                 "
               >
                 {{ item.media_kind === "video" ? "视频" : "图" }}
+              </span>
+              <span
+                v-if="item.blur"
+                class="shrink-0 px-3px rounded-2px text-9px bg-amber-500/90"
+              >
+                模糊
               </span>
               <span class="truncate">{{ item.name }}</span>
             </div>
@@ -1203,6 +1248,43 @@ onBeforeUnmount(() => {
               </select>
             </label>
 
+            <div class="flex flex-col gap-6px">
+              <label
+                class="text-11px color-t3 flex items-center gap-6px cursor-pointer"
+              >
+                <input
+                  type="checkbox"
+                  class="accent-secondary"
+                  :checked="!!selectedItem.blur"
+                  :disabled="isExporting"
+                  @change="
+                    setBlur(($event.target as HTMLInputElement).checked)
+                  "
+                />
+                区域模糊
+              </label>
+              <label
+                v-if="selectedItem.blur"
+                class="text-11px color-t3 flex flex-col gap-4px"
+              >
+                模糊强度 (1–50)
+                <input
+                  class="field h-28px"
+                  type="number"
+                  min="1"
+                  max="50"
+                  :value="selectedItem.blur_sigma ?? 20"
+                  :disabled="isExporting"
+                  @input="
+                    setBlurSigma(($event.target as HTMLInputElement).value)
+                  "
+                />
+              </label>
+              <p class="text-10px color-t3 leading-relaxed">
+                模糊作用于当前图层矩形：拖拽/缩放即可自选位置与大小。上下虚化时：底层铺满并开模糊，顶层清晰居中。
+              </p>
+            </div>
+
             <div class="flex gap-6px flex-wrap">
               <button
                 class="tb-btn h-28px! px-8px! text-11px!"
@@ -1232,8 +1314,8 @@ onBeforeUnmount(() => {
             <p class="text-10px color-t3">Delete 删除 · 拖拽移动 · 角点缩放</p>
           </template>
           <div v-else class="text-11px color-t3 leading-relaxed">
-            从左侧点击图片/视频加入画布（可混排）。全图导出 png，含视频导出
-            mp4。选中后可拖拽、缩放；顶部可开关边缘吸附。
+            从左侧点击图片/视频加入画布（可混排、可重复）。全图导出
+            png，含视频导出 mp4。选中后可拖拽、缩放、开关区域模糊。
           </div>
 
           <div
