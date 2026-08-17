@@ -92,7 +92,14 @@ const selectedItem = computed(
 
 const sortedItems = computed(() => [...items.value].sort((a, b) => a.z - b.z));
 
-const usedPaths = computed(() => new Set(items.value.map((i) => i.path)));
+/** 各素材路径在画布上的使用次数（同一素材可多次添加） */
+const pathUseCount = computed(() => {
+  const m = new Map<string, number>();
+  for (const i of items.value) {
+    m.set(i.path, (m.get(i.path) || 0) + 1);
+  }
+  return m;
+});
 
 /** 含任意视频 → 输出视频；全图 → 图片 */
 const outputKind = computed<"image" | "video">(() =>
@@ -201,11 +208,6 @@ async function addFile(file: FileInfo) {
   }
   if (items.value.length >= 6) {
     statusMessage.value = "最多添加 6 个素材";
-    return;
-  }
-  if (usedPaths.value.has(file.path)) {
-    const existing = items.value.find((i) => i.path === file.path);
-    if (existing) selectedId.value = existing.id;
     return;
   }
 
@@ -856,12 +858,7 @@ onBeforeUnmount(() => {
             v-for="f in pickerFiles"
             :key="f.path"
             type="button"
-            class="w-full text-left px-10px py-8px border-none border-b border-border/60 cursor-pointer text-12px flex gap-10px items-center"
-            :class="
-              usedPaths.has(f.path)
-                ? 'bg-secondary-soft color-secondary'
-                : 'bg-transparent color-t2 hover:bg-bg2'
-            "
+            class="w-full text-left px-10px py-8px border-none border-b border-border/60 cursor-pointer text-12px flex gap-10px items-center bg-transparent color-t2 hover:bg-bg2"
             :disabled="isExporting"
             @click="addFile(f)"
           >
@@ -888,6 +885,12 @@ onBeforeUnmount(() => {
               <div class="text-10px color-t3 mt-2px">
                 {{ f.file_type === "video" ? "视频" : "图片" }} ·
                 {{ formatFileSizeMb(f.size_bytes) }}
+                <span
+                  v-if="(pathUseCount.get(f.path) || 0) > 0"
+                  class="ml-4px color-secondary"
+                >
+                  · 已用 {{ pathUseCount.get(f.path) }}
+                </span>
               </div>
             </div>
           </button>
