@@ -15,6 +15,49 @@ import { useToast } from "./useToast";
 const RATIO_STORAGE_KEY = "aspect-ratio-crop-ratios";
 const OPTIONS_OPEN_KEY = "options-strip-open";
 const WORK_MODE_KEY = "work-mode";
+const WORK_MODES: WorkMode[] = [
+  "image",
+  "video",
+  "ratio",
+  "crop",
+  "merge",
+  "join",
+];
+
+function loadWorkMode(): WorkMode {
+  try {
+    const saved = localStorage.getItem(WORK_MODE_KEY) as WorkMode | null;
+    if (saved && WORK_MODES.includes(saved)) return saved;
+  } catch {
+    /* ignore */
+  }
+  return "image";
+}
+
+function loadOptionsOpen(): boolean {
+  try {
+    const saved = localStorage.getItem(OPTIONS_OPEN_KEY);
+    if (saved != null) return saved === "1";
+  } catch {
+    /* ignore */
+  }
+  return true;
+}
+
+function loadRatios(): string[] {
+  try {
+    const saved = localStorage.getItem(RATIO_STORAGE_KEY);
+    if (saved) {
+      const parsed = JSON.parse(saved) as unknown;
+      if (Array.isArray(parsed)) {
+        return parsed.filter((x): x is string => typeof x === "string");
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+  return [];
+}
 
 const inputDir = ref("");
 const outputDir = ref("");
@@ -25,7 +68,7 @@ const selectedOutputPath = ref("");
 /** 勾选的输入文件路径 */
 const checkedPaths = ref<Set<string>>(new Set());
 
-const workMode = ref<WorkMode>("image");
+const workMode = ref<WorkMode>(loadWorkMode());
 const options = ref<ProcessOptions>(defaultProcessOptions());
 const naming = ref<NamingOptions>(defaultNamingOptions());
 
@@ -33,11 +76,13 @@ const isProcessing = ref(false);
 const progress = ref<ProcessProgress | null>(null);
 const resultMessage = ref("");
 const uploadUrl = ref("");
-const optionsOpen = ref(true);
-const ratios = ref<string[]>([]);
+const optionsOpen = ref(loadOptionsOpen());
+const ratios = ref<string[]>(loadRatios());
 const newRatio = ref("");
 const ratioError = ref("");
 const initialized = ref(false);
+/** 异步初始化完成（目录扫描等），用于关闭首屏 loading */
+const workspaceReady = ref(false);
 const { showToast } = useToast();
 
 const files = computed(() => {
@@ -339,28 +384,6 @@ async function initWorkspace() {
   if (initialized.value) return;
   initialized.value = true;
 
-  const savedRatios = localStorage.getItem(RATIO_STORAGE_KEY);
-  if (savedRatios) {
-    try {
-      ratios.value = JSON.parse(savedRatios);
-    } catch {
-      /* ignore */
-    }
-  }
-
-  const savedOpen = localStorage.getItem(OPTIONS_OPEN_KEY);
-  if (savedOpen != null) {
-    optionsOpen.value = savedOpen === "1";
-  }
-
-  const savedMode = localStorage.getItem(WORK_MODE_KEY) as WorkMode | null;
-  if (
-    savedMode &&
-    ["image", "video", "ratio", "crop", "merge", "join"].includes(savedMode)
-  ) {
-    workMode.value = savedMode;
-  }
-
   try {
     const dirs = await invoke<[string, string]>("get_custom_dirs");
     inputDir.value = dirs[0];
@@ -381,12 +404,18 @@ async function initWorkspace() {
     console.error("初始化失败:", e);
   }
 
-  await listen<ProcessProgress>("process-progress", (event) => {
-    progress.value = event.payload;
-  });
-  await listen<ProcessProgress>("crop-progress", (event) => {
-    progress.value = event.payload;
-  });
+  try {
+    await listen<ProcessProgress>("process-progress", (event) => {
+      progress.value = event.payload;
+    });
+    await listen<ProcessProgress>("crop-progress", (event) => {
+      progress.value = event.payload;
+    });
+  } catch (e) {
+    console.error("注册进度监听失败:", e);
+  } finally {
+    workspaceReady.value = true;
+  }
 }
 
 watch(
@@ -450,6 +479,7 @@ export function useWorkspace() {
     resultMessage,
     uploadUrl,
     optionsOpen,
+    workspaceReady,
     ratios,
     newRatio,
     ratioError,
