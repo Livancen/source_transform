@@ -73,7 +73,9 @@ jobs:
         with:
           tagName: v__VERSION__
           releaseName: "source_transform v__VERSION__"
-          releaseBody: "1. 新增画面模糊"
+          releaseBody: |
+            1. 拼接：两个槽位支持选择同一个图片或视频素材
+            2. 拼接：各槽位独立显示所选素材的原始分辨率，并明确区分槽位输出尺寸
           releaseDraft: false
           prerelease: false
           includeUpdaterJson: true

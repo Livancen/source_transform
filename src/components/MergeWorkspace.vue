@@ -258,9 +258,11 @@ function syncLayoutConstraints() {
 
   const preset = currentRatioPreset.value;
   const hasRatio = preset.w > 0 && preset.h > 0;
+  // 槽位 1 作为拼接尺寸基准；填入槽位 2 不应改写已选素材的尺寸。
+  const anchor = slots[0].path ? slots[0] : slots[filled[0]];
 
   if (layout.value === "vertical") {
-    const baseW = evenDim(Math.max(...filled.map((i) => slots[i].width || 0)));
+    const baseW = evenDim(anchor.width || 0);
     for (const i of filled) {
       slots[i].width = baseW;
       if (hasRatio) {
@@ -269,7 +271,7 @@ function syncLayoutConstraints() {
       }
     }
   } else {
-    const baseH = evenDim(Math.max(...filled.map((i) => slots[i].height || 0)));
+    const baseH = evenDim(anchor.height || 0);
     for (const i of filled) {
       slots[i].height = baseH;
       if (hasRatio) {
@@ -317,12 +319,6 @@ async function assignFile(index: number, file: FileInfo) {
     statusMessage.value =
       mediaKind.value === "video" ? "请选择视频文件" : "请选择图片文件";
     return;
-  }
-
-  // 若文件已在另一槽位，先清空该槽
-  const existing = slotIndexOf(file.path);
-  if (existing >= 0 && existing !== index) {
-    clearSlot(existing);
   }
 
   slots[index].path = file.path;
@@ -815,8 +811,12 @@ async function startMerge() {
               </div>
             </button>
 
+            <div class="mt-8px text-11px color-t3">
+              素材分辨率:
+              {{ slot.nativeWidth ?? "-" }} x {{ slot.nativeHeight ?? "-" }}
+            </div>
             <div class="flex gap-8px mt-10px flex-wrap items-center">
-              <label class="text-12px color-t3">宽</label>
+              <label class="text-12px color-t3">槽位宽</label>
               <input
                 class="field w-90px!"
                 type="number"
@@ -831,7 +831,7 @@ async function startMerge() {
                   )
                 "
               />
-              <label class="text-12px color-t3">高</label>
+              <label class="text-12px color-t3">槽位高</label>
               <input
                 class="field w-90px!"
                 type="number"
