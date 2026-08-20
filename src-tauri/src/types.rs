@@ -28,6 +28,84 @@ pub struct ProcessOptions {
     pub mute: bool,            // 视频静音（去除音频）
     pub change_framerate: bool, // 调整帧率
     pub target_framerate: f32,  // 目标帧率
+    #[serde(default)]
+    pub watermark: bool,
+    /// "text" | "image"
+    #[serde(default = "default_watermark_type")]
+    pub watermark_type: String,
+    #[serde(default = "default_watermark_text")]
+    pub watermark_text: String,
+    #[serde(default = "default_watermark_font_size")]
+    pub watermark_font_size: u32,
+    #[serde(default = "default_watermark_font_color")]
+    pub watermark_font_color: String,
+    #[serde(default = "default_watermark_opacity")]
+    pub watermark_font_opacity: u32,
+    #[serde(default = "default_true")]
+    pub watermark_stroke: bool,
+    #[serde(default = "default_stroke_width")]
+    pub watermark_stroke_width: u32,
+    #[serde(default = "default_stroke_color")]
+    pub watermark_stroke_color: String,
+    #[serde(default)]
+    pub watermark_image_path: String,
+    #[serde(default = "default_image_scale")]
+    pub watermark_image_scale: u32,
+    #[serde(default = "default_watermark_opacity")]
+    pub watermark_image_opacity: u32,
+    /// tl/tc/tr/ml/mc/mr/bl/bc/br
+    #[serde(default = "default_watermark_position")]
+    pub watermark_position: String,
+    #[serde(default = "default_margin")]
+    pub watermark_margin_x: u32,
+    #[serde(default = "default_margin")]
+    pub watermark_margin_y: u32,
+    /// 旋转角度（度），顺时针为正
+    #[serde(default)]
+    pub watermark_rotation: f32,
+    #[serde(default)]
+    pub watermark_tile: bool,
+    #[serde(default = "default_tile_gap")]
+    pub watermark_tile_gap_x: u32,
+    #[serde(default = "default_tile_gap")]
+    pub watermark_tile_gap_y: u32,
+}
+
+fn default_watermark_type() -> String {
+    "text".to_string()
+}
+fn default_watermark_text() -> String {
+    "水印".to_string()
+}
+fn default_watermark_font_size() -> u32 {
+    36
+}
+fn default_watermark_font_color() -> String {
+    "#FFFFFF".to_string()
+}
+fn default_watermark_opacity() -> u32 {
+    60
+}
+fn default_true() -> bool {
+    true
+}
+fn default_stroke_width() -> u32 {
+    2
+}
+fn default_stroke_color() -> String {
+    "#000000".to_string()
+}
+fn default_image_scale() -> u32 {
+    15
+}
+fn default_watermark_position() -> String {
+    "br".to_string()
+}
+fn default_margin() -> u32 {
+    16
+}
+fn default_tile_gap() -> u32 {
+    80
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

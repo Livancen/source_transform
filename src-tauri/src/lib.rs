@@ -1,9 +1,11 @@
 mod commands;
 mod hw;
+mod logger;
 mod naming;
 mod process;
 mod types;
 mod upload_server;
+mod watermark;
 
 use tauri::{
     menu::{Menu, MenuItem},
@@ -31,6 +33,17 @@ pub fn run() {
             show_main_window(app);
         }))
         .setup(|app| {
+            if let Ok(app_dir) = app.path().app_data_dir() {
+                match logger::init(&app_dir) {
+                    Ok(path) => {
+                        logger::info(format!("应用启动，日志文件: {}", path.display()));
+                    }
+                    Err(e) => {
+                        eprintln!("初始化日志失败: {}", e);
+                    }
+                }
+            }
+
             #[cfg(desktop)]
             {
                 app.handle()
@@ -54,6 +67,7 @@ pub fn run() {
                     .on_menu_event(|app, event| match event.id.as_ref() {
                         "show" => show_main_window(app),
                         "quit" => {
+                            logger::info("用户从托盘退出应用");
                             app.exit(0);
                         }
                         _ => {}
@@ -104,6 +118,11 @@ pub fn run() {
             commands::join_media,
             commands::open_folder,
             commands::start_upload_server,
+            commands::get_log_path,
+            commands::read_logs,
+            commands::clear_logs,
+            commands::export_logs,
+            commands::open_logs_dir,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

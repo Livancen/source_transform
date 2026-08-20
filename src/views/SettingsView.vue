@@ -1,8 +1,11 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, nextTick, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
+import { invoke } from "@tauri-apps/api/core";
+import { save } from "@tauri-apps/plugin-dialog";
 import { useWorkspace } from "../composables/useWorkspace";
 import { useUpdater } from "../composables/useUpdater";
+import { useToast } from "../composables/useToast";
 import { APP_VERSION, APP_NAME } from "../constants/app";
 
 const router = useRouter();
@@ -22,7 +25,13 @@ const {
 } = useWorkspace();
 
 const { phase, checkForUpdates } = useUpdater();
+const { showToast } = useToast();
 const checkingUpdate = ref(false);
+const logContent = ref("");
+const logPath = ref("");
+const logLoading = ref(false);
+const logBusy = ref(false);
+const logBox = ref<HTMLElement | null>(null);
 
 function goHome() {
   router.push({ name: "home" });
@@ -35,6 +44,73 @@ async function onCheckUpdate() {
     await checkForUpdates(false);
   } finally {
     checkingUpdate.value = false;
+  }
+}
+
+async function scrollLogToBottom() {
+  await nextTick();
+  if (logBox.value) logBox.value.scrollTop = logBox.value.scrollHeight;
+}
+
+async function refreshLogs() {
+  if (logLoading.value) return;
+  logLoading.value = true;
+  try {
+    const [content, path] = await Promise.all([
+      invoke<string>("read_logs", { maxBytes: 512 * 1024 }),
+      invoke<string>("get_log_path"),
+    ]);
+    logContent.value = content || "（暂无日志）";
+    logPath.value = path;
+    await scrollLogToBottom();
+  } catch (e) {
+    showToast(String(e), "error");
+  } finally {
+    logLoading.value = false;
+  }
+}
+
+async function clearLogs() {
+  if (logBusy.value) return;
+  logBusy.value = true;
+  try {
+    await invoke("clear_logs");
+    showToast("日志已清空", "success");
+    await refreshLogs();
+  } catch (e) {
+    showToast(String(e), "error");
+  } finally {
+    logBusy.value = false;
+  }
+}
+
+async function exportLogs() {
+  if (logBusy.value) return;
+  logBusy.value = true;
+  try {
+    const dest = await save({
+      title: "导出日志",
+      defaultPath: `source_transform_${new Date()
+        .toISOString()
+        .slice(0, 19)
+        .replace(/[:T]/g, "-")}.log`,
+      filters: [{ name: "日志", extensions: ["log", "txt"] }],
+    });
+    if (!dest) return;
+    await invoke("export_logs", { dest });
+    showToast("日志已导出", "success");
+  } catch (e) {
+    showToast(String(e), "error");
+  } finally {
+    logBusy.value = false;
+  }
+}
+
+async function openLogsDir() {
+  try {
+    await invoke("open_logs_dir");
+  } catch (e) {
+    showToast(String(e), "error");
   }
 }
 
@@ -54,6 +130,10 @@ const updateBtnLabel = computed(() => {
   if (phase.value === "downloading" || phase.value === "installing")
     return "更新中…";
   return "检查更新";
+});
+
+onMounted(() => {
+  void refreshLogs();
 });
 </script>
 
@@ -96,7 +176,7 @@ const updateBtnLabel = computed(() => {
         <div class="flex flex-col leading-tight min-w-0">
           <strong class="text-13px font-700">设置</strong>
           <span class="text-10px color-t3 truncate"
-            >目录 · 硬件加速 · 命名 · 界面 · 更新</span
+            >目录 · 硬件加速 · 命名 · 日志 · 更新</span
           >
         </div>
       </div>
@@ -104,7 +184,7 @@ const updateBtnLabel = computed(() => {
 
     <div class="flex-1 min-h-0 overflow-hidden p-12px">
       <div
-        class="h-full max-w-1080px mx-auto grid grid-cols-2 grid-rows-[auto_1fr_auto] gap-10px"
+        class="h-full max-w-1080px mx-auto grid grid-cols-2 grid-rows-[auto_auto_1fr] gap-10px overflow-y-auto"
       >
         <!-- 目录 -->
         <section
@@ -424,6 +504,77 @@ const updateBtnLabel = computed(() => {
                 />
               </div>
             </div>
+          </div>
+        </section>
+
+        <!-- 运行日志：跨两列 -->
+        <section class="col-span-2 min-h-0">
+          <div
+            class="bg-bg1 border border-border rounded-10px p-12px flex flex-col gap-8px min-h-220px h-full"
+          >
+            <div class="flex items-start justify-between gap-12px shrink-0">
+              <div class="min-w-0">
+                <h2 class="text-13px font-600 flex items-center gap-6px">
+                  <span
+                    class="w-22px h-22px rounded-6px bg-secondary-soft color-secondary grid place-items-center"
+                  >
+                    <svg
+                      class="w-12px h-12px"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                    >
+                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                      <polyline points="14 2 14 8 20 8" />
+                      <line x1="16" y1="13" x2="8" y2="13" />
+                      <line x1="16" y1="17" x2="8" y2="17" />
+                    </svg>
+                  </span>
+                  运行日志
+                </h2>
+                <p class="text-10px color-t3 mt-4px truncate" :title="logPath">
+                  {{ logPath || "日志路径加载中…" }}
+                </p>
+              </div>
+              <div class="flex flex-wrap gap-6px shrink-0">
+                <button
+                  class="tb-btn h-28px! px-8px! text-11px!"
+                  type="button"
+                  :disabled="logLoading || logBusy"
+                  @click="refreshLogs"
+                >
+                  刷新
+                </button>
+                <button
+                  class="tb-btn h-28px! px-8px! text-11px!"
+                  type="button"
+                  :disabled="logBusy"
+                  @click="exportLogs"
+                >
+                  导出
+                </button>
+                <button
+                  class="tb-btn h-28px! px-8px! text-11px!"
+                  type="button"
+                  @click="openLogsDir"
+                >
+                  打开目录
+                </button>
+                <button
+                  class="tb-btn h-28px! px-8px! text-11px!"
+                  type="button"
+                  :disabled="logBusy"
+                  @click="clearLogs"
+                >
+                  清空
+                </button>
+              </div>
+            </div>
+            <pre
+              ref="logBox"
+              class="flex-1 min-h-140px m-0 p-10px rounded-8px bg-bg0 border border-border overflow-auto font-mono text-11px leading-relaxed color-t1 whitespace-pre-wrap break-all"
+            >{{ logLoading ? "加载中…" : logContent }}</pre>
           </div>
         </section>
       </div>

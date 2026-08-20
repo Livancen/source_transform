@@ -123,6 +123,7 @@ pub fn start_server(input_dir: String) -> Result<String, String> {
     let ip = get_local_ip();
     let url = format!("http://{}:{}", ip, port);
     let input_path = PathBuf::from(&input_dir);
+    crate::logger::info(format!("上传服务监听 {}", url));
 
     thread::spawn(move || {
         for mut request in server.incoming_requests() {
@@ -154,6 +155,7 @@ pub fn start_server(input_dir: String) -> Result<String, String> {
                             .trim()
                             .to_string()
                     } else {
+                        crate::logger::warn("上传请求缺少 boundary");
                         let response = tiny_http::Response::from_string("Missing boundary")
                             .with_status_code(400);
                         let _ = request.respond(response);
@@ -168,11 +170,20 @@ pub fn start_server(input_dir: String) -> Result<String, String> {
                             let dest = input_path.join(&filename);
                             match std::fs::write(&dest, &data) {
                                 Ok(_) => {
+                                    crate::logger::info(format!(
+                                        "上传成功: {} ({} bytes)",
+                                        filename,
+                                        data.len()
+                                    ));
                                     let response =
                                         tiny_http::Response::from_string("OK").with_status_code(200);
                                     let _ = request.respond(response);
                                 }
                                 Err(e) => {
+                                    crate::logger::error(format!(
+                                        "上传写入失败 {}: {}",
+                                        filename, e
+                                    ));
                                     let response =
                                         tiny_http::Response::from_string(format!("写入失败: {}", e))
                                             .with_status_code(500);
@@ -181,6 +192,7 @@ pub fn start_server(input_dir: String) -> Result<String, String> {
                             }
                         }
                         None => {
+                            crate::logger::warn("上传请求未找到文件");
                             let response =
                                 tiny_http::Response::from_string("未找到文件").with_status_code(400);
                             let _ = request.respond(response);

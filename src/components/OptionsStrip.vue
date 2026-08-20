@@ -1,5 +1,9 @@
 <script setup lang="ts">
+import { computed, ref, watch } from "vue";
 import type { ProcessOptions, WorkMode } from "../types";
+import { watermarkSummary } from "../types";
+import WatermarkPopover from "./WatermarkPopover.vue";
+import type { WatermarkDraft } from "./WatermarkPopover.vue";
 
 const props = defineProps<{
   open: boolean;
@@ -20,6 +24,48 @@ const showImageOpts = () => props.workMode === "image";
 const showVideoOpts = () => props.workMode === "video";
 const showRatioOpts = () => props.workMode === "ratio";
 const showBatchOpts = () => showImageOpts() || showVideoOpts();
+
+const watermarkVisible = ref(false);
+const watermarkChipRef = ref<HTMLElement | null>(null);
+const watermarkHint = computed(() => watermarkSummary(props.options));
+
+watch(
+  () => [props.open, props.workMode] as const,
+  () => {
+    if (!props.open || !showBatchOpts()) {
+      watermarkVisible.value = false;
+    }
+  },
+);
+
+function openWatermark() {
+  if (!showBatchOpts()) return;
+  watermarkVisible.value = true;
+}
+
+function applyWatermarkDraft(draft: WatermarkDraft) {
+  const o = props.options;
+  o.watermark = true;
+  o.watermark_type = draft.watermark_type;
+  o.watermark_text = draft.watermark_text;
+  o.watermark_font_size = draft.watermark_font_size;
+  o.watermark_font_color = draft.watermark_font_color;
+  o.watermark_font_opacity = draft.watermark_font_opacity;
+  o.watermark_stroke = draft.watermark_stroke;
+  o.watermark_stroke_width = draft.watermark_stroke_width;
+  o.watermark_stroke_color = draft.watermark_stroke_color;
+  o.watermark_image_path = draft.watermark_image_path;
+  o.watermark_image_scale = draft.watermark_image_scale;
+  o.watermark_image_opacity = draft.watermark_image_opacity;
+  o.watermark_position = draft.watermark_position;
+  o.watermark_margin_x = draft.watermark_margin_x;
+  o.watermark_margin_y = draft.watermark_margin_y;
+  o.watermark_rotation = draft.watermark_rotation;
+  o.watermark_tile = draft.watermark_tile;
+  o.watermark_tile_gap_x = draft.watermark_tile_gap_x;
+  o.watermark_tile_gap_y = draft.watermark_tile_gap_y;
+  watermarkVisible.value = false;
+}
 </script>
 
 <template>
@@ -367,6 +413,49 @@ const showBatchOpts = () => showImageOpts() || showVideoOpts();
             </span>
           </div>
         </template>
+
+        <!-- 水印（图片 / 视频共用） -->
+        <div
+          ref="watermarkChipRef"
+          class="opt-chip relative"
+          :class="{ 'opt-chip-on': options.watermark }"
+        >
+          <label class="switch">
+            <input type="checkbox" v-model="options.watermark" />
+            <span class="slider"></span>
+          </label>
+          <span
+            class="text-12px font-500"
+            :class="options.watermark ? 'color-t1' : 'color-t2'"
+            >水印</span
+          >
+          <span
+            class="inline-flex items-center gap-6px pl-6px ml-2px border-l border-border"
+          >
+            <select
+              class="field w-auto! min-w-64px h-24px! px-6px! text-11px!"
+              v-model="options.watermark_type"
+              :disabled="!options.watermark"
+            >
+              <option value="text">文字</option>
+              <option value="image">图片</option>
+            </select>
+            <button
+              class="tb-btn h-24px! px-8px! text-11px!"
+              type="button"
+              @click.stop="openWatermark"
+            >
+              配置…
+            </button>
+            <span
+              v-if="options.watermark && watermarkHint"
+              class="text-10px color-t3 max-w-140px truncate"
+              :title="watermarkHint"
+            >
+              {{ watermarkHint }}
+            </span>
+          </span>
+        </div>
       </div>
 
       <!-- 比例裁剪 -->
@@ -424,4 +513,12 @@ const showBatchOpts = () => showImageOpts() || showVideoOpts();
       </div>
     </div>
   </div>
+
+  <WatermarkPopover
+    :visible="watermarkVisible"
+    :options="options"
+    :anchor-el="watermarkChipRef"
+    @close="watermarkVisible = false"
+    @apply="applyWatermarkDraft"
+  />
 </template>

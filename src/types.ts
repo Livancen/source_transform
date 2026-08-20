@@ -22,6 +22,20 @@ export interface ProcessProgress {
   status: string;
 }
 
+export type WatermarkType = "text" | "image";
+
+/** 九宫格位置 */
+export type WatermarkPosition =
+  | "tl"
+  | "tc"
+  | "tr"
+  | "ml"
+  | "mc"
+  | "mr"
+  | "bl"
+  | "bc"
+  | "br";
+
 export interface ProcessOptions {
   compress: boolean;
   compress_quality: number;
@@ -45,6 +59,26 @@ export interface ProcessOptions {
   mute: boolean;
   change_framerate: boolean;
   target_framerate: number;
+  watermark: boolean;
+  watermark_type: WatermarkType;
+  watermark_text: string;
+  watermark_font_size: number;
+  watermark_font_color: string;
+  watermark_font_opacity: number;
+  watermark_stroke: boolean;
+  watermark_stroke_width: number;
+  watermark_stroke_color: string;
+  watermark_image_path: string;
+  watermark_image_scale: number;
+  watermark_image_opacity: number;
+  watermark_position: WatermarkPosition;
+  watermark_margin_x: number;
+  watermark_margin_y: number;
+  /** 旋转角度（度），顺时针为正，范围约 -180～180 */
+  watermark_rotation: number;
+  watermark_tile: boolean;
+  watermark_tile_gap_x: number;
+  watermark_tile_gap_y: number;
 }
 
 export interface NamingOptions {
@@ -169,7 +203,57 @@ export function defaultProcessOptions(): ProcessOptions {
     mute: false,
     change_framerate: false,
     target_framerate: 30,
+    watermark: false,
+    watermark_type: "text",
+    watermark_text: "水印",
+    watermark_font_size: 36,
+    watermark_font_color: "#FFFFFF",
+    watermark_font_opacity: 60,
+    watermark_stroke: true,
+    watermark_stroke_width: 2,
+    watermark_stroke_color: "#000000",
+    watermark_image_path: "",
+    watermark_image_scale: 15,
+    watermark_image_opacity: 60,
+    watermark_position: "br",
+    watermark_margin_x: 16,
+    watermark_margin_y: 16,
+    watermark_rotation: 0,
+    watermark_tile: false,
+    watermark_tile_gap_x: 80,
+    watermark_tile_gap_y: 80,
   };
+}
+
+export const WATERMARK_POSITIONS: {
+  id: WatermarkPosition;
+  label: string;
+}[] = [
+  { id: "tl", label: "左上" },
+  { id: "tc", label: "中上" },
+  { id: "tr", label: "右上" },
+  { id: "ml", label: "左中" },
+  { id: "mc", label: "居中" },
+  { id: "mr", label: "右中" },
+  { id: "bl", label: "左下" },
+  { id: "bc", label: "中下" },
+  { id: "br", label: "右下" },
+];
+
+export function watermarkSummary(options: ProcessOptions): string {
+  if (!options.watermark) return "";
+  const pos =
+    WATERMARK_POSITIONS.find((p) => p.id === options.watermark_position)
+      ?.label || options.watermark_position;
+  const rot = Math.round(options.watermark_rotation || 0);
+  const rotPart = rot !== 0 ? ` · ${rot}°` : "";
+  if (options.watermark_type === "text") {
+    const text = (options.watermark_text || "").trim() || "文字";
+    const short = text.length > 8 ? `${text.slice(0, 8)}…` : text;
+    return `${short} · ${pos}${rotPart}`;
+  }
+  const scale = Math.max(1, Math.min(100, options.watermark_image_scale || 15));
+  return `图片 ${scale}% · ${pos}${rotPart}`;
 }
 
 export function defaultNamingOptions(): NamingOptions {

@@ -6,6 +6,7 @@ use tauri_plugin_shell::ShellExt;
 use walkdir::WalkDir;
 
 use crate::hw::{self, HwAccelMode, append_video_encode_args, run_ffmpeg_with_fallback};
+use crate::logger;
 use crate::naming::{build_output_name, join_output_path, ratio_output_name};
 use crate::process::{
     crop_image_by_ratio, crop_image_region, crop_video_region, process_image, process_video,
@@ -384,6 +385,11 @@ pub async fn process_files(
     naming: Option<NamingOptions>,
     file_paths: Option<Vec<String>>,
 ) -> Result<String, String> {
+    logger::info(format!(
+        "开始批量处理 filter={:?} paths={}",
+        file_type_filter,
+        file_paths.as_ref().map(|p| p.len()).unwrap_or(0)
+    ));
     std::fs::create_dir_all(&output_dir).map_err(|e| e.to_string())?;
 
     let naming = naming.unwrap_or_else(default_naming);
@@ -399,6 +405,7 @@ pub async fn process_files(
 
     let total = files.len();
     if total == 0 {
+        logger::warn("批量处理：没有选中可处理的媒体文件");
         return Err("没有选中可处理的媒体文件".to_string());
     }
 
@@ -414,6 +421,13 @@ pub async fn process_files(
             status: "processing".to_string(),
         };
         let _ = app.emit("process-progress", &progress);
+        logger::info(format!(
+            "处理 [{}/{}] {} ({})",
+            index + 1,
+            total,
+            file.name,
+            file.file_type
+        ));
 
         let force_ext = if file.file_type == "video"
             && options.convert_format
@@ -447,10 +461,15 @@ pub async fn process_files(
         };
 
         match result {
-            Ok(_) => success_count += 1,
+            Ok(_) => {
+                success_count += 1;
+                logger::info(format!("成功: {} -> {}", file.name, output_path.display()));
+            }
             Err(e) => {
                 error_count += 1;
-                errors.push(format!("{}: {}", file.name, e));
+                let detail = format!("{}: {}", file.name, e);
+                logger::error(format!("失败: {}", detail));
+                errors.push(detail);
             }
         }
     }
@@ -464,14 +483,21 @@ pub async fn process_files(
     let _ = app.emit("process-progress", &progress);
 
     if error_count > 0 {
-        Ok(format!(
+        let msg = format!(
             "处理完成: {} 成功, {} 失败\n失败详情:\n{}",
             success_count,
             error_count,
             errors.join("\n")
-        ))
+        );
+        logger::warn(format!(
+            "批量处理结束: {} 成功, {} 失败",
+            success_count, error_count
+        ));
+        Ok(msg)
     } else {
-        Ok(format!("全部处理完成: {} 个文件", success_count))
+        let msg = format!("全部处理完成: {} 个文件", success_count);
+        logger::info(&msg);
+        Ok(msg)
     }
 }
 
@@ -485,9 +511,16 @@ pub async fn crop_by_ratios(
     file_paths: Option<Vec<String>>,
 ) -> Result<String, String> {
     if ratios.is_empty() {
+        logger::warn("比例裁剪：未添加比例");
         return Err("请至少添加一个比例".to_string());
     }
 
+    logger::info(format!(
+        "开始比例裁剪 ratios={:?} filter={:?} paths={}",
+        ratios,
+        file_type_filter,
+        file_paths.as_ref().map(|p| p.len()).unwrap_or(0)
+    ));
     std::fs::create_dir_all(&output_dir).map_err(|e| e.to_string())?;
 
     let mut files = scan_input_files(input_dir.clone())?;
@@ -500,6 +533,7 @@ pub async fn crop_by_ratios(
     }
 
     if files.is_empty() {
+        logger::warn("比例裁剪：没有选中可裁剪的媒体文件");
         return Err("没有选中可裁剪的媒体文件".to_string());
     }
 
@@ -639,6 +673,10 @@ pub async fn crop_by_ratios(
     let _ = app.emit("crop-progress", &progress);
 
     if error_count > 0 {
+        logger::warn(format!(
+            "比例裁剪结束: {} 成功, {} 失败",
+            success_count, error_count
+        ));
         Ok(format!(
             "裁剪完成: {} 成功, {} 失败\n失败详情:\n{}",
             success_count,
@@ -646,7 +684,9 @@ pub async fn crop_by_ratios(
             errors.join("\n")
         ))
     } else {
-        Ok(format!("全部裁剪完成: {} 个文件", success_count))
+        let msg = format!("全部裁剪完成: {} 个文件", success_count);
+        logger::info(&msg);
+        Ok(msg)
     }
 }
 
@@ -713,14 +753,24 @@ pub async fn get_file_thumbnail(app: AppHandle, path: String, file_type: String)
 #[tauri::command]
 pub async fn custom_crop(app: AppHandle, options: CustomCropOptions) -> Result<String, String> {
     if options.crop_width == 0 || options.crop_height == 0 {
+        logger::warn("自定义裁剪：尺寸无效");
         return Err("裁剪尺寸无效".to_string());
     }
 
     let input = PathBuf::from(&options.input_path);
     if !input.is_file() {
+        logger::error(format!("自定义裁剪：输入不存在 {}", options.input_path));
         return Err("输入文件不存在".to_string());
     }
 
+    logger::info(format!(
+        "开始自定义裁剪 {} {}x{}+{}+{}",
+        options.input_path,
+        options.crop_width,
+        options.crop_height,
+        options.crop_x,
+        options.crop_y
+    ));
     std::fs::create_dir_all(&options.output_dir).map_err(|e| e.to_string())?;
 
     let file_name = input
@@ -765,8 +815,17 @@ pub async fn custom_crop(app: AppHandle, options: CustomCropOptions) -> Result<S
         _ => Err("不支持的文件类型".to_string()),
     };
 
-    result?;
-    Ok(format!("裁剪完成: {}", output_path.to_string_lossy()))
+    match result {
+        Ok(()) => {
+            let msg = format!("裁剪完成: {}", output_path.to_string_lossy());
+            logger::info(&msg);
+            Ok(msg)
+        }
+        Err(e) => {
+            logger::error(format!("自定义裁剪失败: {}", e));
+            Err(e)
+        }
+    }
 }
 
 /// 规范化输出帧率：仅允许 30 / 60
@@ -796,7 +855,14 @@ fn validate_video_profile(profile: &str) -> bool {
 
 #[tauri::command]
 pub async fn merge_videos(app: AppHandle, options: VideoMergeOptions) -> Result<String, String> {
-    validate_merge_options(&options)?;
+    if let Err(e) = validate_merge_options(&options) {
+        logger::warn(format!("双路拼接参数无效: {}", e));
+        return Err(e);
+    }
+    logger::info(format!(
+        "开始双路拼接 kind={} layout={} -> {}",
+        options.media_kind, options.layout, options.output_path
+    ));
 
     if let Some(parent) = PathBuf::from(&options.output_path).parent() {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
@@ -900,11 +966,15 @@ pub async fn merge_videos(app: AppHandle, options: VideoMergeOptions) -> Result<
     args.push(options.output_path.clone());
 
     let _ = hw::ensure_detected(&app, false).await;
-    run_ffmpeg_with_fallback(&app, &args)
-        .await
-        .map_err(|e| format!("拼接失败: {}", e))?;
+    if let Err(e) = run_ffmpeg_with_fallback(&app, &args).await {
+        let msg = format!("拼接失败: {}", e);
+        logger::error(&msg);
+        return Err(msg);
+    }
 
-    Ok(format!("拼接完成: {}", options.output_path))
+    let msg = format!("拼接完成: {}", options.output_path);
+    logger::info(&msg);
+    Ok(msg)
 }
 
 fn join_bg_color(background: &str, is_image: bool) -> Result<String, String> {
@@ -1008,8 +1078,21 @@ fn validate_join_options(options: &JoinOptions) -> Result<String, String> {
 
 #[tauri::command]
 pub async fn join_media(app: AppHandle, options: JoinOptions) -> Result<String, String> {
-    let output_kind = validate_join_options(&options)?;
+    let output_kind = match validate_join_options(&options) {
+        Ok(k) => k,
+        Err(e) => {
+            logger::warn(format!("自定义拼接参数无效: {}", e));
+            return Err(e);
+        }
+    };
     let is_image = output_kind == "image";
+    logger::info(format!(
+        "开始自定义拼接 items={} canvas={}x{} -> {}",
+        options.items.len(),
+        options.canvas_width,
+        options.canvas_height,
+        options.output_path
+    ));
 
     if let Some(parent) = PathBuf::from(&options.output_path).parent() {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
@@ -1153,11 +1236,15 @@ pub async fn join_media(app: AppHandle, options: JoinOptions) -> Result<String, 
     args.push(options.output_path.clone());
 
     let _ = hw::ensure_detected(&app, false).await;
-    run_ffmpeg_with_fallback(&app, &args)
-        .await
-        .map_err(|e| format!("自定义拼接失败: {}", e))?;
+    if let Err(e) = run_ffmpeg_with_fallback(&app, &args).await {
+        let msg = format!("自定义拼接失败: {}", e);
+        logger::error(&msg);
+        return Err(msg);
+    }
 
-    Ok(format!("自定义拼接完成: {}", options.output_path))
+    let msg = format!("自定义拼接完成: {}", options.output_path);
+    logger::info(&msg);
+    Ok(msg)
 }
 
 fn validate_merge_options(options: &VideoMergeOptions) -> Result<(), String> {
@@ -1225,5 +1312,45 @@ pub fn open_folder(path: String) -> Result<(), String> {
 
 #[tauri::command]
 pub fn start_upload_server(input_dir: String) -> Result<String, String> {
-    crate::upload_server::start_server(input_dir)
+    match crate::upload_server::start_server(input_dir) {
+        Ok(url) => {
+            logger::info(format!("上传服务: {}", url));
+            Ok(url)
+        }
+        Err(e) => {
+            logger::error(format!("启动上传服务失败: {}", e));
+            Err(e)
+        }
+    }
+}
+
+#[tauri::command]
+pub fn get_log_path() -> Result<String, String> {
+    logger::log_path()
+        .map(|p| p.to_string_lossy().to_string())
+        .ok_or_else(|| "日志尚未初始化".to_string())
+}
+
+#[tauri::command]
+pub fn read_logs(max_bytes: Option<u64>) -> Result<String, String> {
+    logger::read_logs(max_bytes)
+}
+
+#[tauri::command]
+pub fn clear_logs() -> Result<(), String> {
+    logger::clear_logs()
+}
+
+#[tauri::command]
+pub fn export_logs(dest: String) -> Result<(), String> {
+    if dest.trim().is_empty() {
+        return Err("导出路径不能为空".to_string());
+    }
+    logger::export_logs(&dest)
+}
+
+#[tauri::command]
+pub fn open_logs_dir() -> Result<(), String> {
+    let dir = logger::logs_dir().ok_or_else(|| "日志尚未初始化".to_string())?;
+    open_folder(dir.to_string_lossy().to_string())
 }
