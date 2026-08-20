@@ -12,10 +12,10 @@ const { visible, message, toastType } = useToast();
       role="status"
     >
       <div
-        class="px-16px py-10px rounded-8px text-13px font-500 shadow-lg border whitespace-pre-wrap text-center"
+        class="px-16px py-10px rounded-4px text-13px font-500 shadow-fluent-md border whitespace-pre-wrap text-center"
         :class="{
-          'bg-#e8f5e9 color-#1b5e20 border-#c8e6c9': toastType === 'success',
-          'bg-#ffebee color-#b71c1c border-#ffcdd2': toastType === 'error',
+          'bg-success-soft color-success border-success/25': toastType === 'success',
+          'bg-danger-soft color-danger border-danger/25': toastType === 'error',
           'bg-bg1 color-t1 border-border': toastType === 'info',
         }"
       >

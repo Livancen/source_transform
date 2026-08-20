@@ -158,7 +158,7 @@ onMounted(() => {
       <div class="w-1px h-24px bg-border"></div>
       <div class="flex items-center gap-8px min-w-0">
         <div
-          class="w-26px h-26px rounded-6px bg-secondary grid place-items-center color-white shrink-0"
+          class="w-26px h-26px rounded-4px bg-primary grid place-items-center color-white shrink-0"
         >
           <svg
             class="w-14px h-14px"
@@ -188,11 +188,11 @@ onMounted(() => {
       >
         <!-- 目录 -->
         <section
-          class="bg-bg1 border border-border rounded-10px p-12px flex flex-col gap-8px min-h-0"
+          class="bg-bg1 border border-border rounded-8px p-12px flex flex-col gap-8px min-h-0"
         >
           <h2 class="text-13px font-600 flex items-center gap-6px shrink-0">
             <span
-              class="w-22px h-22px rounded-6px bg-secondary-soft color-secondary grid place-items-center"
+              class="w-22px h-22px rounded-4px bg-secondary-soft color-secondary grid place-items-center"
             >
               <svg
                 class="w-12px h-12px"
@@ -261,7 +261,7 @@ onMounted(() => {
             </div>
             <div
               v-if="uploadUrl"
-              class="py-6px px-8px rounded-6px bg-secondary-soft border border-secondary/15 flex items-center gap-8px min-w-0"
+              class="py-6px px-8px rounded-4px bg-secondary-soft border border-secondary/15 flex items-center gap-8px min-w-0"
             >
               <span class="text-10px color-t3 shrink-0">上传</span>
               <a
@@ -277,11 +277,11 @@ onMounted(() => {
 
         <!-- 界面 + 关于/更新 -->
         <section
-          class="bg-bg1 border border-border rounded-10px p-12px flex flex-col gap-8px min-h-0"
+          class="bg-bg1 border border-border rounded-8px p-12px flex flex-col gap-8px min-h-0"
         >
           <h2 class="text-13px font-600 flex items-center gap-6px shrink-0">
             <span
-              class="w-22px h-22px rounded-6px bg-secondary-soft color-secondary grid place-items-center"
+              class="w-22px h-22px rounded-4px bg-secondary-soft color-secondary grid place-items-center"
             >
               <svg
                 class="w-12px h-12px"
@@ -298,7 +298,7 @@ onMounted(() => {
           </h2>
 
           <label
-            class="flex items-center justify-between gap-10px p-10px rounded-8px bg-bg2 border border-border cursor-pointer"
+            class="flex items-center justify-between gap-10px p-10px rounded-4px bg-bg2 border border-border cursor-pointer"
           >
             <div class="min-w-0">
               <div class="text-12px font-500">默认展开处理选项</div>
@@ -311,7 +311,7 @@ onMounted(() => {
           </label>
 
           <div
-            class="p-10px rounded-8px bg-bg2 border border-border flex flex-col gap-8px"
+            class="p-10px rounded-4px bg-bg2 border border-border flex flex-col gap-8px"
           >
             <div class="flex items-start justify-between gap-10px">
               <div class="min-w-0">
@@ -415,13 +415,13 @@ onMounted(() => {
         <!-- 输出命名：跨两列 -->
         <section class="col-span-2">
           <div
-            class="bg-bg1 border border-border rounded-10px p-12px flex flex-col gap-8px min-h-0 overflow-hidden"
+            class="bg-bg1 border border-border rounded-8px p-12px flex flex-col gap-8px min-h-0 overflow-hidden"
           >
             <div class="flex items-start justify-between gap-12px shrink-0">
               <div>
                 <h2 class="text-13px font-600 flex items-center gap-6px">
                   <span
-                    class="w-22px h-22px rounded-6px bg-secondary-soft color-secondary grid place-items-center"
+                    class="w-22px h-22px rounded-4px bg-secondary-soft color-secondary grid place-items-center"
                   >
                     <svg
                       class="w-12px h-12px"
@@ -443,7 +443,7 @@ onMounted(() => {
                 </p>
               </div>
               <div
-                class="py-6px px-10px rounded-6px bg-bg0 border border-border shrink-0 max-w-50%"
+                class="py-6px px-10px rounded-4px bg-bg0 border border-border shrink-0 max-w-50%"
               >
                 <span class="text-10px color-t3">预览 </span>
                 <span class="text-11px font-mono color-t1">{{
@@ -454,7 +454,7 @@ onMounted(() => {
 
             <div class="grid grid-cols-4 gap-8px min-h-0 flex-1">
               <label
-                class="flex justify-between items-center gap-8px p-10px rounded-8px bg-bg2 border border-border cursor-pointer min-h-0"
+                class="flex justify-between items-center gap-8px p-10px rounded-4px bg-bg2 border border-border cursor-pointer min-h-0"
               >
                 <div>
                   <div class="text-12px font-500">① 原名</div>
@@ -467,7 +467,7 @@ onMounted(() => {
               </label>
 
               <label
-                class="flex justify-between items-center gap-8px p-10px rounded-8px bg-bg2 border border-border cursor-pointer min-h-0"
+                class="flex justify-between items-center gap-8px p-10px rounded-4px bg-bg2 border border-border cursor-pointer min-h-0"
               >
                 <div>
                   <div class="text-12px font-500">② 时间戳</div>
@@ -480,7 +480,7 @@ onMounted(() => {
               </label>
 
               <label
-                class="flex justify-between items-center gap-8px p-10px rounded-8px bg-bg2 border border-border cursor-pointer min-h-0"
+                class="flex justify-between items-center gap-8px p-10px rounded-4px bg-bg2 border border-border cursor-pointer min-h-0"
               >
                 <div>
                   <div class="text-12px font-500">③ 标准时间</div>
@@ -493,7 +493,7 @@ onMounted(() => {
               </label>
 
               <div
-                class="flex flex-col gap-6px p-10px rounded-8px bg-bg2 border border-border min-h-0"
+                class="flex flex-col gap-6px p-10px rounded-4px bg-bg2 border border-border min-h-0"
               >
                 <div class="text-12px font-500">④ 自定义文本</div>
                 <input
@@ -510,13 +510,13 @@ onMounted(() => {
         <!-- 运行日志：跨两列 -->
         <section class="col-span-2 min-h-0">
           <div
-            class="bg-bg1 border border-border rounded-10px p-12px flex flex-col gap-8px min-h-220px h-full"
+            class="bg-bg1 border border-border rounded-8px p-12px flex flex-col gap-8px min-h-220px h-full"
           >
             <div class="flex items-start justify-between gap-12px shrink-0">
               <div class="min-w-0">
                 <h2 class="text-13px font-600 flex items-center gap-6px">
                   <span
-                    class="w-22px h-22px rounded-6px bg-secondary-soft color-secondary grid place-items-center"
+                    class="w-22px h-22px rounded-4px bg-secondary-soft color-secondary grid place-items-center"
                   >
                     <svg
                       class="w-12px h-12px"
@@ -573,7 +573,7 @@ onMounted(() => {
             </div>
             <pre
               ref="logBox"
-              class="flex-1 min-h-140px m-0 p-10px rounded-8px bg-bg0 border border-border overflow-auto font-mono text-11px leading-relaxed color-t1 whitespace-pre-wrap break-all"
+              class="flex-1 min-h-140px m-0 p-10px rounded-4px bg-bg0 border border-border overflow-auto font-mono text-11px leading-relaxed color-t1 whitespace-pre-wrap break-all"
             >{{ logLoading ? "加载中…" : logContent }}</pre>
           </div>
         </section>

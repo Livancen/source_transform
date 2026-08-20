@@ -42,49 +42,21 @@ function progressPercent() {
 
 <template>
   <header
-    class="shrink-0 h-52px px-12px flex items-center gap-6px bg-bg1 border-b border-border z-20"
+    class="shrink-0 h-48px px-12px flex items-center gap-10px bg-bg1 border-b border-border z-20"
   >
-    <!-- <div class="flex items-center gap-4px shrink-0">
-      <button
-        class="tb-btn"
-        title="刷新文件列表"
-        :disabled="isProcessing"
-        @click="$emit('refresh')"
-      >
-        <svg
-          class="w-15px h-15px shrink-0"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-        >
-          <polyline points="23 4 23 10 17 10" />
-          <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
-        </svg>
-      </button>
-    </div> -->
-
-    <!-- <div class="w-1px h-28px bg-border mx-4px shrink-0"></div> -->
-
-    <div
-      class="flex items-center gap-2px shrink-0 p-2px rounded-8px bg-bg0 border border-border"
-    >
+    <nav class="flex items-stretch gap-0 shrink-0 h-full" aria-label="工作模式">
       <button
         v-for="m in modes"
         :key="m.id"
         type="button"
-        class="h-30px px-12px rounded-6px text-12px font-500 border-none cursor-pointer transition-all duration-150"
-        :class="
-          workMode === m.id
-            ? 'bg-secondary color-white'
-            : 'bg-transparent color-t2 hover:color-t1 hover:bg-bg2'
-        "
+        class="fluent-pivot-item"
+        :class="{ 'is-active': workMode === m.id }"
         :disabled="isProcessing"
         @click="($emit('update:workMode', m.id), $emit('refresh'))"
       >
         {{ m.label }}
       </button>
-    </div>
+    </nav>
 
     <button
       v-if="showStart"
@@ -94,7 +66,7 @@ function progressPercent() {
     >
       <svg
         v-if="!isProcessing"
-        class="w-15px h-15px shrink-0"
+        class="w-14px h-14px shrink-0"
         viewBox="0 0 24 24"
         fill="none"
         stroke="currentColor"
@@ -104,7 +76,7 @@ function progressPercent() {
       </svg>
       <svg
         v-else
-        class="w-15px h-15px shrink-0"
+        class="w-14px h-14px shrink-0"
         viewBox="0 0 24 24"
         fill="none"
         stroke="currentColor"
@@ -120,9 +92,9 @@ function progressPercent() {
 
     <div
       v-if="isProcessing && progress"
-      class="flex items-center gap-8px min-w-160px px-10px h-34px rounded-6px bg-bg0 border border-border"
+      class="flex items-center gap-8px min-w-160px px-10px h-32px rounded-4px bg-bg0 border border-border"
     >
-      <div class="flex-1 h-4px rounded-full bg-bg3 overflow-hidden">
+      <div class="flex-1 h-3px rounded-full bg-bg3 overflow-hidden">
         <i
           class="block h-full rounded-full bg-primary transition-all duration-300"
           :style="{ width: progressPercent() + '%' }"
@@ -135,7 +107,7 @@ function progressPercent() {
 
     <button class="tb-btn" title="设置" @click="$emit('openSettings')">
       <svg
-        class="w-15px h-15px shrink-0"
+        class="w-14px h-14px shrink-0"
         viewBox="0 0 24 24"
         fill="none"
         stroke="currentColor"

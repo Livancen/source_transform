@@ -243,7 +243,7 @@ function handleJoinCompleted(message: string) {
       />
 
       <div
-        class="splitter-bar relative z-5 bg-bg0 border-l border-r border-border cursor-col-resize transition-colors duration-150 hover:bg-secondary"
+        class="splitter-bar relative z-5 bg-bg0 border-l border-r border-border cursor-col-resize transition-colors duration-100 hover:bg-primary/15"
         :class="{ 'is-dragging! bg-secondary': isDragging }"
         title="拖动调整宽度"
         @mousedown="onSplitterDown"

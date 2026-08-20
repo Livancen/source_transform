@@ -791,7 +791,7 @@ onBeforeUnmount(() => {
         </div>
 
         <div
-          class="flex h-36px flex-wrap items-center gap-12px px-12px bg-bg0 rounded-8px border border-border"
+          class="flex h-36px flex-wrap items-center gap-12px px-12px bg-bg0 rounded-4px border border-border"
         >
           <span class="text-12px color-t3">画布</span>
           <select
@@ -851,7 +851,7 @@ onBeforeUnmount(() => {
         </div>
 
         <div
-          class="bg-bg0 px-10px h-36px flex items-center rounded-6px text-12px color-t2 gap-8px"
+          class="bg-bg0 px-10px h-36px flex items-center rounded-4px text-12px color-t2 gap-8px"
         >
           <span>图层 {{ items.length }}/6</span>
           <span class="color-t3">·</span>
@@ -981,7 +981,7 @@ onBeforeUnmount(() => {
         @click="onCanvasBgClick"
       >
         <div
-          class="relative shadow-lg shrink-0 box-border"
+          class="relative shadow-fluent-md shrink-0 box-border"
           :style="{
             width: canvasWidth * viewScale + 'px',
             height: canvasHeight * viewScale + 'px',
@@ -1351,7 +1351,7 @@ onBeforeUnmount(() => {
 
           <div
             v-if="statusMessage"
-            class="mt-auto text-11px color-t2 whitespace-pre-wrap break-all border border-border rounded-6px p-8px bg-bg1"
+            class="mt-auto text-11px color-t2 whitespace-pre-wrap break-all border border-border rounded-4px p-8px bg-bg1"
           >
             {{ statusMessage }}
           </div>

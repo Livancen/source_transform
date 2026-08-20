@@ -593,7 +593,7 @@ async function startMerge() {
           </select>
         </div>
         <div
-          class="flex flex-wrap items-center gap-16px py-10px px-12px bg-bg0 rounded-8px border border-border"
+          class="flex flex-wrap items-center gap-16px py-10px px-12px bg-bg0 rounded-4px border border-border"
         >
           <div class="flex items-center gap-12px">
             <label class="flex items-center gap-6px cursor-pointer text-12px">
@@ -642,7 +642,7 @@ async function startMerge() {
           </div>
         </div>
         <div
-          class="px-12px h-36px flex items-center bg-bg0 rounded-8px border border-border max-w-560px box-border"
+          class="px-12px h-36px flex items-center bg-bg0 rounded-4px border border-border max-w-560px box-border"
         >
           <div class="flex gap-8px flex-wrap items-center">
             <label class="text-12px color-t3">输出宽</label>
@@ -675,13 +675,13 @@ async function startMerge() {
         </div>
 
         <div
-          class="bg-bg0 px-10px h36px flex items-center rounded-6px box-border"
+          class="bg-bg0 px-10px h36px flex items-center rounded-4px box-border"
         >
           输出大小: {{ naturalSizeText }}
         </div>
         <!-- <div
           v-if="statusMessage"
-          class="bg-bg0 p-10px rounded-6px whitespace-pre-wrap text-12px border border-border color-t2 max-w-560px"
+          class="bg-bg0 p-10px rounded-4px whitespace-pre-wrap text-12px border border-border color-t2 max-w-560px"
         >
           {{ statusMessage }}
         </div> -->
@@ -791,7 +791,7 @@ async function startMerge() {
           <div
             v-for="(slot, index) in slots"
             :key="index"
-            class="border rounded-8px p-10px bg-bg0 transition-colors cursor-pointer min-w-0"
+            class="border rounded-4px p-10px bg-bg0 transition-colors cursor-pointer min-w-0"
             :class="
               activeSlot === index
                 ? 'border-secondary ring-1 ring-secondary/30'
@@ -815,7 +815,7 @@ async function startMerge() {
             </div>
             <button
               type="button"
-              class="relative bg-bg2 border border-border rounded-6px flex flex-col items-center justify-center text-center p-0 overflow-hidden color-t2 cursor-pointer hover:not-disabled:bg-bg-hover disabled:opacity-45 mx-auto"
+              class="relative bg-bg2 border border-border rounded-4px flex flex-col items-center justify-center text-center p-0 overflow-hidden color-t2 cursor-pointer hover:not-disabled:bg-bg-hover disabled:opacity-45 mx-auto"
               :style="slotAspectStyle"
               :disabled="isMerging"
               @click.stop="pickFile(index)"

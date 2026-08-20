@@ -80,7 +80,7 @@ function closePreview() {
   <section class="flex flex-col min-w-0 min-h-0 bg-bg1 relative">
     <div class="shrink-0 h-40px flex items-center gap-6px px-8px bg-bg2 border-b border-border">
       <span
-        class="inline-flex items-center gap-5px h-24px px-8px rounded-5px text-11px font-600 shrink-0"
+        class="inline-flex items-center gap-5px h-24px px-8px rounded-4px text-11px font-600 shrink-0"
         :class="kind === 'input'
           ? 'bg-secondary-soft color-video'
           : 'bg-success-soft color-success'"
@@ -92,13 +92,13 @@ function closePreview() {
         {{ title }}
       </span>
       <input
-        class="flex-1 min-w-0 h-28px px-10px rounded-6px border border-border bg-bg0 color-t2 font-mono text-11px outline-none focus:border-secondary focus:bg-bg1 focus:color-t1"
+        class="flex-1 min-w-0 h-28px px-10px rounded-4px border border-border-strong bg-bg1 color-t2 font-mono text-11px outline-none focus:border-primary focus:color-t1"
         readonly
         :value="dir"
         :title="dir"
       />
       <button
-        class="w-28px h-28px grid place-items-center border border-transparent rounded-6px bg-transparent color-t3 cursor-pointer transition-all duration-150 hover:not-disabled:bg-bg3 hover:not-disabled:color-t1 hover:not-disabled:border-border disabled:opacity-45"
+        class="w-28px h-28px grid place-items-center border border-transparent rounded-4px bg-transparent color-t3 cursor-pointer transition-all duration-100 hover:not-disabled:bg-bg3 hover:not-disabled:color-t1 disabled:opacity-40"
         title="选择目录"
         type="button"
         @click="emit('selectDir')"
@@ -108,7 +108,7 @@ function closePreview() {
         </svg>
       </button>
       <button
-        class="w-28px h-28px grid place-items-center border border-transparent rounded-6px bg-transparent color-t3 cursor-pointer transition-all duration-150 hover:not-disabled:bg-bg3 hover:not-disabled:color-t1 hover:not-disabled:border-border disabled:opacity-45"
+        class="w-28px h-28px grid place-items-center border border-transparent rounded-4px bg-transparent color-t3 cursor-pointer transition-all duration-100 hover:not-disabled:bg-bg3 hover:not-disabled:color-t1 disabled:opacity-40"
         title="在资源管理器中打开"
         type="button"
         :disabled="!dir"
@@ -153,7 +153,7 @@ function closePreview() {
           <div
             v-for="{ item: file, top } in visibleItems"
             :key="file.path"
-            class="absolute left-0 right-0 grid items-center px-10px mx-4px rounded-6px color-t1 transition-colors duration-100 hover:bg-bg3"
+            class="absolute left-0 right-0 grid items-center px-10px mx-4px rounded-4px color-t1 transition-colors duration-100 hover:bg-bg3"
             :style="{ top: top + 'px', height: ROW_H - 2 + 'px' }"
             :class="[
               selectable
@@ -224,7 +224,7 @@ function closePreview() {
               <span
                 class="inline-flex items-center h-18px px-6px rounded-4px text-10px font-600 tracking-wide"
                 :class="file.file_type === 'image'
-                  ? 'bg-[rgba(114,46,209,0.08)] color-image'
+                  ? 'bg-image/10 color-image'
                   : 'bg-secondary-soft color-video'"
               >
                 {{ file.file_type === "image" ? "图片" : "视频" }}

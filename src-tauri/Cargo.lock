@@ -3926,7 +3926,7 @@ dependencies = [
 
 [[package]]
 name = "source_transform"
-version = "8.2.11"
+version = "8.2.12"
 dependencies = [
  "base64 0.22.1",
  "chrono",

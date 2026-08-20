@@ -1,13 +1,18 @@
-// 仅保留 UnoCSS 难以表达的全局基础与交互控件
-@font-ui: "Segoe UI", -apple-system, BlinkMacSystemFont, "PingFang SC",
-  "Microsoft YaHei", sans-serif;
+// Fluent 2 全局基础与交互控件（方案 A）
+@font-ui: "Segoe UI", "Segoe UI Variable", -apple-system, BlinkMacSystemFont,
+  "PingFang SC", "Microsoft YaHei", sans-serif;
 
-@bg0: #f1f2f3;
+@bg0: #f5f5f5;
 @bg1: #ffffff;
-@border: #eeeeee;
-@t1: #1f2329;
-@t3: #8f959e;
-@accent: #007acc;
+@bg2: #fafafa;
+@border: #e0e0e0;
+@border-strong: #c7c7c7;
+@t1: #242424;
+@t2: #616161;
+@t3: #707070;
+@accent: #0f6cbd;
+@accent-hover: #115ea3;
+@neutral-stroke: #d1d1d1;
 
 * {
   box-sizing: border-box;
@@ -32,7 +37,8 @@ body,
 
 button,
 input,
-select {
+select,
+textarea {
   font-family: @font-ui;
 }
 
@@ -41,11 +47,11 @@ button:disabled {
   box-shadow: none !important;
 }
 
-// 开关
+// Fluent Toggle
 .switch {
   position: relative;
-  width: 32px;
-  height: 18px;
+  width: 40px;
+  height: 20px;
   flex-shrink: 0;
 
   input {
@@ -58,24 +64,27 @@ button:disabled {
   .slider {
     position: absolute;
     inset: 0;
-    background: #d9d9d9;
-    border: 1px solid transparent;
+    background: @bg1;
+    border: 1px solid @border-strong;
     border-radius: 999px;
     cursor: pointer;
-    transition: 0.15s;
+    transition: background 0.12s ease, border-color 0.12s ease;
 
     &::before {
       content: "";
       position: absolute;
       width: 12px;
       height: 12px;
-      left: 2px;
-      top: 2px;
-      background: #fff;
+      left: 3px;
+      top: 3px;
+      background: @t2;
       border-radius: 50%;
-      transition: 0.15s;
-      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
+      transition: transform 0.12s ease, background 0.12s ease, width 0.12s ease;
     }
+  }
+
+  &:hover .slider {
+    border-color: @t3;
   }
 
   input:checked + .slider {
@@ -83,16 +92,35 @@ button:disabled {
     border-color: @accent;
 
     &::before {
-      transform: translateX(14px);
+      transform: translateX(20px);
       background: #fff;
+      width: 14px;
+      height: 14px;
+      top: 2px;
+      left: 2px;
     }
+  }
+
+  input:checked + .slider:hover,
+  &:hover input:checked + .slider {
+    background: @accent-hover;
+    border-color: @accent-hover;
+  }
+
+  input:focus-visible + .slider {
+    outline: 2px solid @accent;
+    outline-offset: 1px;
   }
 }
 
-// 文件列表滚动条
+// 文件列表滚动条（Fluent 细滚动条）
 .file-list-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: #c7c7c7 transparent;
+
   &::-webkit-scrollbar {
-    width: 10px;
+    width: 8px;
+    height: 8px;
   }
 
   &::-webkit-scrollbar-track {
@@ -100,12 +128,15 @@ button:disabled {
   }
 
   &::-webkit-scrollbar-thumb {
-    background: #d9d9d9;
+    background: #c7c7c7;
     border-radius: 999px;
-    border: 2px solid @bg1;
+    border: 2px solid transparent;
+    background-clip: padding-box;
 
     &:hover {
-      background: #bfbfbf;
+      background: #adadad;
+      border: 2px solid transparent;
+      background-clip: padding-box;
     }
   }
 }
@@ -133,12 +164,12 @@ button:disabled {
     width: 2px;
     height: 28px;
     border-radius: 2px;
-    background: #d0d0d0;
+    background: @neutral-stroke;
   }
 
   &:hover::after,
   &.is-dragging::after {
-    background: #fff;
+    background: @accent;
   }
 }
 
@@ -169,5 +200,35 @@ img {
 
 // 原生控件强调色
 .accent-secondary {
-  accent-color: #007acc;
+  accent-color: @accent;
+}
+
+// Fluent Pivot 下划线指示器
+.fluent-pivot-item {
+  position: relative;
+
+  &.is-active {
+    color: @accent;
+    font-weight: 600;
+
+    &::after {
+      content: "";
+      position: absolute;
+      left: 10px;
+      right: 10px;
+      bottom: 0;
+      height: 3px;
+      border-radius: 1px 1px 0 0;
+      background: @accent;
+    }
+  }
+}
+
+// 输入框 Fluent 焦点环（未走 Uno field 的原生控件）
+input[type="text"]:not([class*="border-none"]):focus-visible,
+input[type="number"]:not([class*="border-none"]):focus-visible,
+select:not([class*="border-none"]):focus-visible {
+  outline: none;
+  border-color: @accent;
+  box-shadow: 0 0 0 1px @accent;
 }

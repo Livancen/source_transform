@@ -241,7 +241,7 @@ function onDone() {
     <div
       v-if="visible"
       ref="panelRef"
-      class="fixed z-3000 w-400px max-w-[calc(100vw-16px)] bg-bg1 rounded-10px border border-border shadow-xl overflow-hidden"
+      class="fixed z-3000 w-400px max-w-[calc(100vw-16px)] bg-bg1 rounded-8px border border-border shadow-fluent-lg overflow-hidden"
       :style="panelStyle"
       @pointerdown.stop
       @click.stop
@@ -451,7 +451,7 @@ function onDone() {
                   ></div>
                 </div>
                 <div
-                  class="flex-1 min-w-0 h-72px rounded-8px border border-border bg-[#2a2d34] grid place-items-center overflow-hidden"
+                  class="flex-1 min-w-0 h-72px rounded-4px border border-border bg-[#2a2d34] grid place-items-center overflow-hidden"
                 >
                   <div
                     class="px-10px py-4px text-13px font-600 whitespace-nowrap max-w-90% truncate"

@@ -82,15 +82,15 @@ function onClose() {
 <template>
   <div
     v-if="visible && file"
-    class="fixed inset-0 z-1000 flex items-center justify-center bg-black/55 p-20px"
+    class="fixed inset-0 z-1000 flex items-center justify-center bg-black/40 p-20px"
     @click.self="onMaskClick"
   >
     <div
-      class="relative bg-bg1 rounded-12px border border-border shadow-xl max-w-90vw max-h-90vh w-auto min-w-320px flex flex-col overflow-hidden"
+      class="relative bg-bg1 rounded-8px border border-border shadow-fluent-lg max-w-90vw max-h-90vh w-auto min-w-320px flex flex-col overflow-hidden"
       @click.stop
     >
       <div
-        class="shrink-0 h-48px px-16px flex items-center justify-between gap-12px border-b border-border"
+        class="shrink-0 h-48px px-16px flex items-center justify-between gap-12px border-b border-border bg-bg2"
       >
         <div class="min-w-0 flex-1">
           <div class="text-13px font-600 truncate" :title="file.name">

@@ -21,14 +21,14 @@ const {
 <template>
   <div
     v-if="visible"
-    class="fixed inset-0 z-2000 flex items-center justify-center bg-black/50 p-20px"
+    class="fixed inset-0 z-2000 flex items-center justify-center bg-black/40 p-20px"
     @click.self="!isUpdating && dismiss()"
   >
     <div
-      class="w-440px max-w-full bg-bg1 rounded-12px border border-border shadow-xl overflow-hidden"
+      class="w-440px max-w-full bg-bg1 rounded-8px border border-border shadow-fluent-lg overflow-hidden"
       @click.stop
     >
-      <div class="px-18px py-14px border-b border-border flex items-center justify-between gap-12px">
+      <div class="px-18px py-14px border-b border-border flex items-center justify-between gap-12px bg-bg2">
         <div>
           <div class="text-14px font-600">
             {{
@@ -68,7 +68,7 @@ const {
           </p>
           <div
             v-if="releaseNotes"
-            class="max-h-140px overflow-auto p-10px rounded-8px bg-bg0 border border-border text-12px color-t2 whitespace-pre-wrap"
+            class="max-h-140px overflow-auto p-10px rounded-4px bg-bg0 border border-border text-12px color-t2 whitespace-pre-wrap"
           >
             {{ releaseNotes }}
           </div>
@@ -88,9 +88,9 @@ const {
                 : "正在下载更新包，请勿关闭应用"
             }}
           </div>
-          <div class="h-8px rounded-full bg-bg0 border border-border overflow-hidden">
+          <div class="h-3px rounded-full bg-bg3 overflow-hidden">
             <div
-              class="h-full rounded-full bg-secondary transition-all duration-200"
+              class="h-full rounded-full bg-primary transition-all duration-200"
               :style="{ width: progressPct + '%' }"
             ></div>
           </div>
