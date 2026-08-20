@@ -20,6 +20,8 @@ export interface ProcessProgress {
   total: number;
   current_file: string;
   status: string;
+  /** 0～100 整体进度（含当前文件内 FFmpeg 进度） */
+  percent?: number;
 }
 
 export type WatermarkType = "text" | "image";

@@ -133,6 +133,9 @@ pub struct ProcessProgress {
     pub total: usize,
     pub current_file: String,
     pub status: String,
+    /// 0～100 整体进度（含当前文件内 FFmpeg 进度）
+    #[serde(default)]
+    pub percent: f64,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

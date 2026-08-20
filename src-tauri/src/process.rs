@@ -3,7 +3,9 @@ use std::path::{Path, PathBuf};
 use tauri::AppHandle;
 use tauri_plugin_shell::ShellExt;
 
-use crate::hw::{self, append_video_encode_args, run_ffmpeg_with_fallback};
+use crate::hw::{
+    self, append_video_encode_args, run_ffmpeg_with_fallback_progress, ProgressCallback,
+};
 use crate::types::ProcessOptions;
 use crate::watermark::{
     self, clamp_opacity, ffmpeg_overlay_xy, gravity_for_position, normalize_rotation_deg, rgba_css,
@@ -332,6 +334,16 @@ pub async fn process_video(
     output_path: &str,
     options: &ProcessOptions,
 ) -> Result<(), String> {
+    process_video_with_progress(app, input_path, output_path, options, None).await
+}
+
+pub async fn process_video_with_progress(
+    app: &AppHandle,
+    input_path: &str,
+    output_path: &str,
+    options: &ProcessOptions,
+    on_progress: Option<ProgressCallback>,
+) -> Result<(), String> {
     validate_watermark(options)?;
     let _ = hw::ensure_detected(app, false).await;
 
@@ -502,7 +514,7 @@ pub async fn process_video(
 
     args.push(output_path.to_string());
 
-    let result = run_ffmpeg_with_fallback(app, &args).await;
+    let result = run_ffmpeg_with_fallback_progress(app, &args, on_progress).await;
     for tf in temp_files {
         let _ = std::fs::remove_file(tf);
     }
@@ -787,6 +799,19 @@ pub async fn crop_video_region(
     width: u32,
     height: u32,
 ) -> Result<(), String> {
+    crop_video_region_with_progress(app, input_path, output_path, x, y, width, height, None).await
+}
+
+pub async fn crop_video_region_with_progress(
+    app: &AppHandle,
+    input_path: &str,
+    output_path: &str,
+    x: u32,
+    y: u32,
+    width: u32,
+    height: u32,
+    on_progress: Option<ProgressCallback>,
+) -> Result<(), String> {
     let _ = hw::ensure_detected(app, false).await;
 
     let even = |v: u32| (v & !1u32).max(2);
@@ -815,7 +840,7 @@ pub async fn crop_video_region(
     args.push("-y".to_string());
     args.push(output_path.to_string());
 
-    run_ffmpeg_with_fallback(app, &args).await
+    run_ffmpeg_with_fallback_progress(app, &args, on_progress).await
 }
 
 pub async fn crop_image_by_ratio(

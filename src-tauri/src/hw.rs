@@ -1,6 +1,8 @@
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use tauri::AppHandle;
 use tauri_plugin_shell::ShellExt;
+
+pub type ProgressCallback = Arc<dyn Fn(f64) + Send + Sync>;
 
 /// 用户偏好：auto 优先硬编；off 强制软编；其余为指定编码器名
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -370,28 +372,240 @@ pub fn append_video_encode_args(
     }
 }
 
-async fn run_ffmpeg_once(app: &AppHandle, args: &[String]) -> Result<(), String> {
-    let refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+fn inject_progress_args(args: &[String]) -> Vec<String> {
+    let mut out = Vec::with_capacity(args.len() + 4);
+    out.push("-progress".to_string());
+    out.push("pipe:1".to_string());
+    out.push("-nostats".to_string());
+    out.extend(args.iter().cloned());
+    out
+}
+
+/// 将 FFmpeg `-progress` 行解析为已输出时长（毫秒）
+fn parse_out_time_ms(line: &str) -> Option<f64> {
+    let line = line.trim();
+    // 优先用时钟格式，单位明确
+    if let Some(rest) = line.strip_prefix("out_time=") {
+        let rest = rest.trim();
+        if rest.is_empty() || rest.eq_ignore_ascii_case("N/A") {
+            return None;
+        }
+        return parse_ffmpeg_clock(rest).map(|s| s * 1000.0);
+    }
+    // 历史命名错误：out_time_ms 实际是微秒
+    if let Some(rest) = line.strip_prefix("out_time_ms=") {
+        let v: f64 = rest.trim().parse().ok()?;
+        if !v.is_finite() || v < 0.0 {
+            return None;
+        }
+        return Some(v / 1000.0);
+    }
+    if let Some(rest) = line.strip_prefix("out_time_us=") {
+        let v: f64 = rest.trim().parse().ok()?;
+        if !v.is_finite() || v < 0.0 {
+            return None;
+        }
+        return Some(v / 1000.0);
+    }
+    None
+}
+
+fn parse_ffmpeg_clock(s: &str) -> Option<f64> {
+    let parts: Vec<&str> = s.split(':').collect();
+    if parts.len() != 3 {
+        return None;
+    }
+    let h: f64 = parts[0].parse().ok()?;
+    let m: f64 = parts[1].parse().ok()?;
+    let sec: f64 = parts[2].parse().ok()?;
+    Some(h * 3600.0 + m * 60.0 + sec)
+}
+
+fn input_paths(args: &[String]) -> Vec<&str> {
+    let mut out = Vec::new();
+    let mut i = 0;
+    while i + 1 < args.len() {
+        if args[i] == "-i" {
+            out.push(args[i + 1].as_str());
+            i += 2;
+            continue;
+        }
+        i += 1;
+    }
+    out
+}
+
+async fn estimate_job_duration_ms(app: &AppHandle, args: &[String]) -> f64 {
+    // 多路 shortest：取最短有效视频轨
+    let mut min_ms = f64::INFINITY;
+    for path in input_paths(args) {
+        if let Some(secs) = probe_duration_secs(app, path).await {
+            if secs >= 0.2 {
+                min_ms = min_ms.min(secs * 1000.0);
+            }
+        }
+    }
+    if min_ms.is_finite() {
+        min_ms
+    } else {
+        0.0
+    }
+}
+
+/// 读取媒体时长（秒）；失败返回 None
+pub async fn probe_duration_secs(app: &AppHandle, path: &str) -> Option<f64> {
     let output = app
+        .shell()
+        .sidecar("ffprobe")
+        .ok()?
+        .args([
+            "-v",
+            "error",
+            "-show_entries",
+            "format=duration",
+            "-of",
+            "default=noprint_wrappers=1:nokey=1",
+            path,
+        ])
+        .output()
+        .await
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let text = String::from_utf8_lossy(&output.stdout);
+    let d: f64 = text.trim().parse().ok()?;
+    if d.is_finite() && d > 0.0 {
+        Some(d)
+    } else {
+        None
+    }
+}
+
+async fn run_ffmpeg_once(
+    app: &AppHandle,
+    args: &[String],
+    on_progress: Option<ProgressCallback>,
+) -> Result<(), String> {
+    let run_args = if on_progress.is_some() {
+        inject_progress_args(args)
+    } else {
+        args.to_vec()
+    };
+    let refs: Vec<&str> = run_args.iter().map(|s| s.as_str()).collect();
+
+    if on_progress.is_none() {
+        let output = app
+            .shell()
+            .sidecar("ffmpeg")
+            .map_err(|e| format!("无法找到FFmpeg: {}", e))?
+            .args(&refs)
+            .output()
+            .await
+            .map_err(|e| format!("无法执行FFmpeg: {}", e))?;
+        return if output.status.success() {
+            Ok(())
+        } else {
+            Err(String::from_utf8_lossy(&output.stderr).to_string())
+        };
+    }
+
+    let duration_ms = estimate_job_duration_ms(app, args).await;
+
+    let (mut rx, _child) = app
         .shell()
         .sidecar("ffmpeg")
         .map_err(|e| format!("无法找到FFmpeg: {}", e))?
         .args(&refs)
-        .output()
-        .await
-        .map_err(|e| format!("无法执行FFmpeg: {}", e))?;
-    if output.status.success() {
+        .spawn()
+        .map_err(|e| format!("无法启动FFmpeg: {}", e))?;
+
+    let mut stderr = String::new();
+    let mut code: Option<i32> = None;
+    let mut last_pct = 0.0_f64;
+    let report = |pct: f64, last: &mut f64, cb: &ProgressCallback| {
+        // 单调递增，避免解析抖动导致回跳
+        let pct = pct.clamp(0.0, 99.5).max(*last);
+        if pct - *last >= 0.3 {
+            *last = pct;
+            cb(pct);
+        }
+    };
+
+    while let Some(event) = rx.recv().await {
+        match event {
+            tauri_plugin_shell::process::CommandEvent::Stdout(line) => {
+                let text = String::from_utf8_lossy(&line);
+                if let Some(ref cb) = on_progress {
+                    if let Some(out_ms) = parse_out_time_ms(&text) {
+                        if duration_ms > 1.0 {
+                            let pct = (out_ms / duration_ms) * 100.0;
+                            report(pct, &mut last_pct, cb);
+                        }
+                    }
+                    // progress=end 不立刻报 100，等进程成功退出再报，避免假满格
+                }
+            }
+            tauri_plugin_shell::process::CommandEvent::Stderr(line) => {
+                stderr.push_str(&String::from_utf8_lossy(&line));
+                stderr.push('\n');
+            }
+            tauri_plugin_shell::process::CommandEvent::Terminated(payload) => {
+                code = payload.code;
+            }
+            tauri_plugin_shell::process::CommandEvent::Error(e) => {
+                stderr.push_str(&e);
+                stderr.push('\n');
+            }
+            _ => {}
+        }
+    }
+
+    if code == Some(0) {
+        if let Some(ref cb) = on_progress {
+            cb(100.0);
+        }
         Ok(())
     } else {
-        Err(String::from_utf8_lossy(&output.stderr).to_string())
+        Err(if stderr.trim().is_empty() {
+            format!("FFmpeg退出码: {:?}", code)
+        } else {
+            stderr
+        })
     }
 }
 
 /// 执行 ffmpeg；硬编失败时自动回退 libx264/libx265 再试一次
 pub async fn run_ffmpeg_with_fallback(app: &AppHandle, args: &[String]) -> Result<(), String> {
+    run_ffmpeg_with_fallback_progress(app, args, None).await
+}
+
+/// 执行 ffmpeg，并通过回调报告当前任务内进度（0～100）
+pub async fn run_ffmpeg_with_fallback_progress(
+    app: &AppHandle,
+    args: &[String],
+    on_progress: Option<ProgressCallback>,
+) -> Result<(), String> {
     let _ = ensure_detected(app, false).await;
 
-    match run_ffmpeg_once(app, args).await {
+    // 硬编失败回退时保持进度单调，不把条拉回 0
+    let floor = Arc::new(Mutex::new(0.0_f64));
+    let wrapped = on_progress.map(|cb| {
+        let floor = floor.clone();
+        Arc::new(move |pct: f64| {
+            let mut guard = match floor.lock() {
+                Ok(g) => g,
+                Err(e) => e.into_inner(),
+            };
+            if pct < *guard {
+                return;
+            }
+            *guard = pct;
+            cb(pct);
+        }) as ProgressCallback
+    });
+
+    match run_ffmpeg_once(app, args, wrapped.clone()).await {
         Ok(()) => Ok(()),
         Err(err) => {
             let has_hw = args.iter().any(|a| is_hardware_encoder(a));
@@ -399,7 +613,7 @@ pub async fn run_ffmpeg_with_fallback(app: &AppHandle, args: &[String]) -> Resul
                 return Err(format!("FFmpeg处理失败: {}", err));
             }
             let soft_args = replace_encoder_with_software(args);
-            match run_ffmpeg_once(app, &soft_args).await {
+            match run_ffmpeg_once(app, &soft_args, wrapped).await {
                 Ok(()) => Ok(()),
                 Err(err2) => Err(format!(
                     "FFmpeg处理失败（硬编失败已回退软编）: {}\n硬编错误: {}",

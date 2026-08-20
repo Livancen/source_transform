@@ -27,7 +27,9 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
+  started: [];
   completed: [message: string];
+  finished: [];
 }>();
 
 type CanvasPreset = {
@@ -721,6 +723,7 @@ async function startExport() {
     }
   }
 
+  emit("started");
   try {
     const result = await invoke<string>("join_media", { options });
     statusMessage.value = result;
@@ -729,6 +732,7 @@ async function startExport() {
     statusMessage.value = `导出失败: ${e}`;
   } finally {
     isExporting.value = false;
+    emit("finished");
   }
 }
 

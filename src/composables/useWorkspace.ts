@@ -115,9 +115,13 @@ const videoCount = computed(
   () => allInputFiles.value.filter((f) => f.file_type === "video").length,
 );
 
-const statusMessage = computed(() => {
+  const statusMessage = computed(() => {
   if (isProcessing.value && progress.value) {
-    return `正在处理 ${progress.value.current}/${progress.value.total} · ${progress.value.current_file || progress.value.status || ""}`;
+    const pct =
+      typeof progress.value.percent === "number" && Number.isFinite(progress.value.percent)
+        ? ` ${Math.round(progress.value.percent)}%`
+        : "";
+    return `正在处理 ${progress.value.current}/${progress.value.total}${pct} · ${progress.value.current_file || progress.value.status || ""}`;
   }
   if (resultMessage.value) {
     const oneLine = resultMessage.value.replace(/\s+/g, " ").trim();
@@ -382,6 +386,23 @@ async function startProcess() {
   await scanOutputFiles();
 }
 
+function beginWorkspaceJob(label = "处理中") {
+  isProcessing.value = true;
+  progress.value = {
+    current: 1,
+    total: 1,
+    current_file: label,
+    status: "processing",
+    percent: 0,
+  };
+  resultMessage.value = "";
+}
+
+function endWorkspaceJob() {
+  isProcessing.value = false;
+  progress.value = null;
+}
+
 async function initWorkspace() {
   if (initialized.value) return;
   initialized.value = true;
@@ -413,11 +434,28 @@ async function initWorkspace() {
   }
 
   try {
+    const applyProgress = (next: ProcessProgress) => {
+      const prev = progress.value;
+      if (
+        prev &&
+        typeof prev.percent === "number" &&
+        typeof next.percent === "number" &&
+        next.status !== "completed" &&
+        next.percent + 0.05 < prev.percent &&
+        next.current === prev.current &&
+        next.total === prev.total
+      ) {
+        // 同文件内忽略回跳，保留更高进度
+        progress.value = { ...next, percent: prev.percent };
+        return;
+      }
+      progress.value = next;
+    };
     await listen<ProcessProgress>("process-progress", (event) => {
-      progress.value = event.payload;
+      applyProgress(event.payload);
     });
     await listen<ProcessProgress>("crop-progress", (event) => {
-      progress.value = event.payload;
+      applyProgress(event.payload);
     });
   } catch (e) {
     console.error("注册进度监听失败:", e);
@@ -508,6 +546,8 @@ export function useWorkspace() {
     naming,
     isProcessing,
     progress,
+    beginWorkspaceJob,
+    endWorkspaceJob,
     resultMessage,
     uploadUrl,
     optionsOpen,

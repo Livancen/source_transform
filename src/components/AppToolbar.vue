@@ -28,9 +28,14 @@ const modes: { id: WorkMode; label: string }[] = [
 
 function progressPercent() {
   if (!props.progress || props.progress.total <= 0) return 0;
+  if (typeof props.progress.percent === "number" && Number.isFinite(props.progress.percent)) {
+    return Math.min(100, Math.max(0, Math.round(props.progress.percent)));
+  }
+  // 兼容旧事件：按「已完成文件」估算，当前文件计为进行中
+  const done = Math.max(0, props.progress.current - 1);
   return Math.min(
     100,
-    Math.round((props.progress.current / props.progress.total) * 100),
+    Math.round((done / props.progress.total) * 100),
   );
 }
 </script>

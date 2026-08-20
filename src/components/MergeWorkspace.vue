@@ -50,7 +50,9 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
+  started: [];
   completed: [message: string];
+  finished: [];
 }>();
 
 const layout = ref<VideoMergeLayout>("vertical");
@@ -535,6 +537,7 @@ async function startMerge() {
     }
   }
 
+  emit("started");
   try {
     const result = await invoke<string>("merge_videos", { options });
     statusMessage.value = result;
@@ -543,6 +546,7 @@ async function startMerge() {
     statusMessage.value = `拼接失败: ${e}`;
   } finally {
     isMerging.value = false;
+    emit("finished");
   }
 }
 </script>

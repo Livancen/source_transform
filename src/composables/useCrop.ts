@@ -2,7 +2,10 @@ import { ref } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import type { FileInfo, NamingOptions, CustomCropOptions } from "../types";
 
-export function useCrop(onMessage: (msg: string) => void) {
+export function useCrop(
+  onMessage: (msg: string) => void,
+  hooks?: { onStart?: () => void; onEnd?: () => void },
+) {
   const selectedFile = ref<FileInfo | null>(null);
   const cropFrameImage = ref("");
   const mediaWidth = ref(1920);
@@ -179,6 +182,7 @@ export function useCrop(onMessage: (msg: string) => void) {
     }
 
     isExporting.value = true;
+    hooks?.onStart?.();
     try {
       const options: CustomCropOptions = {
         input_path: selectedFile.value.path,
@@ -195,6 +199,7 @@ export function useCrop(onMessage: (msg: string) => void) {
       onMessage(`裁剪失败: ${e}`);
     } finally {
       isExporting.value = false;
+      hooks?.onEnd?.();
     }
   }
 

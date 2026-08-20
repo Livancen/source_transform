@@ -32,6 +32,8 @@ const {
   naming,
   isProcessing,
   progress,
+  beginWorkspaceJob,
+  endWorkspaceJob,
   resultMessage,
   uploadUrl,
   optionsOpen,
@@ -85,6 +87,9 @@ const {
   } else {
     showToast(msg || "裁剪完成", "success", 2000);
   }
+}, {
+  onStart: () => beginWorkspaceJob("自定义裁剪"),
+  onEnd: () => endWorkspaceJob(),
 });
 
 const showStart = computed(
@@ -201,7 +206,9 @@ function handleJoinCompleted(message: string) {
       :output-dir="outputDir"
       :input-files="allInputFiles"
       :naming="naming"
+      @started="beginWorkspaceJob('双路拼接')"
       @completed="handleMergeCompleted"
+      @finished="endWorkspaceJob"
     />
 
     <JoinWorkspace
@@ -209,7 +216,9 @@ function handleJoinCompleted(message: string) {
       :output-dir="outputDir"
       :input-files="allInputFiles"
       :naming="naming"
+      @started="beginWorkspaceJob('自定义拼接')"
       @completed="handleJoinCompleted"
+      @finished="endWorkspaceJob"
     />
 
     <div

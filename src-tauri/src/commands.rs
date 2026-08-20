@@ -5,11 +5,16 @@ use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_shell::ShellExt;
 use walkdir::WalkDir;
 
-use crate::hw::{self, HwAccelMode, append_video_encode_args, run_ffmpeg_with_fallback};
+use std::sync::Arc;
+
+use crate::hw::{
+    self, append_video_encode_args, run_ffmpeg_with_fallback_progress, HwAccelMode,
+};
 use crate::logger;
 use crate::naming::{build_output_name, join_output_path, ratio_output_name};
 use crate::process::{
-    crop_image_by_ratio, crop_image_region, crop_video_region, process_image, process_video,
+    crop_image_by_ratio, crop_image_region, crop_video_region_with_progress, process_image,
+    process_video_with_progress,
 };
 use crate::types::{
     CustomCropOptions, FileInfo, JoinOptions, NamingOptions, ProcessOptions, ProcessProgress,
@@ -25,6 +30,28 @@ fn get_file_type(path: &PathBuf) -> Option<String> {
     } else {
         None
     }
+}
+
+fn emit_progress(
+    app: &AppHandle,
+    event: &str,
+    current: usize,
+    total: usize,
+    current_file: &str,
+    status: &str,
+    file_pct: f64,
+) {
+    let total_f = total.max(1) as f64;
+    let done = (current.saturating_sub(1)) as f64;
+    let pct = ((done + (file_pct / 100.0).clamp(0.0, 1.0)) / total_f * 100.0).clamp(0.0, 100.0);
+    let progress = ProcessProgress {
+        current,
+        total,
+        current_file: current_file.to_string(),
+        status: status.to_string(),
+        percent: pct,
+    };
+    let _ = app.emit(event, &progress);
 }
 
 fn generate_timestamp() -> String {
@@ -414,19 +441,19 @@ pub async fn process_files(
     let mut errors: Vec<String> = Vec::new();
 
     for (index, file) in files.iter().enumerate() {
-        let progress = ProcessProgress {
-            current: index + 1,
+        let current = index + 1;
+        emit_progress(
+            &app,
+            "process-progress",
+            current,
             total,
-            current_file: file.name.clone(),
-            status: "processing".to_string(),
-        };
-        let _ = app.emit("process-progress", &progress);
+            &file.name,
+            "processing",
+            0.0,
+        );
         logger::info(format!(
             "处理 [{}/{}] {} ({})",
-            index + 1,
-            total,
-            file.name,
-            file.file_type
+            current, total, file.name, file.file_type
         ));
 
         let force_ext = if file.file_type == "video"
@@ -450,12 +477,38 @@ pub async fn process_files(
             let _ = std::fs::create_dir_all(parent);
         }
 
+        let app_for_cb = app.clone();
+        let file_name = file.name.clone();
+        let on_file_progress: Arc<dyn Fn(f64) + Send + Sync> = Arc::new(move |file_pct: f64| {
+            emit_progress(
+                &app_for_cb,
+                "process-progress",
+                current,
+                total,
+                &file_name,
+                "processing",
+                file_pct,
+            );
+        });
+
         let result = match file.file_type.as_str() {
             "image" => {
-                process_image(&app, &file.path, &output_path.to_string_lossy(), &options).await
+                let r =
+                    process_image(&app, &file.path, &output_path.to_string_lossy(), &options).await;
+                if r.is_ok() {
+                    on_file_progress(100.0);
+                }
+                r
             }
             "video" => {
-                process_video(&app, &file.path, &output_path.to_string_lossy(), &options).await
+                process_video_with_progress(
+                    &app,
+                    &file.path,
+                    &output_path.to_string_lossy(),
+                    &options,
+                    Some(on_file_progress),
+                )
+                .await
             }
             _ => Err("不支持的文件类型".to_string()),
         };
@@ -474,13 +527,15 @@ pub async fn process_files(
         }
     }
 
-    let progress = ProcessProgress {
-        current: total,
+    emit_progress(
+        &app,
+        "process-progress",
         total,
-        current_file: "".to_string(),
-        status: "completed".to_string(),
-    };
-    let _ = app.emit("process-progress", &progress);
+        total,
+        "",
+        "completed",
+        100.0,
+    );
 
     if error_count > 0 {
         let msg = format!(
@@ -592,13 +647,16 @@ pub async fn crop_by_ratios(
 
         for ratio in &ratios {
             current += 1;
-            let progress = ProcessProgress {
+            let label = format!("{} ({})", file.name, ratio);
+            emit_progress(
+                &app,
+                "crop-progress",
                 current,
                 total,
-                current_file: format!("{} ({})", file.name, ratio),
-                status: "processing".to_string(),
-            };
-            let _ = app.emit("crop-progress", &progress);
+                &label,
+                "processing",
+                0.0,
+            );
 
             let ratio_parts: Vec<&str> = ratio.split(':').collect();
             if ratio_parts.len() != 2 {
@@ -626,9 +684,24 @@ pub async fn crop_by_ratios(
             let output_filename = ratio_output_name(&file_stem, ratio, target_ratio, out_ext);
             let output_path = PathBuf::from(&output_dir).join(&output_filename);
 
+            let app_for_cb = app.clone();
+            let label_cb = label.clone();
+            let on_file_progress: Arc<dyn Fn(f64) + Send + Sync> =
+                Arc::new(move |file_pct: f64| {
+                    emit_progress(
+                        &app_for_cb,
+                        "crop-progress",
+                        current,
+                        total,
+                        &label_cb,
+                        "processing",
+                        file_pct,
+                    );
+                });
+
             let result = match file.file_type.as_str() {
                 "video" => {
-                    crop_video_region(
+                    crop_video_region_with_progress(
                         &app,
                         &file.path,
                         &output_path.to_string_lossy(),
@@ -636,11 +709,12 @@ pub async fn crop_by_ratios(
                         crop_y,
                         crop_w,
                         crop_h,
+                        Some(on_file_progress),
                     )
                     .await
                 }
                 "image" => {
-                    crop_image_by_ratio(
+                    let r = crop_image_by_ratio(
                         &app,
                         &file.path,
                         &output_path.to_string_lossy(),
@@ -649,7 +723,11 @@ pub async fn crop_by_ratios(
                         crop_x,
                         crop_y,
                     )
-                    .await
+                    .await;
+                    if r.is_ok() {
+                        on_file_progress(100.0);
+                    }
+                    r
                 }
                 _ => Err("不支持的文件类型".to_string()),
             };
@@ -664,13 +742,7 @@ pub async fn crop_by_ratios(
         }
     }
 
-    let progress = ProcessProgress {
-        current: total,
-        total,
-        current_file: "".to_string(),
-        status: "completed".to_string(),
-    };
-    let _ = app.emit("crop-progress", &progress);
+    emit_progress(&app, "crop-progress", total, total, "", "completed", 100.0);
 
     if error_count > 0 {
         logger::warn(format!(
@@ -787,9 +859,34 @@ pub async fn custom_crop(app: AppHandle, options: CustomCropOptions) -> Result<S
     let out_name = build_output_name(&file_name, &options.naming, force_ext);
     let output_path = join_output_path(&options.output_dir, &out_name);
 
+    let file_label = file_name.clone();
+    emit_progress(
+        &app,
+        "process-progress",
+        1,
+        1,
+        &file_label,
+        "processing",
+        0.0,
+    );
+
+    let app_for_cb = app.clone();
+    let label_cb = file_label.clone();
+    let on_file_progress: Arc<dyn Fn(f64) + Send + Sync> = Arc::new(move |file_pct: f64| {
+        emit_progress(
+            &app_for_cb,
+            "process-progress",
+            1,
+            1,
+            &label_cb,
+            "processing",
+            file_pct,
+        );
+    });
+
     let result = match file_type.as_str() {
         "video" => {
-            crop_video_region(
+            crop_video_region_with_progress(
                 &app,
                 &options.input_path,
                 &output_path.to_string_lossy(),
@@ -797,11 +894,12 @@ pub async fn custom_crop(app: AppHandle, options: CustomCropOptions) -> Result<S
                 options.crop_y,
                 options.crop_width,
                 options.crop_height,
+                Some(on_file_progress),
             )
             .await
         }
         "image" => {
-            crop_image_region(
+            let r = crop_image_region(
                 &app,
                 &options.input_path,
                 &output_path.to_string_lossy(),
@@ -810,13 +908,26 @@ pub async fn custom_crop(app: AppHandle, options: CustomCropOptions) -> Result<S
                 options.crop_width,
                 options.crop_height,
             )
-            .await
+            .await;
+            if r.is_ok() {
+                on_file_progress(100.0);
+            }
+            r
         }
         _ => Err("不支持的文件类型".to_string()),
     };
 
     match result {
         Ok(()) => {
+            emit_progress(
+                &app,
+                "process-progress",
+                1,
+                1,
+                &file_label,
+                "completed",
+                100.0,
+            );
             let msg = format!("裁剪完成: {}", output_path.to_string_lossy());
             logger::info(&msg);
             Ok(msg)
@@ -966,12 +1077,41 @@ pub async fn merge_videos(app: AppHandle, options: VideoMergeOptions) -> Result<
     args.push(options.output_path.clone());
 
     let _ = hw::ensure_detected(&app, false).await;
-    if let Err(e) = run_ffmpeg_with_fallback(&app, &args).await {
+    let label = if is_image {
+        "双图拼接".to_string()
+    } else {
+        "双视频拼接".to_string()
+    };
+    emit_progress(&app, "process-progress", 1, 1, &label, "processing", 0.0);
+    let app_for_cb = app.clone();
+    let label_cb = label.clone();
+    let on_progress: Arc<dyn Fn(f64) + Send + Sync> = Arc::new(move |file_pct: f64| {
+        emit_progress(
+            &app_for_cb,
+            "process-progress",
+            1,
+            1,
+            &label_cb,
+            "processing",
+            file_pct,
+        );
+    });
+    let run_result = if is_image {
+        let r = run_ffmpeg_with_fallback_progress(&app, &args, None).await;
+        if r.is_ok() {
+            on_progress(100.0);
+        }
+        r
+    } else {
+        run_ffmpeg_with_fallback_progress(&app, &args, Some(on_progress)).await
+    };
+    if let Err(e) = run_result {
         let msg = format!("拼接失败: {}", e);
         logger::error(&msg);
         return Err(msg);
     }
 
+    emit_progress(&app, "process-progress", 1, 1, &label, "completed", 100.0);
     let msg = format!("拼接完成: {}", options.output_path);
     logger::info(&msg);
     Ok(msg)
@@ -1236,12 +1376,37 @@ pub async fn join_media(app: AppHandle, options: JoinOptions) -> Result<String, 
     args.push(options.output_path.clone());
 
     let _ = hw::ensure_detected(&app, false).await;
-    if let Err(e) = run_ffmpeg_with_fallback(&app, &args).await {
+    let label = "自定义拼接".to_string();
+    emit_progress(&app, "process-progress", 1, 1, &label, "processing", 0.0);
+    let app_for_cb = app.clone();
+    let label_cb = label.clone();
+    let on_progress: Arc<dyn Fn(f64) + Send + Sync> = Arc::new(move |file_pct: f64| {
+        emit_progress(
+            &app_for_cb,
+            "process-progress",
+            1,
+            1,
+            &label_cb,
+            "processing",
+            file_pct,
+        );
+    });
+    let run_result = if is_image {
+        let r = run_ffmpeg_with_fallback_progress(&app, &args, None).await;
+        if r.is_ok() {
+            on_progress(100.0);
+        }
+        r
+    } else {
+        run_ffmpeg_with_fallback_progress(&app, &args, Some(on_progress)).await
+    };
+    if let Err(e) = run_result {
         let msg = format!("自定义拼接失败: {}", e);
         logger::error(&msg);
         return Err(msg);
     }
 
+    emit_progress(&app, "process-progress", 1, 1, &label, "completed", 100.0);
     let msg = format!("自定义拼接完成: {}", options.output_path);
     logger::info(&msg);
     Ok(msg)
