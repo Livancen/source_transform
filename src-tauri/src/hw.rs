@@ -575,12 +575,8 @@ async fn run_ffmpeg_once(
     }
 }
 
-/// 执行 ffmpeg；硬编失败时自动回退 libx264/libx265 再试一次
-pub async fn run_ffmpeg_with_fallback(app: &AppHandle, args: &[String]) -> Result<(), String> {
-    run_ffmpeg_with_fallback_progress(app, args, None).await
-}
-
-/// 执行 ffmpeg，并通过回调报告当前任务内进度（0～100）
+/// 执行 ffmpeg；硬编失败时自动回退 libx264/libx265 再试一次。
+/// 可通过回调报告当前任务内进度（0～100）。
 pub async fn run_ffmpeg_with_fallback_progress(
     app: &AppHandle,
     args: &[String],

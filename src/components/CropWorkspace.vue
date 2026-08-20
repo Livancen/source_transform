@@ -1,8 +1,16 @@
 <script setup lang="ts">
-import { ref, watch, onMounted, onBeforeUnmount, nextTick, toRef } from "vue";
+import {
+  ref,
+  watch,
+  onMounted,
+  onBeforeUnmount,
+  nextTick,
+  toRef,
+} from "vue";
 import type { FileInfo } from "../types";
 import { formatFileSizeMb } from "../types";
 import { useFileThumbs } from "../composables/useFileThumbs";
+import { useVirtualList } from "../composables/useVirtualList";
 import MediaPreviewModal from "./MediaPreviewModal.vue";
 
 const props = defineProps<{
@@ -37,7 +45,22 @@ const emit = defineEmits<{
 }>();
 
 const filesRef = toRef(props, "files");
-const { thumbs } = useFileThumbs(filesRef);
+const { thumbs, loading, enqueue } = useFileThumbs();
+const CROP_ROW_H = 60;
+const {
+  containerRef: fileListRef,
+  totalHeight: fileListHeight,
+  visibleItems: visibleFiles,
+  onScroll: onFileListScroll,
+} = useVirtualList(filesRef, { itemHeight: CROP_ROW_H, overscan: 6 });
+
+watch(
+  visibleFiles,
+  (rows) => {
+    for (const { item } of rows) enqueue(item.path, item.file_type);
+  },
+  { immediate: true },
+);
 
 const mediaPreviewVisible = ref(false);
 const mediaPreviewFile = ref<FileInfo | null>(null);
@@ -131,42 +154,55 @@ watch(
         >
           选择文件 ({{ files.length }})
         </div>
-        <div class="flex-1 min-h-0 overflow-y-auto overflow-x-hidden">
-          <button
-            v-for="f in files"
-            :key="f.path"
-            type="button"
-            class="w-full text-left px-10px py-8px border-none border-b border-border/60 cursor-pointer text-12px flex gap-10px items-center"
-            :class="
-              selectedPath === f.path
-                ? 'bg-secondary-soft color-secondary'
-                : 'bg-transparent color-t2 hover:bg-bg2'
-            "
-            @click="emit('selectFile', f)"
-          >
-            <div
-              class="w-44px h-44px rounded-4px overflow-hidden bg-bg1 border border-border shrink-0 cursor-zoom-in hover:border-secondary"
-              title="点击预览"
-              @click="openMediaPreview(f, $event)"
-            >
-              <img
-                v-if="thumbs[f.path]"
-                :src="thumbs[f.path]"
-                class="w-full h-full object-cover pointer-events-none"
-                draggable="false"
-              />
-              <div v-else class="w-full h-full grid place-items-center text-10px color-t3 pointer-events-none">…</div>
-            </div>
-            <div class="min-w-0 flex-1">
-              <div class="truncate font-500" :title="f.name">{{ f.name }}</div>
-              <div class="text-10px color-t3 mt-2px flex gap-8px">
-                <span>{{ f.file_type === "video" ? "视频" : "图片" }}</span>
-                <span>{{ formatFileSizeMb(f.size_bytes) }}</span>
-              </div>
-            </div>
-          </button>
+        <div
+          ref="fileListRef"
+          class="flex-1 min-h-0 overflow-y-auto overflow-x-hidden"
+          @scroll.passive="onFileListScroll"
+        >
           <div
-            v-if="files.length === 0"
+            v-if="files.length > 0"
+            class="relative w-full"
+            :style="{ height: fileListHeight + 'px' }"
+          >
+            <button
+              v-for="{ item: f, top } in visibleFiles"
+              :key="f.path"
+              type="button"
+              class="absolute left-0 right-0 text-left px-10px border-none border-b border-border/60 cursor-pointer text-12px flex gap-10px items-center"
+              :style="{ top: top + 'px', height: CROP_ROW_H + 'px' }"
+              :class="
+                selectedPath === f.path
+                  ? 'bg-secondary-soft color-secondary'
+                  : 'bg-transparent color-t2 hover:bg-bg2'
+              "
+              @click="emit('selectFile', f)"
+            >
+              <div
+                class="w-44px h-44px rounded-4px overflow-hidden bg-bg1 border border-border shrink-0 cursor-zoom-in hover:border-secondary"
+                title="点击预览"
+                @click="openMediaPreview(f, $event)"
+              >
+                <img
+                  v-if="thumbs[f.path]"
+                  :src="thumbs[f.path]"
+                  class="w-full h-full object-cover pointer-events-none"
+                  draggable="false"
+                />
+                <div v-else class="w-full h-full grid place-items-center text-10px color-t3 pointer-events-none">
+                  {{ loading[f.path] ? "…" : "·" }}
+                </div>
+              </div>
+              <div class="min-w-0 flex-1">
+                <div class="truncate font-500" :title="f.name">{{ f.name }}</div>
+                <div class="text-10px color-t3 mt-2px flex gap-8px">
+                  <span>{{ f.file_type === "video" ? "视频" : "图片" }}</span>
+                  <span>{{ formatFileSizeMb(f.size_bytes) }}</span>
+                </div>
+              </div>
+            </button>
+          </div>
+          <div
+            v-else
             class="p-16px text-11px color-t3 text-center"
           >
             输入目录无媒体文件

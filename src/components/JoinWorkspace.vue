@@ -18,6 +18,7 @@ import type {
 } from "../types";
 import { formatFileSizeMb } from "../types";
 import { useFileThumbs } from "../composables/useFileThumbs";
+import { useVirtualList } from "../composables/useVirtualList";
 import MediaPreviewModal from "./MediaPreviewModal.vue";
 
 const props = defineProps<{
@@ -86,7 +87,22 @@ const pickerFiles = computed(() => {
   return props.inputFiles.filter((f) => f.file_type === listFilter.value);
 });
 const pickerFilesRef = computed(() => pickerFiles.value);
-const { thumbs } = useFileThumbs(pickerFilesRef);
+const { thumbs, loading, enqueue } = useFileThumbs();
+const JOIN_ROW_H = 60;
+const {
+  containerRef: pickerListRef,
+  totalHeight: pickerListHeight,
+  visibleItems: visiblePickerFiles,
+  onScroll: onPickerScroll,
+} = useVirtualList(pickerFilesRef, { itemHeight: JOIN_ROW_H, overscan: 6 });
+
+watch(
+  visiblePickerFiles,
+  (rows) => {
+    for (const { item } of rows) enqueue(item.path, item.file_type);
+  },
+  { immediate: true },
+);
 
 const selectedItem = computed(
   () => items.value.find((i) => i.id === selectedId.value) || null,
@@ -888,49 +904,60 @@ onBeforeUnmount(() => {
             </button>
           </div>
         </div>
-        <div class="flex-1 min-h-0 overflow-y-auto">
-          <button
-            v-for="f in pickerFiles"
-            :key="f.path"
-            type="button"
-            class="w-full text-left px-10px py-8px border-none border-b border-border/60 cursor-pointer text-12px flex gap-10px items-center bg-transparent color-t2 hover:bg-bg2"
-            :disabled="isExporting"
-            @click="addFile(f)"
-          >
-            <div
-              class="w-44px h-44px rounded-4px overflow-hidden bg-bg1 border border-border shrink-0 cursor-zoom-in hover:border-secondary"
-              title="预览"
-              @click="openMediaPreview(f, $event)"
-            >
-              <img
-                v-if="thumbs[f.path]"
-                :src="thumbs[f.path]"
-                class="w-full h-full object-cover pointer-events-none"
-                draggable="false"
-              />
-              <div
-                v-else
-                class="w-full h-full grid place-items-center text-10px color-t3 pointer-events-none"
-              >
-                …
-              </div>
-            </div>
-            <div class="min-w-0 flex-1">
-              <div class="truncate font-500" :title="f.name">{{ f.name }}</div>
-              <div class="text-10px color-t3 mt-2px">
-                {{ f.file_type === "video" ? "视频" : "图片" }} ·
-                {{ formatFileSizeMb(f.size_bytes) }}
-                <span
-                  v-if="(pathUseCount.get(f.path) || 0) > 0"
-                  class="ml-4px color-secondary"
-                >
-                  · 已用 {{ pathUseCount.get(f.path) }}
-                </span>
-              </div>
-            </div>
-          </button>
+        <div
+          ref="pickerListRef"
+          class="flex-1 min-h-0 overflow-y-auto"
+          @scroll.passive="onPickerScroll"
+        >
           <div
-            v-if="pickerFiles.length === 0"
+            v-if="pickerFiles.length > 0"
+            class="relative w-full"
+            :style="{ height: pickerListHeight + 'px' }"
+          >
+            <button
+              v-for="{ item: f, top } in visiblePickerFiles"
+              :key="f.path"
+              type="button"
+              class="absolute left-0 right-0 text-left px-10px border-none border-b border-border/60 cursor-pointer text-12px flex gap-10px items-center bg-transparent color-t2 hover:bg-bg2"
+              :style="{ top: top + 'px', height: JOIN_ROW_H + 'px' }"
+              :disabled="isExporting"
+              @click="addFile(f)"
+            >
+              <div
+                class="w-44px h-44px rounded-4px overflow-hidden bg-bg1 border border-border shrink-0 cursor-zoom-in hover:border-secondary"
+                title="预览"
+                @click="openMediaPreview(f, $event)"
+              >
+                <img
+                  v-if="thumbs[f.path]"
+                  :src="thumbs[f.path]"
+                  class="w-full h-full object-cover pointer-events-none"
+                  draggable="false"
+                />
+                <div
+                  v-else
+                  class="w-full h-full grid place-items-center text-10px color-t3 pointer-events-none"
+                >
+                  {{ loading[f.path] ? "…" : "·" }}
+                </div>
+              </div>
+              <div class="min-w-0 flex-1">
+                <div class="truncate font-500" :title="f.name">{{ f.name }}</div>
+                <div class="text-10px color-t3 mt-2px">
+                  {{ f.file_type === "video" ? "视频" : "图片" }} ·
+                  {{ formatFileSizeMb(f.size_bytes) }}
+                  <span
+                    v-if="(pathUseCount.get(f.path) || 0) > 0"
+                    class="ml-4px color-secondary"
+                  >
+                    · 已用 {{ pathUseCount.get(f.path) }}
+                  </span>
+                </div>
+              </div>
+            </button>
+          </div>
+          <div
+            v-else
             class="p-16px text-11px color-t3 text-center"
           >
             输入目录无{{

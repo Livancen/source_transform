@@ -3,6 +3,7 @@ mod hw;
 mod logger;
 mod naming;
 mod process;
+mod thumb_cache;
 mod types;
 mod upload_server;
 mod watermark;

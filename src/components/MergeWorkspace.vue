@@ -10,6 +10,7 @@ import type {
 } from "../types";
 import { formatFileSizeMb } from "../types";
 import { useFileThumbs } from "../composables/useFileThumbs";
+import { useVirtualList } from "../composables/useVirtualList";
 import MediaPreviewModal from "./MediaPreviewModal.vue";
 
 type MergeSlotState = {
@@ -168,7 +169,22 @@ const pickerFiles = computed(() =>
 );
 
 const pickerFilesRef = computed(() => pickerFiles.value);
-const { thumbs } = useFileThumbs(pickerFilesRef);
+const { thumbs, loading, enqueue } = useFileThumbs();
+const MERGE_ROW_H = 60;
+const {
+  containerRef: pickerListRef,
+  totalHeight: pickerListHeight,
+  visibleItems: visiblePickerFiles,
+  onScroll: onPickerScroll,
+} = useVirtualList(pickerFilesRef, { itemHeight: MERGE_ROW_H, overscan: 6 });
+
+watch(
+  visiblePickerFiles,
+  (rows) => {
+    for (const { item } of rows) enqueue(item.path, item.file_type);
+  },
+  { immediate: true },
+);
 
 const mediaPreviewVisible = ref(false);
 const mediaPreviewFile = ref<FileInfo | null>(null);
@@ -691,51 +707,62 @@ async function startMerge() {
           <span>选择素材 ({{ pickerFiles.length }})</span>
           <span class="color-secondary">→ 槽位 {{ activeSlot + 1 }}</span>
         </div>
-        <div class="flex-1 min-h-0 overflow-y-auto overflow-x-hidden">
-          <button
-            v-for="f in pickerFiles"
-            :key="f.path"
-            type="button"
-            class="w-full text-left px-10px py-8px border-none border-b border-border/60 cursor-pointer text-12px flex gap-10px items-center"
-            :class="
-              slotPaths.has(f.path)
-                ? 'bg-secondary-soft color-secondary'
-                : 'bg-transparent color-t2 hover:bg-bg2'
-            "
-            :disabled="isMerging"
-            @click="onPickFromList(f)"
+        <div
+          ref="pickerListRef"
+          class="flex-1 min-h-0 overflow-y-auto overflow-x-hidden"
+          @scroll.passive="onPickerScroll"
+        >
+          <div
+            v-if="pickerFiles.length > 0"
+            class="relative w-full"
+            :style="{ height: pickerListHeight + 'px' }"
           >
-            <div
-              class="w-44px h-44px rounded-4px overflow-hidden bg-bg1 border border-border shrink-0 cursor-zoom-in hover:border-secondary"
-              title="点击预览"
-              @click="openMediaPreview(f, $event)"
+            <button
+              v-for="{ item: f, top } in visiblePickerFiles"
+              :key="f.path"
+              type="button"
+              class="absolute left-0 right-0 text-left px-10px border-none border-b border-border/60 cursor-pointer text-12px flex gap-10px items-center"
+              :style="{ top: top + 'px', height: MERGE_ROW_H + 'px' }"
+              :class="
+                slotPaths.has(f.path)
+                  ? 'bg-secondary-soft color-secondary'
+                  : 'bg-transparent color-t2 hover:bg-bg2'
+              "
+              :disabled="isMerging"
+              @click="onPickFromList(f)"
             >
-              <img
-                v-if="thumbs[f.path]"
-                :src="thumbs[f.path]"
-                class="w-full h-full object-cover pointer-events-none"
-                draggable="false"
-              />
               <div
-                v-else
-                class="w-full h-full grid place-items-center text-10px color-t3 pointer-events-none"
+                class="w-44px h-44px rounded-4px overflow-hidden bg-bg1 border border-border shrink-0 cursor-zoom-in hover:border-secondary"
+                title="点击预览"
+                @click="openMediaPreview(f, $event)"
               >
-                …
+                <img
+                  v-if="thumbs[f.path]"
+                  :src="thumbs[f.path]"
+                  class="w-full h-full object-cover pointer-events-none"
+                  draggable="false"
+                />
+                <div
+                  v-else
+                  class="w-full h-full grid place-items-center text-10px color-t3 pointer-events-none"
+                >
+                  {{ loading[f.path] ? "…" : "·" }}
+                </div>
               </div>
-            </div>
-            <div class="min-w-0 flex-1">
-              <div class="truncate font-500" :title="f.name">{{ f.name }}</div>
-              <div
-                class="text-10px color-t3 mt-2px flex items-center gap-6px flex-wrap"
-              >
-                <span>{{ f.file_type === "video" ? "视频" : "图片" }}</span>
-                <span>{{ formatFileSizeMb(f.size_bytes) }}</span>
-                <span v-if="slotIndexOf(f.path) >= 0" class="color-secondary">
-                  槽位 {{ slotIndexOf(f.path) + 1 }}
-                </span>
+              <div class="min-w-0 flex-1">
+                <div class="truncate font-500" :title="f.name">{{ f.name }}</div>
+                <div
+                  class="text-10px color-t3 mt-2px flex items-center gap-6px flex-wrap"
+                >
+                  <span>{{ f.file_type === "video" ? "视频" : "图片" }}</span>
+                  <span>{{ formatFileSizeMb(f.size_bytes) }}</span>
+                  <span v-if="slotIndexOf(f.path) >= 0" class="color-secondary">
+                    槽位 {{ slotIndexOf(f.path) + 1 }}
+                  </span>
+                </div>
               </div>
-            </div>
-          </button>
+            </button>
+          </div>
           <div
             v-if="pickerFiles.length === 0"
             class="p-16px text-11px color-t3 text-center"

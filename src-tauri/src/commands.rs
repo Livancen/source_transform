@@ -782,44 +782,14 @@ pub async fn crop_videos_by_ratios(
 }
 
 #[tauri::command]
-pub async fn get_file_thumbnail(app: AppHandle, path: String, file_type: String) -> Result<String, String> {
-    if file_type == "video" {
-        extract_video_frame(app, path).await
-    } else {
-        // 用 ImageMagick 生成小缩略图，避免大图 base64 过重
-        let temp_dir = std::env::temp_dir();
-        let out = temp_dir.join(format!("thumb_{}.jpg", generate_timestamp()));
-        let out_str = out.to_string_lossy().to_string();
-        let output = app
-            .shell()
-            .sidecar("magick")
-            .map_err(|e| format!("无法找到ImageMagick: {}", e))?
-            .args(&[
-                &path,
-                "-thumbnail",
-                "96x96^",
-                "-gravity",
-                "center",
-                "-extent",
-                "96x96",
-                "-quality",
-                "70",
-                &out_str,
-            ])
-            .output()
-            .await
-            .map_err(|e| format!("无法执行ImageMagick: {}", e))?;
-
-        if !output.status.success() {
-            // 回退为原图预览
-            return load_image_preview(path).await;
-        }
-
-        let image_data = std::fs::read(&out).map_err(|e| format!("读取缩略图失败: {}", e))?;
-        let _ = std::fs::remove_file(&out);
-        use base64::{engine::general_purpose::STANDARD, Engine as _};
-        Ok(format!("data:image/jpeg;base64,{}", STANDARD.encode(&image_data)))
-    }
+pub async fn get_file_thumbnail(
+    app: AppHandle,
+    path: String,
+    file_type: String,
+) -> Result<String, String> {
+    // 返回磁盘缓存路径，前端用 convertFileSrc 加载（避免 base64 占内存）
+    let thumb = crate::thumb_cache::get_cached_thumbnail_path(&app, &path, &file_type).await?;
+    Ok(thumb.to_string_lossy().to_string())
 }
 
 #[tauri::command]

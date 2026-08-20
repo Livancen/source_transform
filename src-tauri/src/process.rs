@@ -328,15 +328,6 @@ async fn estimate_output_size(
     Ok((1920, 1080))
 }
 
-pub async fn process_video(
-    app: &AppHandle,
-    input_path: &str,
-    output_path: &str,
-    options: &ProcessOptions,
-) -> Result<(), String> {
-    process_video_with_progress(app, input_path, output_path, options, None).await
-}
-
 pub async fn process_video_with_progress(
     app: &AppHandle,
     input_path: &str,
@@ -788,18 +779,6 @@ pub async fn crop_image_region(
         return Err(format!("图片裁剪失败: {}", stderr));
     }
     Ok(())
-}
-
-pub async fn crop_video_region(
-    app: &AppHandle,
-    input_path: &str,
-    output_path: &str,
-    x: u32,
-    y: u32,
-    width: u32,
-    height: u32,
-) -> Result<(), String> {
-    crop_video_region_with_progress(app, input_path, output_path, x, y, width, height, None).await
 }
 
 pub async fn crop_video_region_with_progress(
