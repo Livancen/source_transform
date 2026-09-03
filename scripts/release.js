@@ -28,6 +28,9 @@ const VERSION_FILES = [
   "src/constants/app.ts",
 ];
 
+/** 发版时可一并提交的更新日志（不参与 bump，但允许与版本文件同批提交） */
+const RELEASE_NOTE_FILES = ["CHANGELOG.md"];
+
 // 不使用 shell，避免 Windows 下带空格的 -m 消息被拆成多个 pathspec
 function run(cmd, args, opts = {}) {
   const r = spawnSync(cmd, args, {
@@ -109,13 +112,14 @@ function ensureCleanOrOnlyVersionFiles() {
   const status = porcelain();
   if (!status) return;
 
+  const allowed = new Set([...VERSION_FILES, ...RELEASE_NOTE_FILES]);
   const lines = status.split(/\r?\n/).filter(Boolean);
   const unexpected = [];
   for (const line of lines) {
     // XY PATH or XY PATH -> PATH2
     const pathPart = line.slice(3).split(" -> ").pop().replace(/^"|"$/g, "");
     const norm = pathPart.replace(/\\/g, "/");
-    if (!VERSION_FILES.includes(norm)) {
+    if (!allowed.has(norm)) {
       unexpected.push(line);
     }
   }
@@ -125,6 +129,17 @@ function ensureCleanOrOnlyVersionFiles() {
     console.error("\n处理后再执行 npm run version");
     process.exit(1);
   }
+}
+
+function changelogHasVersion(version) {
+  const p = path.join(root, "CHANGELOG.md");
+  if (!fs.existsSync(p)) return false;
+  const text = fs.readFileSync(p, "utf8");
+  const re = new RegExp(
+    `^##\\s*\\[${version.replace(/\./g, "\\.")}\\]`,
+    "m"
+  );
+  return re.test(text);
 }
 
 function tagExists(tag) {
@@ -159,6 +174,12 @@ function main() {
     throw new Error(`标签已存在: ${tag}，请换版本号或删除旧标签`);
   }
 
+  if (!changelogHasVersion(newVersion)) {
+    throw new Error(
+      `CHANGELOG.md 缺少版本段落 ## [${newVersion}]，请先补充更新说明后再发版`
+    );
+  }
+
   const branch = currentBranch() || "main";
   console.log(`\n==> 将提交并打标签 ${tag}（分支: ${branch}）`);
 
@@ -168,8 +189,8 @@ function main() {
     return;
   }
 
-  // 2) commit
-  run("git", ["add", ...VERSION_FILES]);
+  // 2) commit（版本文件 + CHANGELOG.md）
+  run("git", ["add", ...VERSION_FILES, ...RELEASE_NOTE_FILES]);
   // 若无变更（例如指定相同版本），仍允许继续打 tag 的情况较少，直接失败更清晰
   const staged = runOut("git", ["diff", "--cached", "--name-only"]);
   if (!staged) {

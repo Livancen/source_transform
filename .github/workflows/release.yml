@@ -64,6 +64,39 @@ jobs:
           chmod +x scripts/download-sidecars.sh
           bash scripts/download-sidecars.sh "${{ matrix.target }}"
 
+      - name: Extract release notes from CHANGELOG.md
+        id: changelog
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="$(node -p "require('./package.json').version")"
+          NOTES_FILE="$(mktemp)"
+          awk -v ver="$VERSION" '
+            BEGIN { found=0 }
+            /^##[[:space:]]*\[/ {
+              if (found) exit
+              if ($0 ~ "\\[" ver "\\]") { found=1; next }
+            }
+            found { print }
+          ' CHANGELOG.md | awk 'NF { p=1 } p' | awk '
+            { lines[++n]=$0 }
+            END {
+              while (n > 0 && lines[n] ~ /^[[:space:]]*$/) n--
+              for (i=1; i<=n; i++) print lines[i]
+            }
+          ' > "$NOTES_FILE"
+          if [ ! -s "$NOTES_FILE" ]; then
+            echo "未在 CHANGELOG.md 中找到版本 [$VERSION] 的更新说明" >&2
+            exit 1
+          fi
+          {
+            echo "body<<EOF"
+            cat "$NOTES_FILE"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+          echo "已提取 v$VERSION 更新说明："
+          cat "$NOTES_FILE"
+
       - name: Build and release
         uses: tauri-apps/tauri-action@v0
         env:
@@ -73,9 +106,7 @@ jobs:
         with:
           tagName: v__VERSION__
           releaseName: "source_transform v__VERSION__"
-          releaseBody: |
-            1. 拼接：两个槽位支持选择同一个图片或视频素材
-            2. 拼接：各槽位独立显示所选素材的原始分辨率，并明确区分槽位输出尺寸
+          releaseBody: ${{ steps.changelog.outputs.body }}
           releaseDraft: false
           prerelease: false
           includeUpdaterJson: true
@@ -85,3 +116,4 @@ jobs:
           # [setup] 仅 NSIS 安装包为 _setup，其它为空
           assetNamePattern: source_transform_[version]_[platform]-[arch][setup].[ext]
           args: ${{ matrix.args }}
+

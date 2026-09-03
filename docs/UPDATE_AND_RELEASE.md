@@ -29,10 +29,24 @@ npm run tauri signer generate -w ~/.tauri/source_transform.key
 
 工作流：`.github/workflows/release.yml`
 
+### 更新日志（CHANGELOG.md）
+
+Release 正文从根目录 `CHANGELOG.md` 按版本号提取，**发版前请先写好对应段落**：
+
+```markdown
+## [8.6.2] - 2026-09-10
+
+1. 新功能说明
+2. 修复说明
+```
+
+流水线会匹配 `## [当前 package.json 版本]`，取该标题到下一版本标题之间的内容作为 GitHub Release Body；找不到则失败。
+
 ### 触发方式（推荐一键）
 
 ```bash
-# 升版本 + commit + 打 tag + push（触发 GitHub Actions 发布）
+# 1) 先在 CHANGELOG.md 写好新版本说明
+# 2) 升版本 + commit + 打 tag + push（触发 GitHub Actions 发布）
 npm run version                 # patch  8.2.0 → 8.2.1
 npm run version -- minor        # minor  8.2.0 → 8.3.0
 npm run version -- major        # major  8.2.0 → 9.0.0
@@ -46,7 +60,6 @@ npm run version -- patch --no-push
 ```
 
 要求：工作区干净（或仅有版本相关文件改动）。脚本会拒绝在存在其他未提交改动时发布。
-
 ### 手动方式
 
 ```bash
