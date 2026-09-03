@@ -16,6 +16,8 @@ import { useToast } from "./useToast";
 const RATIO_STORAGE_KEY = "aspect-ratio-crop-ratios";
 const OPTIONS_OPEN_KEY = "options-strip-open";
 const WORK_MODE_KEY = "work-mode";
+const PROCESS_OPTIONS_IMAGE_KEY = "process-options-image";
+const PROCESS_OPTIONS_VIDEO_KEY = "process-options-video";
 const WORK_MODES: WorkMode[] = [
   "image",
   "video",
@@ -60,6 +62,55 @@ function loadRatios(): string[] {
   return [];
 }
 
+function processOptionsStorageKey(mode: WorkMode): string | null {
+  if (mode === "image") return PROCESS_OPTIONS_IMAGE_KEY;
+  if (mode === "video") return PROCESS_OPTIONS_VIDEO_KEY;
+  return null;
+}
+
+function clampTargetFormat(opts: ProcessOptions, mode: WorkMode): void {
+  if (mode === "image") {
+    const imageExts = ["jpg", "png", "webp", "bmp", "tiff"];
+    if (!imageExts.includes(opts.target_format)) {
+      opts.target_format = "jpg";
+    }
+  } else if (mode === "video") {
+    const videoExts = ["mp4", "avi", "mkv", "mov", "webm", "flv"];
+    if (!videoExts.includes(opts.target_format)) {
+      opts.target_format = "mp4";
+    }
+  }
+}
+
+function loadProcessOptions(mode: WorkMode): ProcessOptions {
+  const opts = defaultProcessOptions();
+  const key = processOptionsStorageKey(mode);
+  if (!key) return opts;
+  try {
+    const saved = localStorage.getItem(key);
+    if (saved) {
+      const parsed = JSON.parse(saved) as Partial<ProcessOptions>;
+      if (parsed && typeof parsed === "object") {
+        Object.assign(opts, parsed);
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+  clampTargetFormat(opts, mode);
+  return opts;
+}
+
+function saveProcessOptions(mode: WorkMode, opts: ProcessOptions): void {
+  const key = processOptionsStorageKey(mode);
+  if (!key) return;
+  try {
+    localStorage.setItem(key, JSON.stringify(opts));
+  } catch {
+    /* ignore */
+  }
+}
+
 const inputDir = ref("");
 const outputDir = ref("");
 const allInputFiles = ref<FileInfo[]>([]);
@@ -70,7 +121,11 @@ const selectedOutputPath = ref("");
 const checkedPaths = ref<Set<string>>(new Set());
 
 const workMode = ref<WorkMode>(loadWorkMode());
-const options = ref<ProcessOptions>(defaultProcessOptions());
+const options = ref<ProcessOptions>(
+  workMode.value === "image" || workMode.value === "video"
+    ? loadProcessOptions(workMode.value)
+    : defaultProcessOptions(),
+);
 const naming = ref<NamingOptions>(defaultNamingOptions());
 
 const isProcessing = ref(false);
@@ -476,23 +531,29 @@ watch(optionsOpen, (val) => {
   localStorage.setItem(OPTIONS_OPEN_KEY, val ? "1" : "0");
 });
 
-watch(workMode, (val) => {
+watch(workMode, (val, prev) => {
   localStorage.setItem(WORK_MODE_KEY, val);
   selectedInputPath.value = "";
   checkedPaths.value = new Set();
 
-  if (val === "image") {
-    const imageExts = ["jpg", "png", "webp", "bmp", "tiff"];
-    if (!imageExts.includes(options.value.target_format)) {
-      options.value.target_format = "jpg";
-    }
-  } else if (val === "video") {
-    const videoExts = ["mp4", "avi", "mkv", "mov", "webm", "flv"];
-    if (!videoExts.includes(options.value.target_format)) {
-      options.value.target_format = "mp4";
-    }
+  if (prev === "image" || prev === "video") {
+    saveProcessOptions(prev, options.value);
+  }
+
+  if (val === "image" || val === "video") {
+    options.value = loadProcessOptions(val);
   }
 });
+
+watch(
+  options,
+  (val) => {
+    if (workMode.value === "image" || workMode.value === "video") {
+      saveProcessOptions(workMode.value, val);
+    }
+  },
+  { deep: true },
+);
 
 watch(
   naming,
