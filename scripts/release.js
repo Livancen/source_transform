@@ -105,7 +105,20 @@ function hasUpstream() {
 }
 
 function porcelain() {
-  return runOut("git", ["status", "--porcelain"]);
+  // 不要 trim：porcelain 未暂存改动常以前导空格开头（如 " M file"）
+  const r = spawnSync("git", ["status", "--porcelain"], {
+    cwd: root,
+    encoding: "utf8",
+    shell: false,
+    windowsHide: true,
+  });
+  if (r.error) throw r.error;
+  if (r.status !== 0) {
+    throw new Error(
+      (r.stderr || r.stdout || "").toString().trim() || "git status failed",
+    );
+  }
+  return (r.stdout || "").toString().replace(/\s+$/, "");
 }
 
 function ensureCleanOrOnlyVersionFiles() {
