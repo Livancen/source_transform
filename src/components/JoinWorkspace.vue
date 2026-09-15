@@ -974,7 +974,7 @@ onBeforeUnmount(() => {
       <!-- 画布 -->
       <div
         ref="canvasHostRef"
-        class="flex-1 min-w-0 min-h-0 overflow-hidden flex items-center justify-center bg-[linear-gradient(45deg,#2a2a2e_25%,transparent_25%),linear-gradient(-45deg,#2a2a2e_25%,transparent_25%),linear-gradient(45deg,transparent_75%,#2a2a2e_75%),linear-gradient(-45deg,transparent_75%,#2a2a2e_75%)] bg-[length:16px_16px] bg-[position:0_0,0_8px,8px_-8px,-8px_0] bg-bg0"
+        class="flex-1 min-w-0 min-h-0 overflow-hidden flex items-center justify-center bg-[#c7c7c7]"
         @pointermove="onPointerMove"
         @pointerup="onPointerUp"
         @pointercancel="onPointerUp"
