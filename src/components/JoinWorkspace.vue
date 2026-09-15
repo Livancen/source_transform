@@ -501,13 +501,53 @@ function applyResizeSnap(
   snapGuides.value = { v: gv, h: gh };
 }
 
-function removeSelected() {
-  if (!selectedId.value) return;
-  const id = selectedId.value;
+const confirmDeleteVisible = ref(false);
+const pendingDeleteId = ref<string | null>(null);
+
+const pendingDeleteItem = computed(
+  () => items.value.find((i) => i.id === pendingDeleteId.value) || null,
+);
+
+function removeItemById(id: string) {
   items.value = items.value.filter((i) => i.id !== id);
   delete itemPreviews[id];
   delete itemNatives[id];
-  selectedId.value = items.value[items.value.length - 1]?.id ?? null;
+  if (selectedId.value === id) {
+    selectedId.value = items.value[items.value.length - 1]?.id ?? null;
+  }
+  if (pendingDeleteId.value === id) {
+    pendingDeleteId.value = null;
+  }
+}
+
+function requestRemove(id?: string | null) {
+  const targetId = id ?? selectedId.value;
+  if (!targetId || isExporting.value) return;
+  if (!items.value.some((i) => i.id === targetId)) return;
+  pendingDeleteId.value = targetId;
+  confirmDeleteVisible.value = true;
+}
+
+function cancelRemove() {
+  confirmDeleteVisible.value = false;
+  pendingDeleteId.value = null;
+}
+
+function confirmRemove() {
+  const id = pendingDeleteId.value;
+  confirmDeleteVisible.value = false;
+  pendingDeleteId.value = null;
+  if (!id) return;
+  removeItemById(id);
+}
+
+function removeSelected() {
+  requestRemove(selectedId.value);
+}
+
+function onDeleteButtonPointerDown(e: PointerEvent) {
+  e.preventDefault();
+  e.stopPropagation();
 }
 
 function bringForward() {
@@ -1085,6 +1125,32 @@ onBeforeUnmount(() => {
             </div>
 
             <template v-if="selectedId === item.id">
+              <button
+                type="button"
+                class="absolute top-4px right-4px z-20 w-22px h-22px grid place-items-center rounded-4px border-none bg-black/65 color-white cursor-pointer shadow-fluent-sm hover:bg-danger"
+                title="删除素材"
+                :disabled="isExporting"
+                @pointerdown="onDeleteButtonPointerDown"
+                @click.stop="requestRemove(item.id)"
+              >
+                <svg
+                  class="w-13px h-13px"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <polyline points="3 6 5 6 21 6" />
+                  <path
+                    d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"
+                  />
+                  <path d="M10 11v6" />
+                  <path d="M14 11v6" />
+                  <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+                </svg>
+              </button>
               <div
                 v-for="h in ['nw', 'ne', 'sw', 'se', 'n', 's', 'e', 'w']"
                 :key="h"
@@ -1364,5 +1430,42 @@ onBeforeUnmount(() => {
       :file="mediaPreviewFile"
       @close="closeMediaPreview"
     />
+
+    <div
+      v-if="confirmDeleteVisible"
+      class="fixed inset-0 z-2000 flex items-center justify-center bg-black/40 p-20px"
+      @click.self="cancelRemove"
+    >
+      <div
+        class="w-360px max-w-full bg-bg1 rounded-8px border border-border shadow-fluent-lg overflow-hidden"
+        @click.stop
+      >
+        <div
+          class="px-18px py-14px border-b border-border flex items-center justify-between gap-12px bg-bg2"
+        >
+          <div class="text-14px font-600">删除素材</div>
+          <button class="tb-btn text-16px! px-8px!" type="button" @click="cancelRemove">
+            ×
+          </button>
+        </div>
+        <div class="px-18px py-16px flex flex-col gap-14px">
+          <p class="text-13px color-t2 leading-relaxed">
+            确认从画布移除
+            <strong class="color-t1">{{ pendingDeleteItem?.name || "该素材" }}</strong>
+            ？此操作不可撤销。
+          </p>
+          <div class="flex justify-end gap-8px pt-4px">
+            <button class="tb-btn" type="button" @click="cancelRemove">取消</button>
+            <button
+              class="tb-btn bg-danger color-white border-transparent hover:not-disabled:bg-danger hover:not-disabled:color-white"
+              type="button"
+              @click="confirmRemove"
+            >
+              删除
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
