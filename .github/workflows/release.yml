@@ -18,10 +18,11 @@ jobs:
           - platform: windows-latest
             target: x86_64-pc-windows-msvc
             args: ""
-          - platform: macos-latest
+          # 固定较旧 runner，避免 brew magick 以过新的 macOS 部署目标编译导致旧系统 dyld 失败
+          - platform: macos-14
             target: aarch64-apple-darwin
             args: "--target aarch64-apple-darwin"
-          - platform: macos-latest
+          - platform: macos-14
             target: x86_64-apple-darwin
             args: "--target x86_64-apple-darwin"
 
@@ -51,11 +52,24 @@ jobs:
         run: npm ci
 
       - name: Install macOS build tools
-        if: matrix.platform == 'macos-latest'
+        if: startsWith(matrix.platform, 'macos')
         run: |
           brew update
           brew list imagemagick >/dev/null 2>&1 || brew install imagemagick
           brew list ffmpeg >/dev/null 2>&1 || brew install ffmpeg
+
+      - name: Install Rosetta x86_64 Homebrew (Intel macOS build)
+        if: matrix.target == 'x86_64-apple-darwin'
+        shell: bash
+        run: |
+          set -euo pipefail
+          softwareupdate --install-rosetta --agree-to-license || true
+          if [[ ! -x /usr/local/bin/brew ]]; then
+            NONINTERACTIVE=1 arch -x86_64 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+          fi
+          arch -x86_64 /usr/local/bin/brew update
+          arch -x86_64 /usr/local/bin/brew list imagemagick >/dev/null 2>&1 || \
+            arch -x86_64 /usr/local/bin/brew install imagemagick
 
       - name: Download sidecars
         shell: bash
@@ -63,6 +77,25 @@ jobs:
           set -e
           chmod +x scripts/download-sidecars.sh
           bash scripts/download-sidecars.sh "${{ matrix.target }}"
+
+      - name: Verify macOS magick is self-contained
+        if: startsWith(matrix.platform, 'macos')
+        shell: bash
+        run: |
+          set -euo pipefail
+          MAGICK="src-tauri/binaries/magick-${{ matrix.target }}"
+          LIBS="src-tauri/binaries/magick-libs"
+          test -x "$MAGICK"
+          test -d "$LIBS"
+          find "$LIBS" -name '*.dylib' | grep -q .
+          if otool -L "$MAGICK" | grep -E '/opt/homebrew/|/usr/local/Cellar/|/Homebrew/'; then
+            echo "magick still links to Homebrew paths" >&2
+            otool -L "$MAGICK" >&2
+            exit 1
+          fi
+          echo "magick linkage OK:"
+          otool -L "$MAGICK" | head -n 20
+          echo "dylib count: $(find "$LIBS" -name '*.dylib' | wc -l | tr -d ' ')"
 
       - name: Extract release notes from CHANGELOG.md
         id: changelog
@@ -103,6 +136,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          MACOSX_DEPLOYMENT_TARGET: "12.0"
         with:
           tagName: v__VERSION__
           releaseName: "source_transform v__VERSION__"

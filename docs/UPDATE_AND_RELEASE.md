@@ -96,7 +96,9 @@ git push && git push origin v8.3.0
 | 平台 | 来源 |
 |------|------|
 | Windows x64 | 仓库已有则跳过；否则从 BtbN FFmpeg + ImageMagick portable 下载 |
-| macOS arm64 / x64 | ffmpeg/ffprobe 静态包 + brew ImageMagick |
+| macOS arm64 / x64 | ffmpeg/ffprobe 静态包 + brew ImageMagick（自包含：拷贝 dylib 并改 `@executable_path`，随 app 打包到 `Contents/Resources/magick-libs/`） |
+
+> 不要只拷贝 brew 的 `magick` 二进制：它会链接到 `/opt/homebrew/Cellar/...`，用户机器上没有该路径就会 dyld 失败。
 
 本地手动准备：
 
