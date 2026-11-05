@@ -243,3 +243,135 @@ pub struct JoinOptions {
     #[serde(default)]
     pub video_profile: Option<String>,
 }
+
+fn default_ratio_quality() -> u32 {
+    80
+}
+fn default_ratio_image_format() -> String {
+    "jpg".to_string()
+}
+fn default_ratio_width() -> u32 {
+    1920
+}
+fn default_ratio_height() -> u32 {
+    1080
+}
+fn default_ratio_level() -> String {
+    "5.1".to_string()
+}
+fn default_ratio_profile() -> String {
+    "main".to_string()
+}
+fn default_ratio_bitrate() -> String {
+    "2M".to_string()
+}
+fn default_ratio_fps() -> f32 {
+    30.0
+}
+
+/// 比例裁剪的图片输出项。全关时等价于只做居中裁切。
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct RatioImageOutput {
+    #[serde(default)]
+    pub compress: bool,
+    #[serde(default = "default_ratio_quality")]
+    pub compress_quality: u32,
+    #[serde(default)]
+    pub convert_format: bool,
+    #[serde(default = "default_ratio_image_format")]
+    pub target_format: String,
+    #[serde(default)]
+    pub resize: bool,
+    #[serde(default = "default_ratio_width")]
+    pub target_width: u32,
+    #[serde(default = "default_ratio_height")]
+    pub target_height: u32,
+}
+
+impl Default for RatioImageOutput {
+    fn default() -> Self {
+        Self {
+            compress: false,
+            compress_quality: 80,
+            convert_format: false,
+            target_format: "jpg".to_string(),
+            resize: false,
+            target_width: 1920,
+            target_height: 1080,
+        }
+    }
+}
+
+/// 比例裁剪的视频输出项。Default 对齐原先写死的 MP4 / H.264 / Main 5.1 / 静音。
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct RatioVideoOutput {
+    #[serde(default)]
+    pub compress: bool,
+    #[serde(default = "default_ratio_quality")]
+    pub compress_quality: u32,
+    #[serde(default = "default_true")]
+    pub convert_mp4: bool,
+    #[serde(default)]
+    pub resize: bool,
+    #[serde(default = "default_ratio_width")]
+    pub target_width: u32,
+    #[serde(default = "default_ratio_height")]
+    pub target_height: u32,
+    #[serde(default = "default_true")]
+    pub convert_h265_to_h264: bool,
+    #[serde(default = "default_true")]
+    pub set_level: bool,
+    #[serde(default = "default_ratio_level")]
+    pub target_level: String,
+    #[serde(default = "default_ratio_profile")]
+    pub target_profile: String,
+    #[serde(default)]
+    pub reduce_bitrate: bool,
+    #[serde(default = "default_ratio_bitrate")]
+    pub target_bitrate: String,
+    #[serde(default = "default_true")]
+    pub mute: bool,
+    #[serde(default)]
+    pub change_framerate: bool,
+    #[serde(default = "default_ratio_fps")]
+    pub target_framerate: f32,
+}
+
+impl Default for RatioVideoOutput {
+    fn default() -> Self {
+        Self {
+            compress: false,
+            compress_quality: 80,
+            convert_mp4: true,
+            resize: false,
+            target_width: 1920,
+            target_height: 1080,
+            convert_h265_to_h264: true,
+            set_level: true,
+            target_level: "5.1".to_string(),
+            target_profile: "main".to_string(),
+            reduce_bitrate: false,
+            target_bitrate: "2M".to_string(),
+            mute: true,
+            change_framerate: false,
+            target_framerate: 30.0,
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct RatioOutputOptions {
+    #[serde(default)]
+    pub image: RatioImageOutput,
+    #[serde(default)]
+    pub video: RatioVideoOutput,
+}
+
+impl Default for RatioOutputOptions {
+    fn default() -> Self {
+        Self {
+            image: RatioImageOutput::default(),
+            video: RatioVideoOutput::default(),
+        }
+    }
+}

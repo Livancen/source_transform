@@ -13,12 +13,14 @@ use crate::hw::{
 use crate::logger;
 use crate::naming::{build_output_name, join_output_path, ratio_output_name};
 use crate::process::{
-    crop_image_by_ratio, crop_image_region, crop_video_region_with_progress, process_image,
-    process_video_with_progress,
+    crop_image_region, crop_image_region_ex, crop_video_region_encoded,
+    crop_video_region_with_progress, probe_video_codec, process_image, process_video_with_progress,
+    video_codec_is_hevc, VideoRegionEncode,
 };
 use crate::types::{
     CustomCropOptions, FileInfo, JoinOptions, NamingOptions, ProcessOptions, ProcessProgress,
-    VideoMergeOptions, IMAGE_EXTENSIONS, VIDEO_EXTENSIONS,
+    RatioImageOutput, RatioOutputOptions, RatioVideoOutput, VideoMergeOptions, IMAGE_EXTENSIONS,
+    VIDEO_EXTENSIONS,
 };
 
 fn get_file_type(path: &PathBuf) -> Option<String> {
@@ -67,6 +69,98 @@ fn default_naming() -> NamingOptions {
 
 fn even_dim(v: u32) -> u32 {
     (v & !1u32).max(2)
+}
+
+fn non_empty(value: &str) -> Option<String> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed.to_string())
+    }
+}
+
+fn normalize_image_ext(ext: &str) -> String {
+    match ext.trim().trim_start_matches('.').to_ascii_lowercase().as_str() {
+        "jpg" | "jpeg" | "png" | "webp" | "bmp" | "tiff" | "gif" => {
+            ext.trim().trim_start_matches('.').to_ascii_lowercase()
+        }
+        _ => "jpg".to_string(),
+    }
+}
+
+fn normalize_video_ext(ext: &str) -> String {
+    match ext.trim().trim_start_matches('.').to_ascii_lowercase().as_str() {
+        "mp4" | "m4v" | "avi" | "mov" | "mkv" | "wmv" | "flv" | "webm" => {
+            ext.trim().trim_start_matches('.').to_ascii_lowercase()
+        }
+        _ => "mp4".to_string(),
+    }
+}
+
+fn build_ratio_video_encode(opts: Option<&RatioVideoOutput>, source_codec: &str) -> VideoRegionEncode {
+    let Some(v) = opts else {
+        return VideoRegionEncode::legacy();
+    };
+    let codec = if v.convert_h265_to_h264 || !video_codec_is_hevc(source_codec) {
+        "h264"
+    } else {
+        "hevc"
+    };
+    let (profile, level) = if v.set_level {
+        (non_empty(&v.target_profile), non_empty(&v.target_level))
+    } else {
+        (None, None)
+    };
+    let quality = if v.compress {
+        Some(v.compress_quality.clamp(1, 100))
+    } else {
+        // 未开压缩时沿用原先裁剪的质量，避免结果突然变差
+        Some(80)
+    };
+    let (scale_width, scale_height) =
+        if v.resize && v.target_width > 0 && v.target_height > 0 {
+            (even_dim(v.target_width), even_dim(v.target_height))
+        } else {
+            (0, 0)
+        };
+    VideoRegionEncode {
+        codec: codec.to_string(),
+        quality,
+        bitrate: if v.reduce_bitrate {
+            non_empty(&v.target_bitrate)
+        } else {
+            None
+        },
+        profile,
+        level,
+        mute: v.mute,
+        scale_width,
+        scale_height,
+        framerate: if v.change_framerate && v.target_framerate > 0.0 {
+            v.target_framerate
+        } else {
+            0.0
+        },
+    }
+}
+
+fn ratio_image_adjust(opts: Option<&RatioImageOutput>) -> (Option<u32>, u32, u32) {
+    let Some(image) = opts else {
+        return (None, 0, 0);
+    };
+    let quality = if image.compress {
+        Some(image.compress_quality.clamp(1, 100))
+    } else {
+        None
+    };
+    let (resize_w, resize_h) = if image.resize && image.target_width > 0 && image.target_height > 0
+    {
+        (image.target_width, image.target_height)
+    } else {
+        (0, 0)
+    };
+    (quality, resize_w, resize_h)
 }
 
 fn compute_cover_crop(width: u32, height: u32, target_ratio: f64) -> (u32, u32, u32, u32) {
@@ -564,6 +658,7 @@ pub async fn crop_by_ratios(
     ratios: Vec<String>,
     file_type_filter: Option<String>,
     file_paths: Option<Vec<String>>,
+    output_options: Option<RatioOutputOptions>,
 ) -> Result<String, String> {
     if ratios.is_empty() {
         logger::warn("比例裁剪：未添加比例");
@@ -645,6 +740,35 @@ pub async fn crop_by_ratios(
             .unwrap_or(if file.file_type == "video" { "mp4" } else { "jpg" })
             .to_string();
 
+        let image_opts = output_options.as_ref().map(|o| &o.image);
+        let video_opts = output_options.as_ref().map(|o| &o.video);
+        let out_ext = if file.file_type == "video" {
+            if video_opts.map(|v| v.convert_mp4).unwrap_or(true) {
+                "mp4".to_string()
+            } else {
+                normalize_video_ext(&orig_ext)
+            }
+        } else if image_opts.map(|i| i.convert_format).unwrap_or(false) {
+            normalize_image_ext(
+                image_opts
+                    .map(|i| i.target_format.as_str())
+                    .unwrap_or("jpg"),
+            )
+        } else {
+            orig_ext.clone()
+        };
+        let (image_quality, image_resize_w, image_resize_h) = ratio_image_adjust(image_opts);
+        let source_codec = if file.file_type == "video" && output_options.is_some() {
+            probe_video_codec(&app, &file.path).await.unwrap_or_default()
+        } else {
+            String::new()
+        };
+        let video_encode = if file.file_type == "video" {
+            Some(build_ratio_video_encode(video_opts, &source_codec))
+        } else {
+            None
+        };
+
         for ratio in &ratios {
             current += 1;
             let label = format!("{} ({})", file.name, ratio);
@@ -676,12 +800,7 @@ pub async fn crop_by_ratios(
             let target_ratio = rw / rh;
             let (crop_w, crop_h, crop_x, crop_y) = compute_cover_crop(width, height, target_ratio);
 
-            let out_ext = if file.file_type == "video" {
-                "mp4"
-            } else {
-                orig_ext.as_str()
-            };
-            let output_filename = ratio_output_name(&file_stem, ratio, target_ratio, out_ext);
+            let output_filename = ratio_output_name(&file_stem, ratio, target_ratio, &out_ext);
             let output_path = PathBuf::from(&output_dir).join(&output_filename);
 
             let app_for_cb = app.clone();
@@ -701,7 +820,10 @@ pub async fn crop_by_ratios(
 
             let result = match file.file_type.as_str() {
                 "video" => {
-                    crop_video_region_with_progress(
+                    let Some(encode) = video_encode.as_ref() else {
+                        return Err("视频编码参数缺失".to_string());
+                    };
+                    crop_video_region_encoded(
                         &app,
                         &file.path,
                         &output_path.to_string_lossy(),
@@ -709,19 +831,23 @@ pub async fn crop_by_ratios(
                         crop_y,
                         crop_w,
                         crop_h,
+                        encode,
                         Some(on_file_progress),
                     )
                     .await
                 }
                 "image" => {
-                    let r = crop_image_by_ratio(
+                    let r = crop_image_region_ex(
                         &app,
                         &file.path,
                         &output_path.to_string_lossy(),
-                        crop_w,
-                        crop_h,
                         crop_x,
                         crop_y,
+                        crop_w,
+                        crop_h,
+                        image_quality,
+                        image_resize_w,
+                        image_resize_h,
                     )
                     .await;
                     if r.is_ok() {
@@ -776,6 +902,7 @@ pub async fn crop_videos_by_ratios(
         output_dir,
         ratios,
         Some("video".to_string()),
+        None,
         None,
     )
     .await

@@ -762,14 +762,45 @@ pub async fn crop_image_region(
     width: u32,
     height: u32,
 ) -> Result<(), String> {
-    let geometry = format!("{}x{}+{}+{}", width, height, x, y);
-    let args = [input_path, "-crop", &geometry, "+repage", output_path];
+    crop_image_region_ex(app, input_path, output_path, x, y, width, height, None, 0, 0).await
+}
 
+/// 居中裁切后可选压质量和改分辨率，一次 ImageMagick 完成。
+pub async fn crop_image_region_ex(
+    app: &AppHandle,
+    input_path: &str,
+    output_path: &str,
+    x: u32,
+    y: u32,
+    width: u32,
+    height: u32,
+    quality: Option<u32>,
+    resize_w: u32,
+    resize_h: u32,
+) -> Result<(), String> {
+    let geometry = format!("{}x{}+{}+{}", width, height, x, y);
+    let mut args: Vec<String> = vec![
+        input_path.to_string(),
+        "-crop".into(),
+        geometry,
+        "+repage".into(),
+    ];
+    if resize_w > 0 && resize_h > 0 {
+        args.push("-resize".into());
+        args.push(format!("{}x{}!", resize_w, resize_h));
+    }
+    if let Some(q) = quality {
+        args.push("-quality".into());
+        args.push(q.clamp(1, 100).to_string());
+    }
+    args.push(output_path.to_string());
+
+    let args_ref: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
     let output = app
         .shell()
         .sidecar("magick")
         .map_err(|e| format!("无法找到ImageMagick: {}", e))?
-        .args(&args)
+        .args(&args_ref)
         .output()
         .await
         .map_err(|e| format!("无法执行ImageMagick: {}", e))?;
@@ -779,6 +810,36 @@ pub async fn crop_image_region(
         return Err(format!("图片裁剪失败: {}", stderr));
     }
     Ok(())
+}
+
+/// 比例裁剪 / 自定义裁剪共用的视频编码参数。
+/// `legacy()` 等于原先写死的行为：H.264、质量 80、Main、5.1、静音、不缩放、不改帧率。
+pub struct VideoRegionEncode {
+    pub codec: String,
+    pub quality: Option<u32>,
+    pub bitrate: Option<String>,
+    pub profile: Option<String>,
+    pub level: Option<String>,
+    pub mute: bool,
+    pub scale_width: u32,
+    pub scale_height: u32,
+    pub framerate: f32,
+}
+
+impl VideoRegionEncode {
+    pub fn legacy() -> Self {
+        Self {
+            codec: "h264".to_string(),
+            quality: Some(80),
+            bitrate: None,
+            profile: Some("main".to_string()),
+            level: Some("5.1".to_string()),
+            mute: true,
+            scale_width: 0,
+            scale_height: 0,
+            framerate: 0.0,
+        }
+    }
 }
 
 pub async fn crop_video_region_with_progress(
@@ -791,6 +852,31 @@ pub async fn crop_video_region_with_progress(
     height: u32,
     on_progress: Option<ProgressCallback>,
 ) -> Result<(), String> {
+    crop_video_region_encoded(
+        app,
+        input_path,
+        output_path,
+        x,
+        y,
+        width,
+        height,
+        &VideoRegionEncode::legacy(),
+        on_progress,
+    )
+    .await
+}
+
+pub async fn crop_video_region_encoded(
+    app: &AppHandle,
+    input_path: &str,
+    output_path: &str,
+    x: u32,
+    y: u32,
+    width: u32,
+    height: u32,
+    encode: &VideoRegionEncode,
+    on_progress: Option<ProgressCallback>,
+) -> Result<(), String> {
     let _ = hw::ensure_detected(app, false).await;
 
     let even = |v: u32| (v & !1u32).max(2);
@@ -798,23 +884,48 @@ pub async fn crop_video_region_with_progress(
     let crop_h = even(height);
     let crop_x = x & !1u32;
     let crop_y = y & !1u32;
-    let filter = format!("crop={}:{}:{}:{}", crop_w, crop_h, crop_x, crop_y);
+
+    let mut filters = vec![format!(
+        "crop={}:{}:{}:{}",
+        crop_w, crop_h, crop_x, crop_y
+    )];
+    if encode.scale_width > 0 && encode.scale_height > 0 {
+        filters.push(format!(
+            "scale={}:{}",
+            even(encode.scale_width),
+            even(encode.scale_height)
+        ));
+        filters.push("setsar=1".to_string());
+    }
+    if encode.framerate > 0.0 {
+        let fps = encode.framerate;
+        let fps_text = if (fps - fps.round()).abs() < 0.05 {
+            format!("{}", fps.round() as i32)
+        } else {
+            format!("{:.2}", fps)
+        };
+        filters.push(format!("fps={fps_text}"));
+    }
 
     let mut args: Vec<String> = vec![
         "-i".to_string(),
         input_path.to_string(),
         "-vf".to_string(),
-        filter,
-        "-an".to_string(),
+        filters.join(","),
     ];
+    if encode.mute {
+        args.push("-an".to_string());
+    }
+
+    let codec = if encode.codec == "hevc" { "hevc" } else { "h264" };
     append_video_encode_args(
         &mut args,
-        "h264",
-        Some(80),
-        None,
-        Some("main"),
-        Some("5.1"),
-        false,
+        codec,
+        encode.quality,
+        encode.bitrate.as_deref(),
+        encode.profile.as_deref(),
+        encode.level.as_deref(),
+        codec == "hevc",
     );
     args.push("-y".to_string());
     args.push(output_path.to_string());
@@ -822,14 +933,42 @@ pub async fn crop_video_region_with_progress(
     run_ffmpeg_with_fallback_progress(app, &args, on_progress).await
 }
 
-pub async fn crop_image_by_ratio(
-    app: &AppHandle,
-    input_path: &str,
-    output_path: &str,
-    crop_w: u32,
-    crop_h: u32,
-    crop_x: u32,
-    crop_y: u32,
-) -> Result<(), String> {
-    crop_image_region(app, input_path, output_path, crop_x, crop_y, crop_w, crop_h).await
+pub async fn probe_video_codec(app: &AppHandle, path: &str) -> Option<String> {
+    let output = app
+        .shell()
+        .sidecar("ffprobe")
+        .ok()?
+        .args([
+            "-v",
+            "error",
+            "-select_streams",
+            "v:0",
+            "-show_entries",
+            "stream=codec_name",
+            "-of",
+            "csv=p=0",
+            path,
+        ])
+        .output()
+        .await
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let name = String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .next()
+        .unwrap_or("")
+        .trim()
+        .to_string();
+    if name.is_empty() {
+        None
+    } else {
+        Some(name.to_lowercase())
+    }
+}
+
+pub fn video_codec_is_hevc(codec: &str) -> bool {
+    let c = codec.trim().to_ascii_lowercase();
+    c == "hevc" || c == "h265" || c == "libx265"
 }

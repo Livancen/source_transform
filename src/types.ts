@@ -258,6 +258,72 @@ export function watermarkSummary(options: ProcessOptions): string {
   return `图片 ${scale}% · ${pos}${rotPart}`;
 }
 
+/** 比例裁剪的图片输出。未开启的项保持「只裁切、原格式」。 */
+export interface RatioImageOutput {
+  compress: boolean;
+  compress_quality: number;
+  convert_format: boolean;
+  target_format: string;
+  resize: boolean;
+  target_width: number;
+  target_height: number;
+}
+
+/** 比例裁剪的视频输出。默认值对齐当前裁切结果：MP4 / H.264 / Main 5.1 / 静音。 */
+export interface RatioVideoOutput {
+  compress: boolean;
+  compress_quality: number;
+  convert_mp4: boolean;
+  resize: boolean;
+  target_width: number;
+  target_height: number;
+  convert_h265_to_h264: boolean;
+  set_level: boolean;
+  target_level: string;
+  target_profile: string;
+  reduce_bitrate: boolean;
+  target_bitrate: string;
+  mute: boolean;
+  change_framerate: boolean;
+  target_framerate: number;
+}
+
+export interface RatioOutputOptions {
+  image: RatioImageOutput;
+  video: RatioVideoOutput;
+}
+
+export function defaultRatioOutputOptions(): RatioOutputOptions {
+  return {
+    image: {
+      compress: false,
+      compress_quality: 80,
+      convert_format: false,
+      target_format: "jpg",
+      resize: false,
+      target_width: 1920,
+      target_height: 1080,
+    },
+    video: {
+      compress: false,
+      compress_quality: 80,
+      convert_mp4: true,
+      resize: false,
+      target_width: 1920,
+      target_height: 1080,
+      convert_h265_to_h264: true,
+      set_level: true,
+      target_level: "5.1",
+      target_profile: "main",
+      reduce_bitrate: false,
+      target_bitrate: "2M",
+      mute: true,
+      change_framerate: false,
+      target_framerate: 30,
+    },
+  };
+}
+
 export function defaultNamingOptions(): NamingOptions {
   return {
     use_original_name: true,

@@ -38,6 +38,7 @@ const {
   uploadUrl,
   optionsOpen,
   ratios,
+  ratioOutput,
   newRatio,
   ratioError,
   imageCount,
@@ -165,6 +166,7 @@ function handleJoinCompleted(message: string) {
       :work-mode="workMode"
       :options="options"
       :ratios="ratios"
+      :ratio-output="ratioOutput"
       :new-ratio="newRatio"
       :ratio-error="ratioError"
       @update:new-ratio="newRatio = $event"

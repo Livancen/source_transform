@@ -9,11 +9,17 @@ import type {
   NamingOptions,
   WorkMode,
   HwAccelOptions,
+  RatioOutputOptions,
 } from "../types";
-import { defaultProcessOptions, defaultNamingOptions } from "../types";
+import {
+  defaultProcessOptions,
+  defaultNamingOptions,
+  defaultRatioOutputOptions,
+} from "../types";
 import { useToast } from "./useToast";
 
 const RATIO_STORAGE_KEY = "aspect-ratio-crop-ratios";
+const RATIO_OUTPUT_KEY = "ratio-output-options";
 const OPTIONS_OPEN_KEY = "options-strip-open";
 const WORK_MODE_KEY = "work-mode";
 const PROCESS_OPTIONS_IMAGE_KEY = "process-options-image";
@@ -45,6 +51,37 @@ function loadOptionsOpen(): boolean {
     /* ignore */
   }
   return true;
+}
+
+function clampQuality(n: number): number {
+  if (!Number.isFinite(n)) return 80;
+  return Math.min(100, Math.max(1, Math.round(n)));
+}
+
+function loadRatioOutput(): RatioOutputOptions {
+  const base = defaultRatioOutputOptions();
+  try {
+    const saved = localStorage.getItem(RATIO_OUTPUT_KEY);
+    if (saved) {
+      const parsed = JSON.parse(saved) as Partial<RatioOutputOptions>;
+      if (parsed?.image && typeof parsed.image === "object") {
+        Object.assign(base.image, parsed.image);
+      }
+      if (parsed?.video && typeof parsed.video === "object") {
+        Object.assign(base.video, parsed.video);
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+  const imageExts = ["jpg", "png", "webp", "bmp", "tiff"];
+  if (!imageExts.includes(base.image.target_format)) {
+    base.image.target_format = "jpg";
+  }
+  base.image.compress_quality = clampQuality(base.image.compress_quality);
+  base.video.compress_quality = clampQuality(base.video.compress_quality);
+  if (!(base.video.target_framerate > 0)) base.video.target_framerate = 30;
+  return base;
 }
 
 function loadRatios(): string[] {
@@ -134,6 +171,7 @@ const resultMessage = ref("");
 const uploadUrl = ref("");
 const optionsOpen = ref(loadOptionsOpen());
 const ratios = ref<string[]>(loadRatios());
+const ratioOutput = ref<RatioOutputOptions>(loadRatioOutput());
 const newRatio = ref("");
 const ratioError = ref("");
 const initialized = ref(false);
@@ -415,6 +453,7 @@ async function startProcess() {
         ratios: ratios.value,
         fileTypeFilter: null,
         filePaths: paths,
+        outputOptions: ratioOutput.value,
       });
       resultMessage.value = result;
       showToast(result || "处理完成", "success", 2000);
@@ -527,6 +566,14 @@ watch(
   { deep: true },
 );
 
+watch(
+  ratioOutput,
+  (val) => {
+    localStorage.setItem(RATIO_OUTPUT_KEY, JSON.stringify(val));
+  },
+  { deep: true },
+);
+
 watch(optionsOpen, (val) => {
   localStorage.setItem(OPTIONS_OPEN_KEY, val ? "1" : "0");
 });
@@ -617,6 +664,7 @@ export function useWorkspace() {
     setHwAccelMode,
     refreshHwEncoders,
     ratios,
+    ratioOutput,
     newRatio,
     ratioError,
     imageCount,
