@@ -52,24 +52,11 @@ jobs:
         run: npm ci
 
       - name: Install macOS build tools
-        if: startsWith(matrix.platform, 'macos')
+        # 仅用于 arm64 magick 的 brew 回退；ffmpeg/ffprobe 用静态构建，x86_64 magick 用官方包
+        if: matrix.target == 'aarch64-apple-darwin'
         run: |
           brew update
           brew list imagemagick >/dev/null 2>&1 || brew install imagemagick
-          brew list ffmpeg >/dev/null 2>&1 || brew install ffmpeg
-
-      - name: Install Rosetta x86_64 Homebrew (Intel macOS build)
-        if: matrix.target == 'x86_64-apple-darwin'
-        shell: bash
-        run: |
-          set -euo pipefail
-          softwareupdate --install-rosetta --agree-to-license || true
-          if [[ ! -x /usr/local/bin/brew ]]; then
-            NONINTERACTIVE=1 arch -x86_64 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-          fi
-          arch -x86_64 /usr/local/bin/brew update
-          arch -x86_64 /usr/local/bin/brew list imagemagick >/dev/null 2>&1 || \
-            arch -x86_64 /usr/local/bin/brew install imagemagick
 
       - name: Download sidecars
         shell: bash

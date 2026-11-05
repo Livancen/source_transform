@@ -157,16 +157,11 @@ bundle_magick_macos() {
 
   enqueue_dep() {
     local lib="$1"
+    # 系统库与已带 install path 的引用不收集
     case "$lib" in
-      /System/*|/usr/lib/*|@*) return 0 ;;
-      /opt/homebrew/*|/usr/local/*|/opt/local/*) ;;
-      *)
-        case "$lib" in
-          */Cellar/*|*/Homebrew/*) ;;
-          *) return 0 ;;
-        esac
-        ;;
+      /System/*|/usr/lib/*|/usr/X11*|@*) return 0 ;;
     esac
+    # 其余（Homebrew / Cellar / 官方包 lib/ 等）全部收集
     [[ -f "$lib" ]] || return 0
     if grep -Fxq "$lib" "$seen_file" 2>/dev/null; then
       return 0
@@ -261,6 +256,50 @@ magick_is_self_contained() {
     return 1
   fi
   return 0
+}
+
+# 从 ImageMagick 官方归档下载对应架构的预编译 magick（tar.xz，含依赖 dylib）
+download_official_magick() {
+  local expected_arch="$1" # arm64 | x86_64
+  local arch_dir out tgz url
+  case "$expected_arch" in
+    arm64)  arch_dir="arm64" ;;
+    x86_64) arch_dir="x86_64" ;;
+    *) return 1 ;;
+  esac
+
+  local candidates=(
+    "https://imagemagick.org/archive/binaries/ImageMagick-x86_64-apple-darwin23.1.1.tar.gz"
+    "https://download.imagemagick.org/ImageMagick/download/binaries/ImageMagick-x86_64-apple-darwin23.1.1.tar.gz"
+    "https://imagemagick.org/archive/binaries/ImageMagick-arm64-apple-darwin23.1.1.tar.gz"
+    "https://download.imagemagick.org/ImageMagick/download/binaries/ImageMagick-arm64-apple-darwin23.1.1.tar.gz"
+  )
+
+  # 官方归档版本会滚动更新，先抓目录页解析当前可用的版本号
+  local index_html
+  if index_html="$(curl -fsSL --retry 2 "https://download.imagemagick.org/ImageMagick/download/binaries/" 2>/dev/null)"; then
+    local ver
+    ver="$(echo "$index_html" | grep -o "ImageMagick-${arch_dir}-apple-darwin[0-9.]*\.tar\.gz" | sort -u | tail -n1 || true)"
+    if [[ -n "$ver" ]]; then
+      candidates=("https://download.imagemagick.org/ImageMagick/download/binaries/$ver" "${candidates[@]}")
+    fi
+  fi
+
+  tgz="$TMP_DIR/ImageMagick-$arch_dir.tar.gz"
+  if ! download_first "$tgz" "${candidates[@]}"; then
+    return 1
+  fi
+
+  local extract_dir="$TMP_DIR/magick-official-$arch_dir"
+  mkdir -p "$extract_dir"
+  tar -xzf "$tgz" -C "$extract_dir"
+
+  out="$(find "$extract_dir" -type f -name magick | head -n1)"
+  [[ -n "$out" ]] || {
+    echo "magick binary not found in official archive" >&2
+    return 1
+  }
+  printf '%s\n' "$out"
 }
 
 resolve_brew_magick() {
@@ -373,8 +412,13 @@ prepare_macos() {
   fi
 
   if ! magick_is_self_contained "$magick_out"; then
-    local magick_src
-    magick_src="$(resolve_brew_magick "$expected_arch")"
+    local magick_src=""
+    # 首选：ImageMagick 官方预编译包（不依赖 Homebrew，交叉架构也可用）
+    magick_src="$(download_official_magick "$expected_arch" || true)"
+    # 回退：brew（仅 host arch 匹配时可用）
+    if [[ -z "$magick_src" ]]; then
+      magick_src="$(resolve_brew_magick "$expected_arch")"
+    fi
     bundle_magick_macos "$magick_src" "$magick_out"
   fi
 }
