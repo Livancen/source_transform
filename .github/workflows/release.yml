@@ -18,11 +18,12 @@ jobs:
           - platform: windows-latest
             target: x86_64-pc-windows-msvc
             args: ""
-          # 固定较旧 runner，避免 brew magick 以过新的 macOS 部署目标编译导致旧系统 dyld 失败
-          - platform: macos-14
+          # macOS 14 已退役（2026-11）；arm64 用 macos-15，Intel 用原生 x86_64 runner macos-15-intel
+          # （brew 原生安装对应架构 magick，无需 Rosetta）
+          - platform: macos-15
             target: aarch64-apple-darwin
             args: "--target aarch64-apple-darwin"
-          - platform: macos-14
+          - platform: macos-15-intel
             target: x86_64-apple-darwin
             args: "--target x86_64-apple-darwin"
 
@@ -52,8 +53,8 @@ jobs:
         run: npm ci
 
       - name: Install macOS build tools
-        # 仅用于 arm64 magick 的 brew 回退；ffmpeg/ffprobe 用静态构建，x86_64 magick 用官方包
-        if: matrix.target == 'aarch64-apple-darwin'
+        # 每个 job 的 runner 与目标架构一致（arm64 / macos-15-intel），brew 直接装对应架构
+        if: startsWith(matrix.platform, 'macos')
         run: |
           brew update
           brew list imagemagick >/dev/null 2>&1 || brew install imagemagick
