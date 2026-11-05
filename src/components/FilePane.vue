@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, toRef, watch } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, toRef, watch } from "vue";
 import type { FileInfo } from "../types";
 import { formatFileSizeMb } from "../types";
 import { useFileThumbs } from "../composables/useFileThumbs";
@@ -15,6 +15,8 @@ const props = defineProps<{
   selectable?: boolean;
   checkedPaths?: Set<string>;
   allChecked?: boolean;
+  /** 处理中禁止删除 */
+  locked?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -23,6 +25,7 @@ const emit = defineEmits<{
   selectFile: [file: FileInfo];
   toggleCheck: [path: string];
   toggleCheckAll: [];
+  deleteFile: [file: FileInfo];
 }>();
 
 const title = computed(() => (props.kind === "input" ? "输入" : "输出"));
@@ -74,6 +77,73 @@ function closePreview() {
   previewVisible.value = false;
   previewFile.value = null;
 }
+
+const menu = ref<{ x: number; y: number; file: FileInfo } | null>(null);
+const menuEl = ref<HTMLElement | null>(null);
+const pendingDelete = ref<FileInfo | null>(null);
+
+function closeMenu() {
+  menu.value = null;
+}
+
+function onRowContextMenu(file: FileInfo, e: MouseEvent) {
+  e.preventDefault();
+  e.stopPropagation();
+  const menuW = 148;
+  const menuH = 40;
+  const x = Math.min(e.clientX, window.innerWidth - menuW - 8);
+  const y = Math.min(e.clientY, window.innerHeight - menuH - 8);
+  menu.value = { x: Math.max(8, x), y: Math.max(8, y), file };
+}
+
+function onListScroll() {
+  onScroll();
+  closeMenu();
+}
+
+function askDelete() {
+  if (props.locked || !menu.value) return;
+  pendingDelete.value = menu.value.file;
+  closeMenu();
+}
+
+function cancelDelete() {
+  pendingDelete.value = null;
+}
+
+function confirmDelete() {
+  const file = pendingDelete.value;
+  if (!file) return;
+  pendingDelete.value = null;
+  if (previewFile.value?.path === file.path) closePreview();
+  emit("deleteFile", file);
+}
+
+function onWindowPointer(e: PointerEvent) {
+  if (!menu.value) return;
+  const el = menuEl.value;
+  if (el && e.target instanceof Node && el.contains(e.target)) return;
+  closeMenu();
+}
+
+function onKey(e: KeyboardEvent) {
+  if (e.key !== "Escape") return;
+  if (pendingDelete.value) {
+    pendingDelete.value = null;
+    return;
+  }
+  closeMenu();
+}
+
+onMounted(() => {
+  window.addEventListener("pointerdown", onWindowPointer, true);
+  window.addEventListener("keydown", onKey);
+});
+
+onBeforeUnmount(() => {
+  window.removeEventListener("pointerdown", onWindowPointer, true);
+  window.removeEventListener("keydown", onKey);
+});
 </script>
 
 <template>
@@ -146,7 +216,7 @@ function closePreview() {
     <div
       ref="containerRef"
       class="file-list-scroll flex-1 min-h-0 overflow-y-auto overflow-x-hidden"
-      @scroll.passive="onScroll"
+      @scroll.passive="onListScroll"
     >
       <template v-if="files.length > 0">
         <div class="relative w-full" :style="{ height: totalHeight + 'px' }">
@@ -165,6 +235,7 @@ function closePreview() {
               },
             ]"
             @click="onRowClick(file)"
+            @contextmenu="onRowContextMenu(file, $event)"
           >
             <div
               v-if="selectable"
@@ -252,5 +323,61 @@ function closePreview() {
       :file="previewFile"
       @close="closePreview"
     />
+
+    <Teleport to="body">
+      <div
+        v-if="menu"
+        ref="menuEl"
+        class="fixed z-1800 min-w-132px py-4px rounded-4px border border-border bg-bg1 shadow-fluent-lg"
+        :style="{ left: menu.x + 'px', top: menu.y + 'px' }"
+        @contextmenu.prevent
+      >
+        <button
+          class="w-full h-32px px-12px text-left text-12px color-danger bg-transparent border-none cursor-pointer hover:not-disabled:bg-bg3 disabled:opacity-40 disabled:cursor-not-allowed"
+          type="button"
+          :disabled="locked"
+          @click="askDelete"
+        >
+          删除
+        </button>
+      </div>
+
+      <div
+        v-if="pendingDelete"
+        class="fixed inset-0 z-2000 flex items-center justify-center bg-black/40 p-20px"
+        @click.self="cancelDelete"
+      >
+        <div
+          class="w-360px max-w-full bg-bg1 rounded-8px border border-border shadow-fluent-lg overflow-hidden"
+          @click.stop
+        >
+          <div
+            class="px-18px py-14px border-b border-border flex items-center justify-between gap-12px bg-bg2"
+          >
+            <div class="text-14px font-600">删除文件</div>
+            <button class="tb-btn text-16px! px-8px!" type="button" @click="cancelDelete">
+              ×
+            </button>
+          </div>
+          <div class="px-18px py-16px flex flex-col gap-14px">
+            <p class="text-13px color-t2 leading-relaxed break-all">
+              确认从磁盘删除
+              <strong class="color-t1">{{ pendingDelete.name }}</strong>
+              ？此操作不可撤销。
+            </p>
+            <div class="flex justify-end gap-8px pt-4px">
+              <button class="tb-btn" type="button" @click="cancelDelete">取消</button>
+              <button
+                class="tb-btn bg-danger color-white border-transparent hover:not-disabled:bg-danger hover:not-disabled:color-white"
+                type="button"
+                @click="confirmDelete"
+              >
+                删除
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </Teleport>
   </section>
 </template>

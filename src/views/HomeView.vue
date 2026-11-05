@@ -56,6 +56,7 @@ const {
   selectInputDir,
   selectOutputDir,
   openFolder,
+  deleteListedFile,
   startProcess,
 } = useWorkspace();
 
@@ -237,11 +238,13 @@ function handleJoinCompleted(message: string) {
         :selectable="true"
         :checked-paths="checkedPaths"
         :all-checked="allVisibleChecked"
+        :locked="isProcessing"
         @select-dir="selectInputDir"
         @open-folder="openFolder(inputDir)"
         @select-file="selectedInputPath = $event.path"
         @toggle-check="toggleCheck"
         @toggle-check-all="toggleCheckAllVisible"
+        @delete-file="deleteListedFile('input', $event)"
       />
 
       <div
@@ -256,9 +259,11 @@ function handleJoinCompleted(message: string) {
         :dir="outputDir"
         :files="outputFiles"
         :selected-path="selectedOutputPath"
+        :locked="isProcessing"
         @select-dir="selectOutputDir"
         @open-folder="openFolder(outputDir)"
         @select-file="selectedOutputPath = $event.path"
+        @delete-file="deleteListedFile('output', $event)"
       />
     </div>
 

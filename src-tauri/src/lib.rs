@@ -117,6 +117,7 @@ pub fn run() {
             commands::custom_crop,
             commands::merge_videos,
             commands::join_media,
+            commands::delete_listed_file,
             commands::open_folder,
             commands::start_upload_server,
             commands::get_log_path,

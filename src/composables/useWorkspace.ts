@@ -404,6 +404,33 @@ async function selectOutputDir() {
   }
 }
 
+async function deleteListedFile(kind: "input" | "output", file: FileInfo) {
+  if (isProcessing.value) {
+    showToast("处理中，无法删除文件", "error", 2000);
+    return;
+  }
+  const root = kind === "input" ? inputDir.value : outputDir.value;
+  if (!root) {
+    showToast("目录未设置", "error", 2000);
+    return;
+  }
+  try {
+    await invoke("delete_listed_file", {
+      path: file.path,
+      rootDir: root,
+    });
+    if (selectedInputPath.value === file.path) selectedInputPath.value = "";
+    if (selectedOutputPath.value === file.path) selectedOutputPath.value = "";
+    const next = new Set(checkedPaths.value);
+    if (next.delete(file.path)) checkedPaths.value = next;
+    await scanAllFiles();
+    showToast(`已删除 ${file.name}`, "success", 2000);
+  } catch (e) {
+    console.error("删除文件失败:", e);
+    showToast(`删除失败: ${e}`, "error", 2000);
+  }
+}
+
 async function openFolder(path: string) {
   try {
     await invoke("open_folder", { path });
@@ -687,6 +714,7 @@ export function useWorkspace() {
     selectInputDir,
     selectOutputDir,
     openFolder,
+    deleteListedFile,
     startProcess,
     initWorkspace,
   };

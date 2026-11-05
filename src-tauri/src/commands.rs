@@ -1547,6 +1547,44 @@ fn validate_merge_options(options: &VideoMergeOptions) -> Result<(), String> {
 }
 
 #[tauri::command]
+pub fn delete_listed_file(path: String, root_dir: String) -> Result<(), String> {
+    let root = PathBuf::from(&root_dir);
+    if !root.is_dir() {
+        return Err("目录不存在".to_string());
+    }
+    let root = root
+        .canonicalize()
+        .map_err(|e| format!("无法解析目录: {}", e))?;
+
+    let file = PathBuf::from(&path);
+    if !file.is_file() {
+        return Err("文件不存在".to_string());
+    }
+    let file = file
+        .canonicalize()
+        .map_err(|e| format!("无法解析文件: {}", e))?;
+    if file == root || !file.starts_with(&root) {
+        logger::warn(format!("拒绝删除目录外文件: {}", file.display()));
+        return Err("只能删除当前列表目录中的文件".to_string());
+    }
+
+    let ext = file
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_lowercase();
+    let allowed = IMAGE_EXTENSIONS.contains(&ext.as_str())
+        || VIDEO_EXTENSIONS.contains(&ext.as_str());
+    if !allowed {
+        return Err("只能删除图片或视频文件".to_string());
+    }
+
+    std::fs::remove_file(&file).map_err(|e| format!("删除失败: {}", e))?;
+    logger::info(format!("已删除文件 {}", file.display()));
+    Ok(())
+}
+
+#[tauri::command]
 pub fn open_folder(path: String) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
