@@ -257,6 +257,7 @@ pub async fn segment_crop_videos(
             .file_name()
             .map(|s| s.to_string_lossy().to_string())
             .unwrap_or_else(|| job.path.clone());
+        let name = format!("{name} ({})", job.ratio);
         emit_progress(&app, "segment-progress", current, total, &name, "processing", 0.0);
 
         let result = export_one(&app, &output_dir, job, mute, &naming, current, total).await;
@@ -271,12 +272,12 @@ pub async fn segment_crop_videos(
 
     emit_progress(&app, "segment-progress", total, total, "", "completed", 100.0);
     if errors.is_empty() {
-        let msg = format!("分段裁剪完成: {success} 个视频");
+        let msg = format!("分段裁剪完成: {success} 个成片");
         logger::info(&msg);
         Ok(msg)
     } else {
         Ok(format!(
-            "分段裁剪完成: {success} 成功, {} 失败\n{}",
+            "分段裁剪完成: {success} 个成片成功, {} 失败\n{}",
             errors.len(),
             errors.join("\n")
         ))
@@ -319,12 +320,13 @@ async fn export_one(
         .file_stem()
         .map(|s| s.to_string_lossy().to_string())
         .unwrap_or_else(|| "segment".to_string());
-    let aliased = format!("{stem}-seg.mp4");
+    let ratio_tag = job.ratio.replace(':', "-");
+    let aliased = format!("{stem}-seg-{ratio_tag}.mp4");
     let out_name = build_output_name(&aliased, naming, Some("mp4"));
     let output_path = join_output_path(output_dir, &out_name);
     let output = output_path.to_string_lossy().to_string();
 
-    let label = file_name.clone();
+    let label = format!("{file_name} ({})", job.ratio);
     let app_cb = app.clone();
     let on_progress: Arc<dyn Fn(f64) + Send + Sync> = Arc::new(move |pct: f64| {
         emit_progress(&app_cb, "segment-progress", current, total, &label, "processing", pct);

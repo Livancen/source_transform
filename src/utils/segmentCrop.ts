@@ -22,8 +22,12 @@ export interface SegmentPiece {
 }
 
 export interface SegmentFileConfig {
+  /** 当前正在编辑的比例 */
   ratio: string;
-  segments: SegmentPiece[];
+  /** 这个视频要输出的比例，顺序即界面顺序 */
+  ratios: string[];
+  /** 每个比例一份独立分段 */
+  tracks: Record<string, SegmentPiece[]>;
 }
 
 export interface SegmentGlobal {
@@ -91,22 +95,64 @@ export function saveSegmentGlobal(value: SegmentGlobal) {
   localStorage.setItem(GLOBAL_KEY, JSON.stringify(next));
 }
 
-function readAll(): Record<string, SegmentFileConfig> {
+function readAll(): Record<string, unknown> {
   try {
     const raw = localStorage.getItem(CONFIG_KEY);
     if (!raw) return {};
-    const parsed = JSON.parse(raw) as Record<string, SegmentFileConfig>;
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
     return parsed && typeof parsed === "object" ? parsed : {};
   } catch {
     return {};
   }
 }
 
+function normalizePiece(piece: SegmentPiece): SegmentPiece {
+  return {
+    ...piece,
+    ratioLocked: !(piece.ratioLocked === false && Number(piece.lockRatio) > 0),
+    lockRatio: Number(piece.lockRatio) > 0 ? Number(piece.lockRatio) : 0,
+  };
+}
+
+/** 旧配置只有一个 ratio + segments，读出来收成多比例结构。 */
+export function normalizeSegmentConfig(raw: unknown): SegmentFileConfig | null {
+  if (!raw || typeof raw !== "object") return null;
+  const obj = raw as {
+    ratio?: string;
+    segments?: SegmentPiece[];
+    ratios?: string[];
+    tracks?: Record<string, SegmentPiece[]>;
+  };
+  const tracks: Record<string, SegmentPiece[]> = {};
+  if (obj.tracks && typeof obj.tracks === "object") {
+    for (const [key, pieces] of Object.entries(obj.tracks)) {
+      const ratio = key.trim();
+      if (!parseRatio(ratio) || !Array.isArray(pieces) || pieces.length === 0) continue;
+      tracks[ratio] = pieces.map((piece) => normalizePiece(piece));
+    }
+  }
+  const legacyRatio = (obj.ratio || "").trim();
+  if (
+    Object.keys(tracks).length === 0 &&
+    parseRatio(legacyRatio) &&
+    Array.isArray(obj.segments) &&
+    obj.segments.length > 0
+  ) {
+    tracks[legacyRatio] = obj.segments.map((piece) => normalizePiece(piece));
+  }
+  const ratios = (Array.isArray(obj.ratios) ? obj.ratios : Object.keys(tracks))
+    .map((item) => String(item).trim())
+    .filter((ratio, index, list) => parseRatio(ratio) && tracks[ratio] && list.indexOf(ratio) === index);
+  for (const ratio of Object.keys(tracks)) {
+    if (!ratios.includes(ratio)) ratios.push(ratio);
+  }
+  if (ratios.length === 0) return null;
+  const active = parseRatio(legacyRatio) && ratios.includes(legacyRatio) ? legacyRatio : ratios[0];
+  return { ratio: active, ratios, tracks };
+}
+
 export function loadSegmentConfig(path: string): SegmentFileConfig | null {
-  const cfg = readAll()[path];
-  if (!cfg || !Array.isArray(cfg.segments) || cfg.segments.length === 0) return null;
-  if (!parseRatio(cfg.ratio || "")) return null;
-  return cfg;
+  return normalizeSegmentConfig(readAll()[path]);
 }
 
 export function saveSegmentConfig(path: string, config: SegmentFileConfig) {
@@ -156,38 +202,68 @@ export function formatClock(sec: number): string {
   return `${m}:${String(s).padStart(2, "0")}.${tenth}`;
 }
 
+function toExportPieces(pieces: SegmentPiece[]): SegmentExportPiece[] {
+  return pieces.map((piece) => ({
+    start: piece.start,
+    end: piece.end,
+    mode: piece.mode,
+    offset_x: piece.offsetX,
+    offset_y: piece.offsetY,
+    crop_x: piece.cropX,
+    crop_y: piece.cropY,
+    crop_w: piece.cropW || 0,
+    crop_h: piece.cropH || 0,
+  }));
+}
+
 export function buildSegmentJobs(files: FileInfo[], global: SegmentGlobal): SegmentExportJob[] {
   return files
     .filter((file) => file.file_type === "video")
-    .map((file) => {
+    .flatMap((file) => {
       const cfg = loadSegmentConfig(file.path);
       if (!cfg) {
-        return {
-          path: file.path,
-          ratio: global.ratio,
-          offset_x: global.offsetX,
-          offset_y: global.offsetY,
-          segments: [],
-        };
+        return [
+          {
+            path: file.path,
+            ratio: global.ratio,
+            offset_x: global.offsetX,
+            offset_y: global.offsetY,
+            segments: [],
+          },
+        ];
       }
-      return {
+      return cfg.ratios.map((ratio) => ({
         path: file.path,
-        ratio: cfg.ratio,
+        ratio,
         offset_x: global.offsetX,
         offset_y: global.offsetY,
-        segments: cfg.segments.map((piece) => ({
-          start: piece.start,
-          end: piece.end,
-          mode: piece.mode,
-          offset_x: piece.offsetX,
-          offset_y: piece.offsetY,
-          crop_x: piece.cropX,
-          crop_y: piece.cropY,
-          crop_w: piece.cropW || 0,
-          crop_h: piece.cropH || 0,
-        })),
-      };
+        segments: toExportPieces(cfg.tracks[ratio] || []),
+      }));
     });
+}
+
+/** 复制一份分段到另一个比例。偏移和丢弃原样保留，位置框按目标比例重算。 */
+export function cloneSegmentsForRatio(
+  pieces: SegmentPiece[],
+  sourceRatio: string,
+  targetRatio: string,
+  mediaW: number,
+  mediaH: number,
+): SegmentPiece[] {
+  const target = parseRatio(targetRatio) || 0;
+  return pieces.map((piece) => {
+    const next = normalizePiece({ ...piece, id: newSegmentId() });
+    if (next.mode !== "position" || !(target > 0) || mediaW < 16 || mediaH < 16) return next;
+    const src = coverBox(mediaW, mediaH, sourceRatio, piece);
+    if (!src) return next;
+    const fitted = resizeBoxToRatio(mediaW, mediaH, src, target);
+    next.cropX = fitted.cropX;
+    next.cropY = fitted.cropY;
+    next.cropW = fitted.cropW;
+    next.cropH = fitted.cropH;
+    if (next.ratioLocked) next.lockRatio = target;
+    return next;
+  });
 }
 
 export function coverBox(
