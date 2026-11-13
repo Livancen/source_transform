@@ -4,11 +4,14 @@ use std::sync::Arc;
 use tauri::AppHandle;
 use tauri_plugin_shell::ShellExt;
 
-use crate::commands::{compute_cover_crop, emit_progress};
+use crate::commands::{
+    build_ratio_video_encode, compute_cover_crop, emit_progress, normalize_video_ext,
+};
 use crate::hw::{self, append_video_encode_args, run_ffmpeg_with_fallback_progress};
 use crate::logger;
 use crate::naming::{build_output_name, join_output_path};
-use crate::types::{NamingOptions, SegmentCropJob, SegmentPieceInput};
+use crate::process::{probe_video_codec, VideoRegionEncode};
+use crate::types::{NamingOptions, RatioVideoOutput, SegmentCropJob, SegmentPieceInput};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct KeptSeg {
@@ -137,13 +140,32 @@ pub fn resolve_segments(
     Ok(kept)
 }
 
-pub fn filter_graph(segs: &[KeptSeg], audio: bool) -> String {
+fn fps_text(fps: f32) -> String {
+    if (fps - fps.round()).abs() < 0.05 {
+        format!("{}", fps.round() as i32)
+    } else {
+        format!("{:.2}", fps)
+    }
+}
+
+pub fn filter_graph(segs: &[KeptSeg], audio: bool, encode: &VideoRegionEncode) -> String {
     let mut parts = Vec::new();
     for (i, seg) in segs.iter().enumerate() {
-        parts.push(format!(
-            "[0:v]trim=start={:.3}:end={:.3},setpts=PTS-STARTPTS,crop={}:{}:{}:{},scale={}:{},setsar=1,format=yuv420p[v{i}]",
+        let mut chain = format!(
+            "[0:v]trim=start={:.3}:end={:.3},setpts=PTS-STARTPTS,crop={}:{}:{}:{},scale={}:{},setsar=1",
             seg.start, seg.end, seg.w, seg.h, seg.x, seg.y, seg.out_w, seg.out_h
-        ));
+        );
+        if encode.scale_width > 0 && encode.scale_height > 0 {
+            chain.push_str(&format!(
+                ",scale={}:{}",
+                encode.scale_width, encode.scale_height
+            ));
+        }
+        if encode.framerate > 0.0 {
+            chain.push_str(&format!(",fps={}", fps_text(encode.framerate)));
+        }
+        chain.push_str(&format!(",format=yuv420p[v{i}]"));
+        parts.push(chain);
         if audio {
             parts.push(format!(
                 "[0:a]atrim=start={:.3}:end={:.3},asetpts=PTS-STARTPTS[a{i}]",
@@ -201,10 +223,12 @@ async fn encode_segments(
     input: &str,
     output: &str,
     segs: &[KeptSeg],
+    encode: &VideoRegionEncode,
     with_audio: bool,
+    faststart: bool,
     on_progress: Option<Arc<dyn Fn(f64) + Send + Sync>>,
 ) -> Result<(), String> {
-    let graph = filter_graph(segs, with_audio);
+    let graph = filter_graph(segs, with_audio, encode);
     let mut args = vec![
         "-i".to_string(),
         input.to_string(),
@@ -225,9 +249,20 @@ async fn encode_segments(
     } else {
         args.push("-an".into());
     }
-    append_video_encode_args(&mut args, "h264", Some(80), None, Some("main"), Some("5.1"), false);
-    args.push("-movflags".into());
-    args.push("+faststart".into());
+    let hevc = encode.codec == "hevc";
+    append_video_encode_args(
+        &mut args,
+        if hevc { "hevc" } else { "h264" },
+        encode.quality,
+        encode.bitrate.as_deref(),
+        encode.profile.as_deref(),
+        encode.level.as_deref(),
+        hevc,
+    );
+    if faststart {
+        args.push("-movflags".into());
+        args.push("+faststart".into());
+    }
     args.push("-y".into());
     args.push(output.to_string());
     run_ffmpeg_with_fallback_progress(app, &args, on_progress).await
@@ -238,14 +273,19 @@ pub async fn segment_crop_videos(
     app: AppHandle,
     output_dir: String,
     jobs: Vec<SegmentCropJob>,
-    mute: bool,
+    video: RatioVideoOutput,
     naming: NamingOptions,
 ) -> Result<String, String> {
     if jobs.is_empty() {
         return Err("请先勾选要处理的视频".to_string());
     }
     std::fs::create_dir_all(&output_dir).map_err(|e| e.to_string())?;
-    logger::info(format!("开始分段裁剪 {} 个视频 mute={mute}", jobs.len()));
+    logger::info(format!(
+        "开始分段裁剪 {} 个视频 mute={} compress={}",
+        jobs.len(),
+        video.mute,
+        video.compress
+    ));
 
     let total = jobs.len();
     let mut success = 0usize;
@@ -260,7 +300,7 @@ pub async fn segment_crop_videos(
         let name = format!("{name} ({})", job.ratio);
         emit_progress(&app, "segment-progress", current, total, &name, "processing", 0.0);
 
-        let result = export_one(&app, &output_dir, job, mute, &naming, current, total).await;
+        let result = export_one(&app, &output_dir, job, &video, &naming, current, total).await;
         match result {
             Ok(_) => success += 1,
             Err(e) => {
@@ -288,7 +328,7 @@ async fn export_one(
     app: &AppHandle,
     output_dir: &str,
     job: &SegmentCropJob,
-    mute: bool,
+    video: &RatioVideoOutput,
     naming: &NamingOptions,
     current: usize,
     total: usize,
@@ -321,8 +361,17 @@ async fn export_one(
         .map(|s| s.to_string_lossy().to_string())
         .unwrap_or_else(|| "segment".to_string());
     let ratio_tag = job.ratio.replace(':', "-");
-    let aliased = format!("{stem}-seg-{ratio_tag}.mp4");
-    let out_name = build_output_name(&aliased, naming, Some("mp4"));
+    let orig_ext = input
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .unwrap_or("mp4");
+    let ext = if video.convert_mp4 {
+        "mp4".to_string()
+    } else {
+        normalize_video_ext(orig_ext)
+    };
+    let aliased = format!("{stem}-seg-{ratio_tag}.{ext}");
+    let out_name = build_output_name(&aliased, naming, Some(&ext));
     let output_path = join_output_path(output_dir, &out_name);
     let output = output_path.to_string_lossy().to_string();
 
@@ -332,11 +381,25 @@ async fn export_one(
         emit_progress(&app_cb, "segment-progress", current, total, &label, "processing", pct);
     });
 
-    let audio = !mute && has_audio(app, &job.path).await;
-    if let Err(err) = encode_segments(app, &job.path, &output, &kept, audio, Some(on_progress.clone())).await {
+    let source_codec = probe_video_codec(app, &job.path).await.unwrap_or_default();
+    let encode = build_ratio_video_encode(Some(video), &source_codec);
+    let audio = !encode.mute && has_audio(app, &job.path).await;
+    let faststart = ext == "mp4" || ext == "m4v";
+    if let Err(err) = encode_segments(
+        app,
+        &job.path,
+        &output,
+        &kept,
+        &encode,
+        audio,
+        faststart,
+        Some(on_progress.clone()),
+    )
+    .await
+    {
         if audio {
             logger::warn(format!("分段裁剪保留音轨失败，改为静音重试: {err}"));
-            encode_segments(app, &job.path, &output, &kept, false, Some(on_progress)).await?;
+            encode_segments(app, &job.path, &output, &kept, &encode, false, faststart, Some(on_progress)).await?;
         } else {
             return Err(err);
         }
@@ -399,7 +462,7 @@ mod tests {
             KeptSeg { start: 0.0, end: 1.5, x: 0, y: 0, w: 1080, h: 1920, out_w: 1080, out_h: 1920 },
             KeptSeg { start: 1.5, end: 3.0, x: 100, y: 0, w: 1080, h: 1920, out_w: 1080, out_h: 1920 },
         ];
-        let graph = filter_graph(&segs, false);
+        let graph = filter_graph(&segs, false, &VideoRegionEncode::legacy());
         assert!(graph.contains("concat=n=2:v=1:a=0[outv]"));
         assert!(!graph.contains("[outa]"));
         assert!(graph.contains("crop=1080:1920:100:0"));

@@ -89,7 +89,7 @@ fn normalize_image_ext(ext: &str) -> String {
     }
 }
 
-fn normalize_video_ext(ext: &str) -> String {
+pub(crate) fn normalize_video_ext(ext: &str) -> String {
     match ext.trim().trim_start_matches('.').to_ascii_lowercase().as_str() {
         "mp4" | "m4v" | "avi" | "mov" | "mkv" | "wmv" | "flv" | "webm" => {
             ext.trim().trim_start_matches('.').to_ascii_lowercase()
@@ -98,7 +98,7 @@ fn normalize_video_ext(ext: &str) -> String {
     }
 }
 
-fn build_ratio_video_encode(opts: Option<&RatioVideoOutput>, source_codec: &str) -> VideoRegionEncode {
+pub(crate) fn build_ratio_video_encode(opts: Option<&RatioVideoOutput>, source_codec: &str) -> VideoRegionEncode {
     let Some(v) = opts else {
         return VideoRegionEncode::legacy();
     };

@@ -1,7 +1,13 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
-import type { ProcessOptions, RatioOutputOptions, WorkMode } from "../types";
+import type {
+  ProcessOptions,
+  RatioOutputOptions,
+  RatioVideoOutput,
+  WorkMode,
+} from "../types";
 import { watermarkSummary } from "../types";
+import VideoOutputChips from "./VideoOutputChips.vue";
 import WatermarkPopover from "./WatermarkPopover.vue";
 import type { WatermarkDraft } from "./WatermarkPopover.vue";
 
@@ -13,6 +19,7 @@ const props = defineProps<{
   newRatio: string;
   ratioError: string;
   ratioOutput: RatioOutputOptions;
+  segmentVideo: RatioVideoOutput;
 }>();
 
 const emit = defineEmits<{
@@ -24,6 +31,7 @@ const emit = defineEmits<{
 const showImageOpts = () => props.workMode === "image";
 const showVideoOpts = () => props.workMode === "video";
 const showRatioOpts = () => props.workMode === "ratio";
+const showSegmentOpts = () => props.workMode === "segment";
 const showBatchOpts = () => showImageOpts() || showVideoOpts();
 
 const watermarkVisible = ref(false);
@@ -94,7 +102,7 @@ function applyWatermarkDraft(draft: WatermarkDraft) {
 
 <template>
   <div
-    v-if="showBatchOpts() || showRatioOpts()"
+    v-if="showBatchOpts() || showRatioOpts() || showSegmentOpts()"
     class="options-strip-body shrink-0 bg-bg1 border-b border-border"
     :class="{ 'is-open': open }"
   >
@@ -746,210 +754,11 @@ function applyWatermarkDraft(draft: WatermarkDraft) {
         </div>
       </div>
 
-      <div class="flex flex-wrap gap-8px items-center">
-        <span class="text-11px font-500 color-t3 shrink-0 w-36px">视频</span>
-        <div class="opt-chip" :class="{ 'opt-chip-on': ratioOutput.video.compress }">
-          <label class="switch">
-            <input type="checkbox" v-model="ratioOutput.video.compress" />
-            <span class="slider"></span>
-          </label>
-          <span
-            class="text-12px font-500"
-            :class="ratioOutput.video.compress ? 'color-t1' : 'color-t2'"
-            >压缩</span
-          >
-          <span
-            v-show="ratioOutput.video.compress"
-            class="inline-flex items-center gap-6px pl-6px ml-2px border-l border-border"
-          >
-            <span class="text-10px color-t3">质量</span>
-            <input
-              class="field w-64px! h-24px! px-6px! text-11px!"
-              type="number"
-              v-model.number="ratioOutput.video.compress_quality"
-              min="1"
-              max="100"
-            />
-          </span>
-        </div>
-
-        <div class="opt-chip" :class="{ 'opt-chip-on': ratioOutput.video.convert_mp4 }">
-          <label class="switch">
-            <input type="checkbox" v-model="ratioOutput.video.convert_mp4" />
-            <span class="slider"></span>
-          </label>
-          <span
-            class="text-12px font-500"
-            :class="ratioOutput.video.convert_mp4 ? 'color-t1' : 'color-t2'"
-            >转 MP4</span
-          >
-        </div>
-
-        <div class="opt-chip" :class="{ 'opt-chip-on': ratioOutput.video.resize }">
-          <label class="switch">
-            <input type="checkbox" v-model="ratioOutput.video.resize" />
-            <span class="slider"></span>
-          </label>
-          <span
-            class="text-12px font-500"
-            :class="ratioOutput.video.resize ? 'color-t1' : 'color-t2'"
-            >分辨率</span
-          >
-          <span
-            v-show="ratioOutput.video.resize"
-            class="inline-flex items-center gap-6px pl-6px ml-2px border-l border-border"
-          >
-            <input
-              class="field w-64px! h-24px! px-6px! text-11px!"
-              type="number"
-              v-model.number="ratioOutput.video.target_width"
-              min="1"
-              title="宽"
-            />
-            <span class="text-10px color-t3">×</span>
-            <input
-              class="field w-64px! h-24px! px-6px! text-11px!"
-              type="number"
-              v-model.number="ratioOutput.video.target_height"
-              min="1"
-              title="高"
-            />
-          </span>
-        </div>
-
-        <div
-          class="opt-chip"
-          :class="{ 'opt-chip-on': ratioOutput.video.convert_h265_to_h264 }"
-        >
-          <label class="switch">
-            <input
-              type="checkbox"
-              v-model="ratioOutput.video.convert_h265_to_h264"
-            />
-            <span class="slider"></span>
-          </label>
-          <span
-            class="text-12px font-500"
-            :class="ratioOutput.video.convert_h265_to_h264 ? 'color-t1' : 'color-t2'"
-            >H.265→H.264</span
-          >
-        </div>
-
-        <div class="opt-chip" :class="{ 'opt-chip-on': ratioOutput.video.set_level }">
-          <label class="switch">
-            <input type="checkbox" v-model="ratioOutput.video.set_level" />
-            <span class="slider"></span>
-          </label>
-          <span
-            class="text-12px font-500"
-            :class="ratioOutput.video.set_level ? 'color-t1' : 'color-t2'"
-            >Profile/Level</span
-          >
-          <span
-            v-show="ratioOutput.video.set_level"
-            class="inline-flex items-center gap-6px pl-6px ml-2px border-l border-border"
-          >
-            <select
-              class="field w-auto! min-w-72px h-24px! px-6px! text-11px!"
-              v-model="ratioOutput.video.target_profile"
-            >
-              <option value="baseline">Baseline</option>
-              <option value="main">Main</option>
-              <option value="high">High</option>
-            </select>
-            <select
-              class="field w-auto! min-w-72px h-24px! px-6px! text-11px!"
-              v-model="ratioOutput.video.target_level"
-            >
-              <option value="3.0">3.0</option>
-              <option value="3.1">3.1</option>
-              <option value="4.0">4.0</option>
-              <option value="4.1">4.1</option>
-              <option value="4.2">4.2</option>
-              <option value="5.0">5.0</option>
-              <option value="5.1">5.1</option>
-              <option value="5.2">5.2</option>
-            </select>
-          </span>
-        </div>
-
-        <div
-          class="opt-chip"
-          :class="{ 'opt-chip-on': ratioOutput.video.reduce_bitrate }"
-        >
-          <label class="switch">
-            <input type="checkbox" v-model="ratioOutput.video.reduce_bitrate" />
-            <span class="slider"></span>
-          </label>
-          <span
-            class="text-12px font-500"
-            :class="ratioOutput.video.reduce_bitrate ? 'color-t1' : 'color-t2'"
-            >码率</span
-          >
-          <span
-            v-show="ratioOutput.video.reduce_bitrate"
-            class="inline-flex items-center gap-6px pl-6px ml-2px border-l border-border"
-          >
-            <select
-              class="field w-auto! min-w-72px h-24px! px-6px! text-11px!"
-              v-model="ratioOutput.video.target_bitrate"
-            >
-              <option value="200k">200 Kbps</option>
-              <option value="500k">500 Kbps</option>
-              <option value="800k">800 Kbps</option>
-              <option value="1M">1 Mbps</option>
-              <option value="2M">2 Mbps</option>
-              <option value="3M">3 Mbps</option>
-              <option value="5M">5 Mbps</option>
-              <option value="8M">8 Mbps</option>
-              <option value="10M">10 Mbps</option>
-              <option value="15M">15 Mbps</option>
-              <option value="20M">20 Mbps</option>
-            </select>
-          </span>
-        </div>
-
-        <div class="opt-chip" :class="{ 'opt-chip-on': ratioOutput.video.mute }">
-          <label class="switch">
-            <input type="checkbox" v-model="ratioOutput.video.mute" />
-            <span class="slider"></span>
-          </label>
-          <span
-            class="text-12px font-500"
-            :class="ratioOutput.video.mute ? 'color-t1' : 'color-t2'"
-            >静音</span
-          >
-        </div>
-
-        <div
-          class="opt-chip"
-          :class="{ 'opt-chip-on': ratioOutput.video.change_framerate }"
-        >
-          <label class="switch">
-            <input type="checkbox" v-model="ratioOutput.video.change_framerate" />
-            <span class="slider"></span>
-          </label>
-          <span
-            class="text-12px font-500"
-            :class="ratioOutput.video.change_framerate ? 'color-t1' : 'color-t2'"
-            >帧率</span
-          >
-          <span
-            v-show="ratioOutput.video.change_framerate"
-            class="inline-flex items-center gap-6px pl-6px ml-2px border-l border-border"
-          >
-            <input
-              class="field w-48px! h-24px! px-6px! text-11px!"
-              type="number"
-              v-model.number="ratioOutput.video.target_framerate"
-              min="1"
-              max="120"
-              step="1"
-            />
-            <span class="text-10px color-t3">fps</span>
-          </span>
-        </div>
+      <VideoOutputChips :video="ratioOutput.video" />
       </div>
+
+      <div v-if="showSegmentOpts()" class="flex flex-col gap-8px">
+        <VideoOutputChips :video="segmentVideo" />
       </div>
     </div>
   </div>

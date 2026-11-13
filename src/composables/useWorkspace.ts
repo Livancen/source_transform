@@ -10,6 +10,7 @@ import type {
   WorkMode,
   HwAccelOptions,
   RatioOutputOptions,
+  RatioVideoOutput,
 } from "../types";
 import {
   defaultProcessOptions,
@@ -22,6 +23,7 @@ import { parseRatio } from "../utils/ratioCrop";
 
 const RATIO_STORAGE_KEY = "aspect-ratio-crop-ratios";
 const RATIO_OUTPUT_KEY = "ratio-output-options";
+const SEGMENT_VIDEO_KEY = "segment-video-output";
 const OPTIONS_OPEN_KEY = "options-strip-open";
 const WORK_MODE_KEY = "work-mode";
 const PROCESS_OPTIONS_IMAGE_KEY = "process-options-image";
@@ -92,6 +94,28 @@ function loadRatioOutput(): RatioOutputOptions {
   if (!(base.video.target_framerate > 0)) base.video.target_framerate = 30;
   base.offset_x = clampRatioOffset(base.offset_x);
   base.offset_y = clampRatioOffset(base.offset_y);
+  return base;
+}
+
+function defaultSegmentVideo(): RatioVideoOutput {
+  return { ...defaultRatioOutputOptions().video, mute: false };
+}
+
+function loadSegmentVideo(): RatioVideoOutput {
+  const base = defaultSegmentVideo();
+  try {
+    const saved = localStorage.getItem(SEGMENT_VIDEO_KEY);
+    if (saved) {
+      const parsed = JSON.parse(saved) as Partial<RatioVideoOutput>;
+      if (parsed && typeof parsed === "object") Object.assign(base, parsed);
+    } else {
+      base.mute = loadSegmentGlobal().mute;
+    }
+  } catch {
+    /* ignore */
+  }
+  base.compress_quality = clampQuality(base.compress_quality);
+  if (!(base.target_framerate > 0)) base.target_framerate = 30;
   return base;
 }
 
@@ -183,6 +207,7 @@ const uploadUrl = ref("");
 const optionsOpen = ref(loadOptionsOpen());
 const ratios = ref<string[]>(loadRatios());
 const ratioOutput = ref<RatioOutputOptions>(loadRatioOutput());
+const segmentVideo = ref<RatioVideoOutput>(loadSegmentVideo());
 const newRatio = ref("");
 const ratioError = ref("");
 const initialized = ref(false);
@@ -506,7 +531,7 @@ async function startProcess() {
       const result = await invoke<string>("segment_crop_videos", {
         outputDir: outputDir.value,
         jobs: buildSegmentJobs(checkedFiles.value, segmentGlobal),
-        mute: segmentGlobal.mute,
+        video: segmentVideo.value,
         naming: naming.value,
       });
       resultMessage.value = result;
@@ -642,6 +667,14 @@ watch(
   { deep: true },
 );
 
+watch(
+  segmentVideo,
+  (val) => {
+    localStorage.setItem(SEGMENT_VIDEO_KEY, JSON.stringify(val));
+  },
+  { deep: true },
+);
+
 watch(optionsOpen, (val) => {
   localStorage.setItem(OPTIONS_OPEN_KEY, val ? "1" : "0");
 });
@@ -733,6 +766,7 @@ export function useWorkspace() {
     refreshHwEncoders,
     ratios,
     ratioOutput,
+    segmentVideo,
     newRatio,
     ratioError,
     imageCount,

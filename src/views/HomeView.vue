@@ -40,6 +40,7 @@ const {
   optionsOpen,
   ratios,
   ratioOutput,
+  segmentVideo,
   newRatio,
   ratioError,
   imageCount,
@@ -165,11 +166,12 @@ function handleJoinCompleted(message: string) {
     />
 
     <OptionsStrip
-      :open="optionsOpen || workMode === 'ratio'"
+      :open="optionsOpen || workMode === 'ratio' || workMode === 'segment'"
       :work-mode="workMode"
       :options="options"
       :ratios="ratios"
       :ratio-output="ratioOutput"
+      :segment-video="segmentVideo"
       :new-ratio="newRatio"
       :ratio-error="ratioError"
       @update:new-ratio="newRatio = $event"
