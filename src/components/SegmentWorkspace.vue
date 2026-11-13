@@ -108,8 +108,12 @@ const selectionContiguous = computed(() => {
 const activeIndex = computed(() =>
   segments.value.findIndex((piece) => piece.id === active.value?.id),
 );
-const otherRatios = computed(() => fileRatios.value.filter((ratio) => ratio !== fileRatio.value));
-const ratioCustom = computed(() => Boolean(tracks.value[fileRatio.value]?.length));
+const otherRatios = computed(() =>
+  fileRatios.value.filter((ratio) => ratio !== fileRatio.value),
+);
+const ratioCustom = computed(() =>
+  Boolean(tracks.value[fileRatio.value]?.length),
+);
 const box = computed(() => {
   const piece = previewPiece.value;
   if (!piece || piece.mode === "drop" || !mediaW.value) return null;
@@ -181,11 +185,14 @@ const outputPiece = computed(() => pieceAtTime(currentTime.value));
 
 const outputCrop = computed(() => {
   const piece = outputPiece.value;
-  if (!outputPreview.value || !piece || !isKeptPiece(piece) || !mediaW.value) return null;
+  if (!outputPreview.value || !piece || !isKeptPiece(piece) || !mediaW.value)
+    return null;
   return coverBox(mediaW.value, mediaH.value, fileRatio.value, piece);
 });
 
-const hasKeptSegment = computed(() => segments.value.some((piece) => isKeptPiece(piece)));
+const hasKeptSegment = computed(() =>
+  segments.value.some((piece) => isKeptPiece(piece)),
+);
 
 const frameStyle = computed(() => {
   if (outputPreview.value && outputAspect.value) {
@@ -203,7 +210,8 @@ const frameStyle = computed(() => {
 const outputVideoStyle = computed(() => {
   if (!outputPreview.value) return undefined;
   const rect = outputCrop.value;
-  if (!rect || !mediaW.value || !mediaH.value) return { visibility: "hidden" as const };
+  if (!rect || !mediaW.value || !mediaH.value)
+    return { visibility: "hidden" as const };
   return {
     width: `${(mediaW.value / rect.cropW) * 100}%`,
     height: `${(mediaH.value / rect.cropH) * 100}%`,
@@ -347,7 +355,9 @@ function persist() {
   const file = selected.value;
   if (!file || hydrating || !(duration.value > 0)) return;
   snapshotTracks();
-  const ratios = Object.keys(tracks.value).filter((ratio) => tracks.value[ratio]?.length);
+  const ratios = Object.keys(tracks.value).filter(
+    (ratio) => tracks.value[ratio]?.length,
+  );
   if (ratios.length === 0) {
     clearSegmentConfig(file.path);
     saved.value = false;
@@ -357,7 +367,12 @@ function persist() {
   saveSegmentConfig(file.path, {
     ratio: fileRatio.value,
     ratios,
-    tracks: Object.fromEntries(ratios.map((ratio) => [ratio, tracks.value[ratio].map((piece) => ({ ...piece }))])),
+    tracks: Object.fromEntries(
+      ratios.map((ratio) => [
+        ratio,
+        tracks.value[ratio].map((piece) => ({ ...piece })),
+      ]),
+    ),
   });
   saved.value = true;
   touchConfig();
@@ -369,7 +384,9 @@ function applyTrack(ratio: string) {
     ? pieces.map((piece) => ({ ...piece }))
     : [centeredSpan(duration.value || 1)];
   const time = currentTime.value;
-  const hit = segments.value.find((piece) => time >= piece.start && time < piece.end) || segments.value[0];
+  const hit =
+    segments.value.find((piece) => time >= piece.start && time < piece.end) ||
+    segments.value[0];
   selectOnly(hit?.id || "");
 }
 
@@ -385,7 +402,12 @@ async function openFile(file: FileInfo) {
   saved.value = !!cfg;
   copyOpen.value = false;
   tracks.value = cfg
-    ? Object.fromEntries(cfg.ratios.map((ratio) => [ratio, cfg.tracks[ratio].map((piece) => ({ ...piece }))]))
+    ? Object.fromEntries(
+        cfg.ratios.map((ratio) => [
+          ratio,
+          cfg.tracks[ratio].map((piece) => ({ ...piece })),
+        ]),
+      )
     : {};
   try {
     const dimensions = await invoke<[number, number]>("get_video_dimensions", {
@@ -409,7 +431,12 @@ function onVideoMeta() {
   video.playbackRate = playbackRate.value;
   if (!tracks.value[fileRatio.value]?.length) {
     const only = segments.value[0];
-    if (segments.value.length === 1 && only?.start === 0 && only.mode === "offset" && only.end <= 1.05) {
+    if (
+      segments.value.length === 1 &&
+      only?.start === 0 &&
+      only.mode === "offset" &&
+      only.end <= 1.05
+    ) {
       hydrating = true;
       segments.value = [centeredSpan(video.duration)];
       selectOnly(segments.value[0].id);
@@ -486,7 +513,12 @@ function updateActive(patch: Partial<SegmentPiece>) {
 }
 
 function switchRatio(ratio: string) {
-  if (props.locked || ratio === fileRatio.value || !fileRatios.value.includes(ratio)) return;
+  if (
+    props.locked ||
+    ratio === fileRatio.value ||
+    !fileRatios.value.includes(ratio)
+  )
+    return;
   fileRatio.value = ratio;
   rememberRatios();
   copyOpen.value = false;
@@ -534,7 +566,13 @@ function copyActiveTo(target: string) {
   snapshotTracks();
   const next = { ...tracks.value };
   for (const ratio of targets) {
-    next[ratio] = cloneSegmentsForRatio(segments.value, fileRatio.value, ratio, mediaW.value, mediaH.value);
+    next[ratio] = cloneSegmentsForRatio(
+      segments.value,
+      fileRatio.value,
+      ratio,
+      mediaW.value,
+      mediaH.value,
+    );
   }
   tracks.value = next;
   copyOpen.value = false;
@@ -704,7 +742,10 @@ function applyTimelineTime(clientX: number, selectClip: boolean) {
   const rect = bar.getBoundingClientRect();
   const time = Math.min(
     duration.value,
-    Math.max(0, ((clientX - rect.left) / Math.max(1, rect.width)) * duration.value),
+    Math.max(
+      0,
+      ((clientX - rect.left) / Math.max(1, rect.width)) * duration.value,
+    ),
   );
   currentTime.value = time;
   if (Math.abs(video.currentTime - time) > 0.01) video.currentTime = time;
@@ -890,7 +931,9 @@ onBeforeUnmount(() => {
       class="shrink-0 px-12px py-6px border-b border-border bg-bg1 flex flex-wrap items-center gap-6px"
     >
       <span class="text-11px color-t2 shrink-0">输出比例</span>
-      <span class="text-10px color-t3 shrink-0">仅分段裁剪，勾选的素材都会各出一条</span>
+      <span class="text-10px color-t3 shrink-0"
+        >仅分段裁剪，勾选的素材都会各出一条</span
+      >
       <button
         v-for="ratio in fileRatios"
         :key="ratio"
@@ -928,7 +971,9 @@ onBeforeUnmount(() => {
       >
         添加
       </button>
-      <span v-if="ratioError" class="text-11px color-danger">{{ ratioError }}</span>
+      <span v-if="ratioError" class="text-11px color-danger">{{
+        ratioError
+      }}</span>
     </div>
     <div
       class="flex-1 min-h-0 grid"
@@ -1122,7 +1167,9 @@ onBeforeUnmount(() => {
                         @keydown.enter.prevent="
                           ($event.target as HTMLInputElement).blur()
                         "
-                        @blur="commitBoxRatio($event.target as HTMLInputElement)"
+                        @blur="
+                          commitBoxRatio($event.target as HTMLInputElement)
+                        "
                       />
                       <button
                         type="button"
@@ -1148,13 +1195,7 @@ onBeforeUnmount(() => {
                           stroke="currentColor"
                           stroke-width="2"
                         >
-                          <rect
-                            x="5"
-                            y="11"
-                            width="14"
-                            height="10"
-                            rx="2"
-                          />
+                          <rect x="5" y="11" width="14" height="10" rx="2" />
                           <path
                             v-if="active.ratioLocked"
                             d="M8 11V8a4 4 0 0 1 8 0v3"
@@ -1180,7 +1221,9 @@ onBeforeUnmount(() => {
                   ></i>
                 </div>
                 <div
-                  v-else-if="outputPreview && outputPiece && !isKeptPiece(outputPiece)"
+                  v-else-if="
+                    outputPreview && outputPiece && !isKeptPiece(outputPiece)
+                  "
                   class="absolute inset-0 grid place-items-center bg-black/55 text-white text-14px font-600 pointer-events-none"
                 >
                   {{ hasKeptSegment ? "这段不进入成片" : "没有可预览的片段" }}
@@ -1453,7 +1496,7 @@ onBeforeUnmount(() => {
                     <div
                       v-for="(piece, index) in segments"
                       :key="piece.id"
-                      class="absolute top-0 bottom-0 pointer-events-none"
+                      class="seg-piece absolute top-0 bottom-0 pointer-events-none"
                       :style="pieceFrame(piece)"
                     >
                       <button
@@ -1571,6 +1614,23 @@ onBeforeUnmount(() => {
   text-align: left;
   pointer-events: auto;
 }
+.seg-clip::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 1px;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    to bottom,
+    #fff 0 1px,
+    transparent 1px 3px
+  );
+}
+.seg-piece:last-child > .seg-clip::after {
+  content: none;
+}
 .seg-clip.is-position {
   background: #5c2e91;
 }
@@ -1588,6 +1648,9 @@ onBeforeUnmount(() => {
   outline: 1px solid #fff;
   outline-offset: -1px;
   z-index: 1;
+}
+.seg-piece:has(+ .seg-piece > .seg-clip.is-on) > .seg-clip::after {
+  opacity: 0;
 }
 .crop-follow {
   transition:
@@ -1623,10 +1686,10 @@ onBeforeUnmount(() => {
 .seg-handle::after {
   content: "";
   position: absolute;
-  top: 8px;
-  bottom: 8px;
+  top: 0;
+  bottom: 0;
   left: 50%;
-  width: 2px;
+  width: 1px;
   transform: translateX(-50%);
   background: transparent;
 }
