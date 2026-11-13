@@ -551,7 +551,10 @@ function onBoundaryDown(index: number, event: PointerEvent) {
     left.end = Number(next.toFixed(3));
     right.start = left.end;
   };
+  const prevCursor = document.body.style.cursor;
+  document.body.style.cursor = "col-resize";
   const up = () => {
+    document.body.style.cursor = prevCursor;
     window.removeEventListener("pointermove", move);
     persist();
   };
@@ -582,11 +585,26 @@ function applyTimelineTime(clientX: number, selectClip: boolean) {
 function seekFromTimeline(event: PointerEvent) {
   if (!(duration.value > 0)) return;
   event.preventDefault();
+  const bar = timelineRef.value;
+  const fromPlayhead =
+    event.currentTarget instanceof HTMLElement &&
+    event.currentTarget.classList.contains("seg-playhead");
+  let grab = 0;
+  if (fromPlayhead && bar) {
+    const rect = bar.getBoundingClientRect();
+    const center =
+      rect.left + (currentTime.value / duration.value) * rect.width;
+    grab = event.clientX - center;
+  }
   const selectClip = !event.ctrlKey && !event.metaKey;
-  applyTimelineTime(event.clientX, selectClip);
+  applyTimelineTime(event.clientX - grab, selectClip);
   stopScrub?.();
-  const move = (ev: PointerEvent) => applyTimelineTime(ev.clientX, selectClip);
+  const prevCursor = document.body.style.cursor;
+  document.body.style.cursor = "grabbing";
+  const move = (ev: PointerEvent) =>
+    applyTimelineTime(ev.clientX - grab, selectClip);
   const up = () => {
+    document.body.style.cursor = prevCursor;
     window.removeEventListener("pointermove", move);
     window.removeEventListener("pointerup", up);
     stopScrub = null;
@@ -1242,63 +1260,73 @@ onBeforeUnmount(() => {
                   {{ multi ? "合并" : "与上段合并" }}
                 </button>
                 <span class="ml-auto text-10px color-white/50"
-                  >Ctrl 点选多段 · 拖边缘改时长</span
-                >
-              </div>
-              <div
-                class="relative h-22px mx-8px"
-                @pointerdown="seekFromTimeline"
-              >
-                <span
-                  v-for="tick in ticks"
-                  :key="tick.left"
-                  class="absolute top-0 text-10px color-white/45 font-mono -translate-x-1/2"
-                  :style="{ left: `${tick.left}%` }"
-                  >{{ tick.label }}</span
+                  >拖红线移动时间 · 悬停边缘改时长 · Ctrl 点选</span
                 >
               </div>
               <div
                 ref="timelineRef"
-                class="relative h-64px mx-8px mb-8px bg-[#2a2a2a] overflow-hidden cursor-pointer"
-                @pointerdown="seekFromTimeline"
+                class="seg-scale relative mx-8px mb-8px select-none"
               >
-                <div class="absolute inset-0">
-                  <div
-                    v-for="(piece, index) in segments"
-                    :key="piece.id"
-                    class="absolute top-0 bottom-0 pointer-events-none"
-                    :style="pieceFrame(piece)"
+                <div
+                  class="seg-ruler relative h-28px border-b border-white/15"
+                  @pointerdown="seekFromTimeline"
+                >
+                  <span
+                    v-for="tick in ticks"
+                    :key="tick.left"
+                    class="absolute bottom-1px text-10px color-white/45 font-mono -translate-x-1/2 pointer-events-none"
+                    :style="{ left: `${tick.left}%` }"
+                    >{{ tick.label }}</span
                   >
-                    <button
-                      type="button"
-                      class="seg-clip"
-                      :class="{
-                        'is-drop': piece.mode === 'drop',
-                        'is-position': piece.mode === 'position',
-                        'is-on': isSelected(piece.id),
-                      }"
-                      @pointerdown.stop
-                      @click.stop="onClipClick(piece.id, $event)"
+                </div>
+                <div
+                  class="seg-track relative h-64px bg-[#2a2a2a] overflow-hidden"
+                  @pointerdown="seekFromTimeline"
+                >
+                  <div class="absolute inset-0">
+                    <div
+                      v-for="(piece, index) in segments"
+                      :key="piece.id"
+                      class="absolute top-0 bottom-0 pointer-events-none"
+                      :style="pieceFrame(piece)"
                     >
-                      <span class="text-11px font-600 truncate max-w-full"
-                        >{{ index + 1 }} · {{ modeName(piece.mode) }}</span
+                      <button
+                        type="button"
+                        class="seg-clip"
+                        :class="{
+                          'is-drop': piece.mode === 'drop',
+                          'is-position': piece.mode === 'position',
+                          'is-on': isSelected(piece.id),
+                        }"
+                        @pointerdown.stop
+                        @click.stop="onClipClick(piece.id, $event)"
                       >
-                      <span class="text-10px opacity-75 font-mono truncate max-w-full">{{
-                        formatClock(piece.end - piece.start)
-                      }}</span>
-                    </button>
-                    <i
-                      v-if="index < segments.length - 1"
-                      class="seg-handle"
-                      @pointerdown="onBoundaryDown(index, $event)"
-                    ></i>
+                        <span class="text-11px font-600 truncate max-w-full"
+                          >{{ index + 1 }} · {{ modeName(piece.mode) }}</span
+                        >
+                        <span
+                          class="text-10px opacity-75 font-mono truncate max-w-full"
+                          >{{ formatClock(piece.end - piece.start) }}</span
+                        >
+                      </button>
+                      <i
+                        v-if="index < segments.length - 1"
+                        class="seg-handle"
+                        title="拖动改变分段长度"
+                        @pointerdown="onBoundaryDown(index, $event)"
+                      ></i>
+                    </div>
                   </div>
                 </div>
-                <i
+                <div
                   class="seg-playhead"
                   :style="{ left: playheadLeft }"
+                  title="拖动移动时间"
                   @pointerdown.stop="seekFromTimeline"
-                ></i>
+                >
+                  <span class="seg-playhead-head"></span>
+                  <span class="seg-playhead-line"></span>
+                </div>
               </div>
             </div>
           </template>
@@ -1387,28 +1415,37 @@ onBeforeUnmount(() => {
   outline-offset: -1px;
   z-index: 1;
 }
+.seg-ruler {
+  cursor: grab;
+  touch-action: none;
+}
+.seg-track {
+  z-index: 1;
+}
 .seg-handle {
   position: absolute;
   top: 0;
-  right: -3px;
+  right: -4px;
   z-index: 2;
-  width: 5px;
+  width: 8px;
   height: 100%;
-  cursor: ew-resize;
+  cursor: col-resize;
   background: transparent;
   pointer-events: auto;
+  touch-action: none;
 }
 .seg-handle::after {
   content: "";
   position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 2px;
-  width: 1px;
-  background: rgba(255, 255, 255, 0.55);
-}
-.seg-clip.is-on .seg-handle::after {
+  top: 8px;
+  bottom: 8px;
+  left: 50%;
+  width: 2px;
+  transform: translateX(-50%);
   background: transparent;
+}
+.seg-handle:hover::after {
+  background: #fff;
 }
 .crop-handle {
   position: absolute;
@@ -1466,27 +1503,30 @@ onBeforeUnmount(() => {
   position: absolute;
   top: 0;
   bottom: 0;
-  z-index: 4;
-  width: 1px;
-  background: #c50f1f;
-  cursor: ew-resize;
+  z-index: 6;
+  width: 16px;
+  transform: translateX(-50%);
+  cursor: grab;
   touch-action: none;
 }
-.seg-playhead::before {
-  content: "";
-  position: absolute;
-  top: -2px;
-  left: -4px;
-  border-left: 5px solid transparent;
-  border-right: 5px solid transparent;
-  border-top: 7px solid #c50f1f;
-}
-.seg-playhead::after {
-  content: "";
+.seg-playhead-line {
   position: absolute;
   top: 0;
   bottom: 0;
-  left: -6px;
-  width: 13px;
+  left: 50%;
+  width: 1px;
+  transform: translateX(-50%);
+  background: #c50f1f;
+  pointer-events: none;
+}
+.seg-playhead-head {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  border-left: 7px solid transparent;
+  border-right: 7px solid transparent;
+  border-top: 9px solid #c50f1f;
+  pointer-events: none;
 }
 </style>
