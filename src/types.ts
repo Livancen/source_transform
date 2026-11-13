@@ -130,6 +130,8 @@ export interface VideoMergeOptions {
   video_level?: string;
   /** 如 "high" "main" "baseline" */
   video_profile?: string;
+  image?: RatioImageOutput;
+  video?: RatioVideoOutput;
 }
 
 export interface CustomCropOptions {
@@ -140,6 +142,8 @@ export interface CustomCropOptions {
   crop_width: number;
   crop_height: number;
   naming: NamingOptions;
+  image?: RatioImageOutput;
+  video?: RatioVideoOutput;
 }
 
 export type JoinFit = "cover" | "contain" | "fill";
@@ -179,6 +183,8 @@ export interface JoinOptions {
   set_level?: boolean;
   video_level?: string;
   video_profile?: string;
+  image?: RatioImageOutput;
+  video?: RatioVideoOutput;
 }
 
 export function defaultProcessOptions(): ProcessOptions {

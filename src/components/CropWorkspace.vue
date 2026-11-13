@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import {
+  computed,
   ref,
   watch,
   onMounted,
@@ -7,8 +8,10 @@ import {
   nextTick,
   toRef,
 } from "vue";
-import type { FileInfo } from "../types";
-import { formatFileSizeMb } from "../types";
+import type { FileInfo, RatioImageOutput, RatioVideoOutput } from "../types";
+import { defaultRatioOutputOptions, formatFileSizeMb } from "../types";
+import MediaOutputOptions from "./MediaOutputOptions.vue";
+import { useStudioOutput } from "../utils/studioOutput";
 import { useFileThumbs } from "../composables/useFileThumbs";
 import { useVirtualList } from "../composables/useVirtualList";
 import MediaPreviewModal from "./MediaPreviewModal.vue";
@@ -32,7 +35,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   selectFile: [file: FileInfo];
   clearFile: [];
-  exportCrop: [];
+  exportCrop: [payload: { image: RatioImageOutput; video: RatioVideoOutput }];
   startDrag: [e: MouseEvent];
   startResize: [e: MouseEvent, handle: string];
   mouseMove: [e: MouseEvent];
@@ -45,6 +48,13 @@ const emit = defineEmits<{
 }>();
 
 const filesRef = toRef(props, "files");
+const { image: imageOut, video: videoOut } = useStudioOutput(
+  "crop-media-output",
+  defaultRatioOutputOptions().video,
+);
+const selectedKind = computed(
+  () => props.files.find((file) => file.path === props.selectedPath)?.file_type,
+);
 const { thumbs, loading, enqueue } = useFileThumbs();
 const CROP_ROW_H = 60;
 const {
@@ -138,10 +148,24 @@ watch(
         class="tb-btn tb-btn-success"
         type="button"
         :disabled="!hasSelection || isExporting || isLoading"
-        @click="emit('exportCrop')"
+        @click="
+          emit('exportCrop', { image: imageOut, video: videoOut })
+        "
       >
         {{ isExporting ? "导出中…" : "导出裁剪" }}
       </button>
+    </div>
+
+    <div
+      v-if="selectedKind === 'image' || selectedKind === 'video'"
+      class="shrink-0 px-14px py-8px border-b border-border bg-bg0"
+      :class="isExporting ? 'pointer-events-none opacity-60' : ''"
+    >
+      <MediaOutputOptions
+        v-if="selectedKind === 'image'"
+        :image="imageOut"
+      />
+      <MediaOutputOptions v-else :video="videoOut" />
     </div>
 
     <div class="flex-1 min-h-0 flex gap-0 overflow-hidden">

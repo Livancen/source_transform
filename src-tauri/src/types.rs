@@ -175,6 +175,10 @@ pub struct VideoMergeOptions {
     pub video_level: Option<String>,
     #[serde(default)]
     pub video_profile: Option<String>,
+    #[serde(default)]
+    pub image: Option<RatioImageOutput>,
+    #[serde(default)]
+    pub video: Option<RatioVideoOutput>,
 }
 
 fn default_media_kind() -> String {
@@ -190,6 +194,10 @@ pub struct CustomCropOptions {
     pub crop_width: u32,
     pub crop_height: u32,
     pub naming: NamingOptions,
+    #[serde(default)]
+    pub image: Option<RatioImageOutput>,
+    #[serde(default)]
+    pub video: Option<RatioVideoOutput>,
 }
 
 fn default_blur() -> bool {
@@ -242,6 +250,10 @@ pub struct JoinOptions {
     pub video_level: Option<String>,
     #[serde(default)]
     pub video_profile: Option<String>,
+    #[serde(default)]
+    pub image: Option<RatioImageOutput>,
+    #[serde(default)]
+    pub video: Option<RatioVideoOutput>,
 }
 
 fn default_ratio_quality() -> u32 {

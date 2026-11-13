@@ -13,7 +13,7 @@ import CropWorkspace from "../components/CropWorkspace.vue";
 import MergeWorkspace from "../components/MergeWorkspace.vue";
 import JoinWorkspace from "../components/JoinWorkspace.vue";
 import SegmentWorkspace from "../components/SegmentWorkspace.vue";
-import type { FileInfo } from "../types";
+import type { FileInfo, RatioImageOutput, RatioVideoOutput } from "../types";
 import { useToast } from "../composables/useToast";
 
 const router = useRouter();
@@ -128,8 +128,11 @@ async function onCropSelect(file: FileInfo) {
   await loadFile(file);
 }
 
-async function onExportCrop() {
-  await exportCrop(outputDir.value, naming.value);
+async function onExportCrop(media?: {
+  image: RatioImageOutput;
+  video: RatioVideoOutput;
+}) {
+  await exportCrop(outputDir.value, naming.value, media);
   await scanOutputFiles();
 }
 

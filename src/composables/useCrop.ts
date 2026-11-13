@@ -1,6 +1,12 @@
 import { ref } from "vue";
 import { invoke } from "@tauri-apps/api/core";
-import type { FileInfo, NamingOptions, CustomCropOptions } from "../types";
+import type {
+  CustomCropOptions,
+  FileInfo,
+  NamingOptions,
+  RatioImageOutput,
+  RatioVideoOutput,
+} from "../types";
 
 export function useCrop(
   onMessage: (msg: string) => void,
@@ -171,7 +177,11 @@ export function useCrop(
     isResizing.value = false;
   }
 
-  async function exportCrop(outputDir: string, naming: NamingOptions) {
+  async function exportCrop(
+    outputDir: string,
+    naming: NamingOptions,
+    media?: { image: RatioImageOutput; video: RatioVideoOutput },
+  ) {
     if (!selectedFile.value) {
       onMessage("请先选择一个文件");
       return;
@@ -192,6 +202,8 @@ export function useCrop(
         crop_width: cropWidth.value,
         crop_height: cropHeight.value,
         naming,
+        image: media?.image,
+        video: media?.video,
       };
       const result = await invoke<string>("custom_crop", { options });
       onMessage(result);

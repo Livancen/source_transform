@@ -19,7 +19,9 @@ import type {
 import { formatFileSizeMb } from "../types";
 import { useFileThumbs } from "../composables/useFileThumbs";
 import { useVirtualList } from "../composables/useVirtualList";
+import MediaOutputOptions from "./MediaOutputOptions.vue";
 import MediaPreviewModal from "./MediaPreviewModal.vue";
+import { defaultStudioVideo, outputExt, useStudioOutput } from "../utils/studioOutput";
 
 const props = defineProps<{
   outputDir: string;
@@ -62,11 +64,10 @@ const background = ref<"#000000" | "#ffffff" | "transparent">("#000000");
 /** 拖到画布边缘时吸附 */
 const snapEnabled = ref(true);
 const SNAP_THRESHOLD = 12;
-/** 视频输出帧率 / Level */
-const outputFps = ref<30 | 60>(30);
-const setLevel = ref(true);
-const videoLevel = ref("4.0");
-const videoProfile = ref("high");
+const { image: imageOut, video: videoOut } = useStudioOutput(
+  "join-media-output",
+  defaultStudioVideo(),
+);
 const items = ref<JoinItem[]>([]);
 const selectedId = ref<string | null>(null);
 const statusMessage = ref("");
@@ -732,7 +733,13 @@ function buildOutputName() {
   if (props.naming.custom_text.trim())
     parts.push(props.naming.custom_text.trim());
   if (parts.length === 0) parts.push(`join_${Date.now()}`);
-  const ext = outputKind.value === "image" ? "png" : "mp4";
+  const source = items.value.find((item) => item.media_kind === outputKind.value);
+  const ext = outputExt(
+    outputKind.value,
+    imageOut.value,
+    videoOut.value,
+    source?.path || "",
+  );
   return `${parts.join("-")}.${ext}`;
 }
 
@@ -768,16 +775,9 @@ async function startExport() {
           : 20,
     })),
     output_path: outputPath,
+    image: outputKind.value === "image" ? imageOut.value : undefined,
+    video: outputKind.value === "video" ? videoOut.value : undefined,
   };
-
-  if (outputKind.value === "video") {
-    options.output_fps = outputFps.value;
-    options.set_level = setLevel.value;
-    if (setLevel.value) {
-      options.video_level = videoLevel.value;
-      options.video_profile = videoProfile.value;
-    }
-  }
 
   emit("started");
   try {
@@ -909,6 +909,17 @@ onBeforeUnmount(() => {
       >
         {{ isExporting ? "导出中…" : "导出拼接" }}
       </button>
+    </div>
+
+    <div
+      class="shrink-0 px-14px py-8px border-b border-border bg-bg0"
+      :class="isExporting ? 'pointer-events-none opacity-60' : ''"
+    >
+      <MediaOutputOptions
+        v-if="items.length > 0 && outputKind === 'image'"
+        :image="imageOut"
+      />
+      <MediaOutputOptions v-else :video="videoOut" />
     </div>
 
     <div class="flex-1 min-h-0 flex overflow-hidden">
@@ -1184,71 +1195,6 @@ onBeforeUnmount(() => {
       <div
         class="w-240px shrink-0 min-h-0 border-l border-border flex flex-col bg-bg0 overflow-hidden"
       >
-        <div
-          class="shrink-0 h-32px px-10px flex items-center text-11px font-500 color-t3 border-b border-border bg-bg2"
-        >
-          输出设置(仅视频有效)
-        </div>
-        <div class="px-12px py-4px flex flex-col gap-6px">
-          <div class="flex h-28px items-center gap-6px">
-            <template v-if="items.length === 0 || outputKind === 'video'">
-              <span class="text-12px color-t3">帧率</span>
-              <label class="flex items-center gap-4px cursor-pointer text-12px">
-                <input
-                  type="radio"
-                  :value="30"
-                  v-model.number="outputFps"
-                  :disabled="isExporting"
-                  class="accent-secondary"
-                />
-                30
-              </label>
-              <label
-                class="flex items-center gap-4px cursor-pointer text-12px"
-                title="源不足 60fps 时自动补帧"
-              >
-                <input
-                  type="radio"
-                  :value="60"
-                  v-model.number="outputFps"
-                  :disabled="isExporting"
-                  class="accent-secondary"
-                />
-                60
-              </label>
-            </template>
-          </div>
-          <div class="flex items-center h-28px">
-            <label class="flex items-center gap-6px cursor-pointer text-12px">
-              Level
-            </label>
-            <div>
-              <select
-                class="field w-auto! min-w-72px h-28px! px-6px! text-11px!"
-                v-model="videoProfile"
-                :disabled="isExporting"
-              >
-                <option value="baseline">Baseline</option>
-                <option value="main">Main</option>
-                <option value="high">High</option>
-              </select>
-              <select
-                class="field w-auto! min-w-72px h-28px! px-6px! text-11px!"
-                v-model="videoLevel"
-                :disabled="isExporting"
-              >
-                <option value="3.0">3.0</option>
-                <option value="3.1">3.1</option>
-                <option value="4.0">4.0</option>
-                <option value="4.1">4.1</option>
-                <option value="4.2">4.2</option>
-                <option value="5.0">5.0</option>
-                <option value="5.1">5.1</option>
-                <option value="5.2">5.2</option>
-              </select>
-            </div>
-          </div>
-        </div>
         <div
           class="shrink-0 h-32px px-10px flex items-center text-11px font-500 color-t3 border-b border-border bg-bg2"
         >

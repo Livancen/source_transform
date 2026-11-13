@@ -13,8 +13,8 @@ use crate::hw::{
 use crate::logger;
 use crate::naming::{build_output_name, join_output_path, ratio_output_name};
 use crate::process::{
-    crop_image_region, crop_image_region_ex, crop_video_region_encoded,
-    crop_video_region_with_progress, probe_video_codec, process_image, process_video_with_progress,
+    crop_image_region_ex, crop_video_region_encoded, probe_video_codec,
+    process_image, process_video_with_progress,
     video_codec_is_hevc, VideoRegionEncode,
 };
 use crate::types::{
@@ -984,11 +984,28 @@ pub async fn custom_crop(app: AppHandle, options: CustomCropOptions) -> Result<S
     let file_type = get_file_type(&input).unwrap_or_else(|| "image".to_string());
 
     let force_ext = if file_type == "video" {
-        Some("mp4")
+        let to_mp4 = options
+            .video
+            .as_ref()
+            .map(|v| v.convert_mp4)
+            .unwrap_or(true);
+        if to_mp4 {
+            Some("mp4".to_string())
+        } else {
+            None
+        }
+    } else if options.image.as_ref().map(|i| i.convert_format).unwrap_or(false) {
+        Some(normalize_image_ext(
+            options
+                .image
+                .as_ref()
+                .map(|i| i.target_format.as_str())
+                .unwrap_or("jpg"),
+        ))
     } else {
         None
     };
-    let out_name = build_output_name(&file_name, &options.naming, force_ext);
+    let out_name = build_output_name(&file_name, &options.naming, force_ext.as_deref());
     let output_path = join_output_path(&options.output_dir, &out_name);
 
     let file_label = file_name.clone();
@@ -1018,7 +1035,11 @@ pub async fn custom_crop(app: AppHandle, options: CustomCropOptions) -> Result<S
 
     let result = match file_type.as_str() {
         "video" => {
-            crop_video_region_with_progress(
+            let source = probe_video_codec(&app, &options.input_path)
+                .await
+                .unwrap_or_default();
+            let encode = build_ratio_video_encode(options.video.as_ref(), &source);
+            crop_video_region_encoded(
                 &app,
                 &options.input_path,
                 &output_path.to_string_lossy(),
@@ -1026,12 +1047,14 @@ pub async fn custom_crop(app: AppHandle, options: CustomCropOptions) -> Result<S
                 options.crop_y,
                 options.crop_width,
                 options.crop_height,
+                &encode,
                 Some(on_file_progress),
             )
             .await
         }
         "image" => {
-            let r = crop_image_region(
+            let (quality, resize_w, resize_h) = ratio_image_adjust(options.image.as_ref());
+            let r = crop_image_region_ex(
                 &app,
                 &options.input_path,
                 &output_path.to_string_lossy(),
@@ -1039,6 +1062,9 @@ pub async fn custom_crop(app: AppHandle, options: CustomCropOptions) -> Result<S
                 options.crop_y,
                 options.crop_width,
                 options.crop_height,
+                quality,
+                resize_w,
+                resize_h,
             )
             .await;
             if r.is_ok() {
@@ -1072,6 +1098,47 @@ pub async fn custom_crop(app: AppHandle, options: CustomCropOptions) -> Result<S
 }
 
 /// 规范化输出帧率：仅允许 30 / 60
+fn studio_fps(video: Option<&RatioVideoOutput>, legacy: Option<u32>) -> Option<u32> {
+    if let Some(v) = video {
+        if v.change_framerate && v.target_framerate > 0.0 {
+            let fps = v.target_framerate.round() as i32;
+            if (1..=120).contains(&fps) {
+                return Some(fps as u32);
+            }
+        }
+        return None;
+    }
+    normalize_output_fps(legacy)
+}
+
+fn resize_pair(resize: bool, width: u32, height: u32) -> Option<(u32, u32)> {
+    if resize && width > 0 && height > 0 {
+        Some((even_dim(width), even_dim(height)))
+    } else {
+        None
+    }
+}
+
+fn image_quality_args(path: &str, image: Option<&RatioImageOutput>) -> Vec<String> {
+    let Some(image) = image else {
+        return Vec::new();
+    };
+    if !image.compress {
+        return Vec::new();
+    }
+    let ext = PathBuf::from(path)
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    if ext == "png" {
+        return Vec::new();
+    }
+    let q = image.compress_quality.clamp(1, 100);
+    let qscale = (2 + (100 - q) * 29 / 99).clamp(2, 31);
+    vec!["-q:v".into(), qscale.to_string()]
+}
+
 fn normalize_output_fps(fps: Option<u32>) -> Option<u32> {
     match fps {
         Some(30) => Some(30),
@@ -1122,7 +1189,16 @@ pub async fn merge_videos(app: AppHandle, options: VideoMergeOptions) -> Result<
     let out_fps = if is_image {
         None
     } else {
-        normalize_output_fps(options.output_fps)
+        studio_fps(options.video.as_ref(), options.output_fps)
+    };
+    let extra_scale = if is_image {
+        options.image.as_ref().and_then(|image| {
+            resize_pair(image.resize, image.target_width, image.target_height)
+        })
+    } else {
+        options.video.as_ref().and_then(|video| {
+            resize_pair(video.resize, video.target_width, video.target_height)
+        })
     };
 
     // 视频：各路先 scale，再 fps（不足 60 时补帧），再 stack
@@ -1152,6 +1228,15 @@ pub async fn merge_videos(app: AppHandle, options: VideoMergeOptions) -> Result<
     } else {
         filter.push_str(";[v]setsar=1[outv]");
     }
+    let map_label = if let Some((width, height)) = extra_scale {
+        filter.push_str(&format!(
+            ";[outv]scale={}:{},setsar=1[outv2]",
+            width, height
+        ));
+        "[outv2]"
+    } else {
+        "[outv]"
+    };
 
     let mut args: Vec<String> = vec![
         "-i".to_string(),
@@ -1161,43 +1246,70 @@ pub async fn merge_videos(app: AppHandle, options: VideoMergeOptions) -> Result<
         "-filter_complex".to_string(),
         filter,
         "-map".to_string(),
-        "[outv]".to_string(),
+        map_label.to_string(),
     ];
 
     if is_image {
         args.extend(["-frames:v".to_string(), "1".to_string()]);
+        args.extend(image_quality_args(
+            &options.output_path,
+            options.image.as_ref(),
+        ));
     } else {
-        args.push("-an".to_string());
-        let profile = if options.set_level {
-            let p = options
-                .video_profile
-                .as_deref()
-                .unwrap_or("high")
-                .to_lowercase();
-            if !validate_video_profile(&p) {
-                return Err("Profile 无效".to_string());
-            }
-            Some(p)
+        let encode = if options.video.is_some() {
+            let source = probe_video_codec(&app, &first.path)
+                .await
+                .unwrap_or_default();
+            build_ratio_video_encode(options.video.as_ref(), &source)
         } else {
-            None
-        };
-        let level = if options.set_level {
-            let l = options.video_level.as_deref().unwrap_or("4.0");
-            if !validate_video_level(l) {
-                return Err("Level 无效".to_string());
+            let profile = if options.set_level {
+                let p = options
+                    .video_profile
+                    .as_deref()
+                    .unwrap_or("high")
+                    .to_lowercase();
+                if !validate_video_profile(&p) {
+                    return Err("Profile 无效".to_string());
+                }
+                Some(p)
+            } else {
+                None
+            };
+            let level = if options.set_level {
+                let l = options.video_level.as_deref().unwrap_or("4.0");
+                if !validate_video_level(l) {
+                    return Err("Level 无效".to_string());
+                }
+                Some(l.to_string())
+            } else {
+                None
+            };
+            VideoRegionEncode {
+                codec: "h264".to_string(),
+                quality: Some(80),
+                bitrate: None,
+                profile,
+                level,
+                mute: true,
+                scale_width: 0,
+                scale_height: 0,
+                framerate: 0.0,
             }
-            Some(l.to_string())
-        } else {
-            None
         };
+        if encode.mute {
+            args.push("-an".to_string());
+        } else {
+            args.extend(["-map".to_string(), "0:a?".to_string()]);
+        }
+        let hevc = encode.codec == "hevc";
         append_video_encode_args(
             &mut args,
-            "h264",
-            Some(80),
-            None,
-            profile.as_deref(),
-            level.as_deref(),
-            false,
+            if hevc { "hevc" } else { "h264" },
+            encode.quality,
+            encode.bitrate.as_deref(),
+            encode.profile.as_deref(),
+            encode.level.as_deref(),
+            hevc,
         );
         if let Some(fps) = out_fps {
             args.push("-r".to_string());
@@ -1381,7 +1493,16 @@ pub async fn join_media(app: AppHandle, options: JoinOptions) -> Result<String, 
     let out_fps = if is_image {
         None
     } else {
-        normalize_output_fps(options.output_fps)
+        studio_fps(options.video.as_ref(), options.output_fps)
+    };
+    let extra_scale = if is_image {
+        options.image.as_ref().and_then(|image| {
+            resize_pair(image.resize, image.target_width, image.target_height)
+        })
+    } else {
+        options.video.as_ref().and_then(|video| {
+            resize_pair(video.resize, video.target_width, video.target_height)
+        })
     };
 
     let mut filter_parts: Vec<String> = Vec::new();
@@ -1436,6 +1557,17 @@ pub async fn join_media(app: AppHandle, options: JoinOptions) -> Result<String, 
         prev = out;
     }
 
+    if let Some((width, height)) = extra_scale {
+        filter_parts.push(format!(
+            "[outv]scale={}:{},setsar=1[outv2]",
+            width, height
+        ));
+    }
+    let map_label = if extra_scale.is_some() {
+        "[outv2]"
+    } else {
+        "[outv]"
+    };
     let filter = filter_parts.join(";");
 
     let mut args: Vec<String> = Vec::new();
@@ -1451,7 +1583,7 @@ pub async fn join_media(app: AppHandle, options: JoinOptions) -> Result<String, 
     args.push("-filter_complex".to_string());
     args.push(filter);
     args.push("-map".to_string());
-    args.push("[outv]".to_string());
+    args.push(map_label.to_string());
 
     if is_image {
         args.extend([
@@ -1464,38 +1596,70 @@ pub async fn join_media(app: AppHandle, options: JoinOptions) -> Result<String, 
                 "rgb24".to_string()
             },
         ]);
+        args.extend(image_quality_args(
+            &options.output_path,
+            options.image.as_ref(),
+        ));
     } else {
-        args.push("-an".to_string());
-        let profile = if options.set_level {
-            let p = options
-                .video_profile
-                .as_deref()
-                .unwrap_or("high")
-                .to_lowercase();
-            if !validate_video_profile(&p) {
-                return Err("Profile 无效".to_string());
-            }
-            Some(p)
+        let audio_index = items.iter().position(|item| item.media_kind == "video");
+        let encode = if options.video.is_some() {
+            let source = if let Some(index) = audio_index {
+                probe_video_codec(&app, &items[index].path)
+                    .await
+                    .unwrap_or_default()
+            } else {
+                String::new()
+            };
+            build_ratio_video_encode(options.video.as_ref(), &source)
         } else {
-            None
-        };
-        let level = if options.set_level {
-            let l = options.video_level.as_deref().unwrap_or("4.0");
-            if !validate_video_level(l) {
-                return Err("Level 无效".to_string());
+            let profile = if options.set_level {
+                let p = options
+                    .video_profile
+                    .as_deref()
+                    .unwrap_or("high")
+                    .to_lowercase();
+                if !validate_video_profile(&p) {
+                    return Err("Profile 无效".to_string());
+                }
+                Some(p)
+            } else {
+                None
+            };
+            let level = if options.set_level {
+                let l = options.video_level.as_deref().unwrap_or("4.0");
+                if !validate_video_level(l) {
+                    return Err("Level 无效".to_string());
+                }
+                Some(l.to_string())
+            } else {
+                None
+            };
+            VideoRegionEncode {
+                codec: "h264".to_string(),
+                quality: Some(80),
+                bitrate: None,
+                profile,
+                level,
+                mute: true,
+                scale_width: 0,
+                scale_height: 0,
+                framerate: 0.0,
             }
-            Some(l.to_string())
-        } else {
-            None
         };
+        if encode.mute {
+            args.push("-an".to_string());
+        } else if let Some(index) = audio_index {
+            args.extend(["-map".to_string(), format!("{index}:a?")]);
+        }
+        let hevc = encode.codec == "hevc";
         append_video_encode_args(
             &mut args,
-            "h264",
-            Some(80),
-            None,
-            profile.as_deref(),
-            level.as_deref(),
-            false,
+            if hevc { "hevc" } else { "h264" },
+            encode.quality,
+            encode.bitrate.as_deref(),
+            encode.profile.as_deref(),
+            encode.level.as_deref(),
+            hevc,
         );
         args.extend(["-movflags".to_string(), "+faststart".to_string()]);
         if let Some(fps) = out_fps {

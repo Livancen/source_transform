@@ -11,7 +11,9 @@ import type {
 import { formatFileSizeMb } from "../types";
 import { useFileThumbs } from "../composables/useFileThumbs";
 import { useVirtualList } from "../composables/useVirtualList";
+import MediaOutputOptions from "./MediaOutputOptions.vue";
 import MediaPreviewModal from "./MediaPreviewModal.vue";
+import { defaultStudioVideo, outputExt, useStudioOutput } from "../utils/studioOutput";
 
 type MergeSlotState = {
   path: string;
@@ -88,11 +90,10 @@ const slots = reactive<[MergeSlotState, MergeSlotState]>([
 ]);
 const outputWidth = ref<number | null>(null);
 const outputHeight = ref<number | null>(null);
-/** 视频输出帧率 */
-const outputFps = ref<30 | 60>(30);
-const setLevel = ref(true);
-const videoLevel = ref("4.0");
-const videoProfile = ref("high");
+const { image: imageOut, video: videoOut } = useStudioOutput(
+  "merge-media-output",
+  defaultStudioVideo(),
+);
 const statusMessage = ref("");
 const isMerging = ref(false);
 
@@ -506,7 +507,12 @@ function buildOutputName() {
   if (props.naming.custom_text.trim())
     parts.push(props.naming.custom_text.trim());
   if (parts.length === 0) parts.push(`merge_${Date.now()}`);
-  const ext = mediaKind.value === "image" ? "png" : "mp4";
+  const ext = outputExt(
+    mediaKind.value,
+    imageOut.value,
+    videoOut.value,
+    slots[0].path || slots[1].path,
+  );
   return `${parts.join("-")}.${ext}`;
 }
 
@@ -537,20 +543,13 @@ async function startMerge() {
     ],
     output_path: outputPath,
     media_kind: mediaKind.value,
+    image: mediaKind.value === "image" ? imageOut.value : undefined,
+    video: mediaKind.value === "video" ? videoOut.value : undefined,
   };
 
   if (outputWidth.value != null && outputHeight.value != null) {
     options.output_width = normalizeSize(outputWidth.value);
     options.output_height = normalizeSize(outputHeight.value);
-  }
-
-  if (mediaKind.value === "video") {
-    options.output_fps = outputFps.value;
-    options.set_level = setLevel.value;
-    if (setLevel.value) {
-      options.video_level = videoLevel.value;
-      options.video_profile = videoProfile.value;
-    }
   }
 
   emit("started");
@@ -694,6 +693,17 @@ async function startMerge() {
       >
         {{ isMerging ? "拼接中…" : "导出拼接" }}
       </button>
+    </div>
+
+    <div
+      class="shrink-0 px-14px py-8px border-b border-border bg-bg0"
+      :class="isMerging ? 'pointer-events-none opacity-60' : ''"
+    >
+      <MediaOutputOptions
+        v-if="mediaKind === 'image'"
+        :image="imageOut"
+      />
+      <MediaOutputOptions v-else :video="videoOut" />
     </div>
 
     <div class="flex-1 min-h-0 flex overflow-hidden">
@@ -885,76 +895,6 @@ async function startMerge() {
               >
                 清除
               </button>
-            </div>
-          </div>
-        </div>
-      </div>
-      <!-- 其他配置 -->
-      <div class="w-240px box-border bg-bg0">
-        <div
-          class="shrink-0 h-32px px-10px flex items-center text-11px font-500 color-t3 border-b border-border bg-bg2"
-        >
-          输出设置(仅视频有效)
-        </div>
-        <div
-          v-if="mediaKind === 'video'"
-          class="px-12px py-4px flex flex-col gap-6px"
-        >
-          <div class="flex items-center h-28px gap-6px">
-            <span class="text-12px color-t3">帧率</span>
-            <label class="flex items-center gap-4px cursor-pointer text-12px">
-              <input
-                type="radio"
-                :value="30"
-                v-model.number="outputFps"
-                :disabled="isMerging"
-                class="accent-secondary"
-              />
-              30
-            </label>
-            <label
-              class="flex items-center gap-4px cursor-pointer text-12px"
-              title="源不足 60fps 时自动补帧"
-            >
-              <input
-                type="radio"
-                :value="60"
-                v-model.number="outputFps"
-                :disabled="isMerging"
-                class="accent-secondary"
-              />
-              60
-            </label>
-          </div>
-
-          <div class="flex items-center h-28px">
-            <label class="flex items-center gap-6px cursor-pointer text-12px">
-              Level
-            </label>
-            <div>
-              <select
-                class="field w-auto! min-w-72px h-28px! px-6px! text-11px!"
-                v-model="videoProfile"
-                :disabled="isMerging"
-              >
-                <option value="baseline">Baseline</option>
-                <option value="main">Main</option>
-                <option value="high">High</option>
-              </select>
-              <select
-                class="field w-auto! min-w-72px h-28px! px-6px! text-11px!"
-                v-model="videoLevel"
-                :disabled="isMerging"
-              >
-                <option value="3.0">3.0</option>
-                <option value="3.1">3.1</option>
-                <option value="4.0">4.0</option>
-                <option value="4.1">4.1</option>
-                <option value="4.2">4.2</option>
-                <option value="5.0">5.0</option>
-                <option value="5.1">5.1</option>
-                <option value="5.2">5.2</option>
-              </select>
             </div>
           </div>
         </div>
