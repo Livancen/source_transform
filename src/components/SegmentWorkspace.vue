@@ -10,6 +10,8 @@ import {
   formatBoxRatio,
   formatClock,
   fullSpanSegment,
+  resizeBoxToRatio,
+  scaleLockedBox,
   loadSegmentConfig,
   loadSegmentGlobal,
   newSegmentId,
@@ -58,6 +60,8 @@ const videoRef = ref<HTMLVideoElement | null>(null);
 const frameRef = ref<HTMLElement | null>(null);
 const timelineRef = ref<HTMLElement | null>(null);
 const speeds = [0.5, 1, 1.5, 2];
+const ratioDraft = ref("");
+const ratioEditing = ref(false);
 let hydrating = false;
 
 const selected = computed(
@@ -99,8 +103,12 @@ const box = computed(() => {
   return coverBox(mediaW.value, mediaH.value, fileRatio.value, piece);
 });
 const boxRatioLabel = computed(() => {
+  const piece = previewPiece.value;
   const rect = box.value;
-  if (!rect || previewPiece.value?.mode !== "position") return "";
+  if (!piece || piece.mode !== "position" || !rect) return "";
+  if (piece.ratioLocked && piece.lockRatio > 0) {
+    return formatBoxRatio(Math.round(piece.lockRatio * 10000), 10000);
+  }
   return formatBoxRatio(rect.cropW, rect.cropH);
 });
 const boxStyle = computed(() => {
@@ -135,6 +143,20 @@ const ticks = computed(() => {
     label: formatClock((duration.value * index) / count),
   }));
 });
+function pieceFrame(piece: SegmentPiece) {
+  const d = duration.value;
+  if (!(d > 0)) return { left: "0%", width: "0%", maxWidth: "0%" };
+  const start = Math.min(Math.max(piece.start, 0), d);
+  const end = Math.min(Math.max(piece.end, start), d);
+  const left = (start / d) * 100;
+  const width = ((end - start) / d) * 100;
+  return {
+    left: `${left}%`,
+    width: `${width}%`,
+    maxWidth: `${width}%`,
+  };
+}
+
 const playheadLeft = computed(() =>
   duration.value > 0 ? `${(currentTime.value / duration.value) * 100}%` : "0%",
 );
@@ -217,7 +239,11 @@ async function openFile(file: FileInfo) {
   }
   const cfgNow = loadSegmentConfig(file.path);
   if (cfgNow) {
-    segments.value = cfgNow.segments.map((piece) => ({ ...piece }));
+    segments.value = cfgNow.segments.map((piece) => ({
+      ...piece,
+      ratioLocked: !(piece.ratioLocked === false && Number(piece.lockRatio) > 0),
+      lockRatio: Number(piece.lockRatio) > 0 ? Number(piece.lockRatio) : 0,
+    }));
   } else {
     segments.value = [fullSpanSegment(1, globalOpts.value)];
   }
@@ -311,6 +337,60 @@ function updateActive(patch: Partial<SegmentPiece>) {
 function setFileRatio(value: string) {
   fileRatio.value = value;
   persist();
+}
+
+function onRatioFocus() {
+  ratioEditing.value = true;
+  ratioDraft.value = boxRatioLabel.value;
+}
+
+function commitBoxRatio(input: HTMLInputElement) {
+  ratioEditing.value = false;
+  const rect = box.value;
+  const ratio = parseRatio(input.value.trim());
+  if (
+    !ratio ||
+    !rect ||
+    !mediaW.value ||
+    active.value?.mode !== "position" ||
+    multi.value
+  ) {
+    input.value = boxRatioLabel.value;
+    ratioDraft.value = boxRatioLabel.value;
+    return;
+  }
+  const next = resizeBoxToRatio(mediaW.value, mediaH.value, rect, ratio);
+  const unchanged =
+    next.cropX === rect.cropX &&
+    next.cropY === rect.cropY &&
+    next.cropW === rect.cropW &&
+    next.cropH === rect.cropH;
+  if (!unchanged) {
+    updateActive({
+      cropX: next.cropX,
+      cropY: next.cropY,
+      cropW: next.cropW,
+      cropH: next.cropH,
+      ...(active.value?.ratioLocked ? { lockRatio: ratio } : {}),
+    });
+  }
+  const label = formatBoxRatio(next.cropW, next.cropH);
+  ratioDraft.value = label;
+  input.value = label;
+}
+
+function toggleRatioLock() {
+  const piece = active.value;
+  const rect = box.value;
+  if (!piece || piece.mode !== "position" || multi.value || !rect) return;
+  if (piece.ratioLocked) {
+    updateActive({ ratioLocked: false });
+    return;
+  }
+  updateActive({
+    ratioLocked: true,
+    lockRatio: rect.cropH > 0 ? rect.cropW / rect.cropH : 0,
+  });
 }
 
 function splitAtPlayhead() {
@@ -409,20 +489,41 @@ function onBoundaryDown(index: number, event: PointerEvent) {
   window.addEventListener("pointerup", up, { once: true });
 }
 
-function seekFromTimeline(event: PointerEvent) {
+let stopScrub: (() => void) | null = null;
+
+function applyTimelineTime(clientX: number, selectClip: boolean) {
   const bar = timelineRef.value;
   const video = videoRef.value;
-  if (!bar || !video || duration.value <= 0) return;
+  if (!bar || !video || !(duration.value > 0)) return;
   const rect = bar.getBoundingClientRect();
   const time = Math.min(
     duration.value,
-    Math.max(0, ((event.clientX - rect.left) / rect.width) * duration.value),
+    Math.max(0, ((clientX - rect.left) / Math.max(1, rect.width)) * duration.value),
   );
-  video.currentTime = time;
+  currentTime.value = time;
+  if (Math.abs(video.currentTime - time) > 0.01) video.currentTime = time;
+  if (!selectClip) return;
   const hit =
     segments.value.find((piece) => time >= piece.start && time < piece.end) ||
     segments.value[segments.value.length - 1];
-  if (hit && !event.ctrlKey && !event.metaKey) selectOnly(hit.id);
+  if (hit) selectOnly(hit.id);
+}
+
+function seekFromTimeline(event: PointerEvent) {
+  if (!(duration.value > 0)) return;
+  event.preventDefault();
+  const selectClip = !event.ctrlKey && !event.metaKey;
+  applyTimelineTime(event.clientX, selectClip);
+  stopScrub?.();
+  const move = (ev: PointerEvent) => applyTimelineTime(ev.clientX, selectClip);
+  const up = () => {
+    window.removeEventListener("pointermove", move);
+    window.removeEventListener("pointerup", up);
+    stopScrub = null;
+  };
+  stopScrub = up;
+  window.addEventListener("pointermove", move);
+  window.addEventListener("pointerup", up);
 }
 
 type BoxHandle = "move" | "n" | "s" | "e" | "w" | "nw" | "ne" | "sw" | "se";
@@ -482,6 +583,20 @@ function onBoxMove(event: PointerEvent) {
   if (handle === "move") {
     cropX = Math.round(Math.min(mediaW.value - cropW, Math.max(0, cropX + dx)));
     cropY = Math.round(Math.min(mediaH.value - cropH, Math.max(0, cropY + dy)));
+  } else if (active.value?.ratioLocked) {
+    const scaled = scaleLockedBox(
+      handle,
+      drag,
+      dx,
+      dy,
+      active.value?.lockRatio || drag.cropW / drag.cropH,
+      mediaW.value,
+      mediaH.value,
+    );
+    cropX = scaled.cropX;
+    cropY = scaled.cropY;
+    cropW = scaled.cropW;
+    cropH = scaled.cropH;
   } else {
     if (handle.includes("e"))
       cropW = Math.round(
@@ -542,83 +657,14 @@ function setRate(rate: number) {
   if (videoRef.value) videoRef.value.playbackRate = rate;
 }
 
-function segmentFlex(piece: SegmentPiece) {
-  return Math.max(0.04, piece.end - piece.start);
-}
-
 onBeforeUnmount(() => {
   onBoxUp();
+  stopScrub?.();
 });
 </script>
 
 <template>
   <div class="flex-1 min-h-0 flex flex-col bg-bg0">
-    <div
-      class="shrink-0 px-12px py-8px border-b border-border bg-bg1 flex flex-wrap items-center gap-10px"
-    >
-      <span class="text-12px font-600 color-t1 shrink-0">未分段的视频</span>
-      <div class="flex flex-wrap items-center gap-10px">
-        <label class="inline-flex items-center gap-6px">
-          <span class="text-11px color-t2">比例</span>
-          <input
-            class="field w-72px! h-26px! text-12px! font-mono"
-            :value="globalOpts.ratio"
-            @change="
-              globalOpts.ratio = (
-                $event.target as HTMLInputElement
-              ).value.trim()
-            "
-          />
-        </label>
-        <label class="inline-flex items-center gap-6px min-w-180px">
-          <span class="text-11px color-t2 w-28px">水平</span>
-          <input
-            class="w-120px accent-secondary"
-            type="range"
-            min="-100"
-            max="100"
-            step="1"
-            :value="globalOpts.offsetX"
-            @input="
-              globalOpts.offsetX = clampOffset(
-                Number(($event.target as HTMLInputElement).value),
-              )
-            "
-          />
-          <span class="text-11px color-t3 w-36px font-mono">{{
-            globalOpts.offsetX
-          }}</span>
-        </label>
-        <label class="inline-flex items-center gap-6px min-w-180px">
-          <span class="text-11px color-t2 w-28px">垂直</span>
-          <input
-            class="w-120px accent-secondary"
-            type="range"
-            min="-100"
-            max="100"
-            step="1"
-            :value="globalOpts.offsetY"
-            @input="
-              globalOpts.offsetY = clampOffset(
-                Number(($event.target as HTMLInputElement).value),
-              )
-            "
-          />
-          <span class="text-11px color-t3 w-36px font-mono">{{
-            globalOpts.offsetY
-          }}</span>
-        </label>
-        <label class="inline-flex items-center gap-6px text-12px color-t2">
-          <input
-            v-model="globalOpts.mute"
-            type="checkbox"
-            class="accent-secondary"
-          />
-          静音
-        </label>
-      </div>
-    </div>
-
     <div
       class="flex-1 min-h-0 grid"
       style="grid-template-columns: minmax(280px, 42%) 6px minmax(0, 1fr)"
@@ -629,6 +675,7 @@ onBeforeUnmount(() => {
         :files="files"
         :selected-path="selectedPath"
         selectable
+        isolate-check
         :checked-paths="checkedPaths"
         :all-checked="allChecked"
         :locked="locked"
@@ -756,6 +803,66 @@ onBeforeUnmount(() => {
                     class="absolute inset-0 grid place-items-center pointer-events-none"
                   >
                     <span
+                      v-if="active?.mode === 'position' && !multi"
+                      class="pointer-events-auto inline-flex items-center gap-2px"
+                    >
+                      <input
+                        class="w-76px h-20px px-4px rounded-2px border border-white/40 bg-black/75 text-white text-11px font-600 font-mono text-center outline-none"
+                        :value="ratioEditing ? ratioDraft : boxRatioLabel"
+                        title="输入比例，如 9:16，回车确认"
+                        @pointerdown.stop
+                        @mousedown.stop
+                        @click.stop
+                        @focus="onRatioFocus"
+                        @input="
+                          ratioDraft = ($event.target as HTMLInputElement).value
+                        "
+                        @keydown.enter.prevent="
+                          ($event.target as HTMLInputElement).blur()
+                        "
+                        @blur="commitBoxRatio($event.target as HTMLInputElement)"
+                      />
+                      <button
+                        type="button"
+                        class="w-20px h-20px grid place-items-center rounded-2px border"
+                        :class="
+                          active.ratioLocked
+                            ? 'bg-secondary border-secondary text-white'
+                            : 'bg-black/75 border-white/40 text-white'
+                        "
+                        :title="
+                          active.ratioLocked
+                            ? '已锁定比例，只能等比缩放'
+                            : '锁定比例'
+                        "
+                        @pointerdown.stop
+                        @mousedown.stop
+                        @click.stop="toggleRatioLock"
+                      >
+                        <svg
+                          viewBox="0 0 24 24"
+                          class="w-12px h-12px"
+                          fill="none"
+                          stroke="currentColor"
+                          stroke-width="2"
+                        >
+                          <rect
+                            x="5"
+                            y="11"
+                            width="14"
+                            height="10"
+                            rx="2"
+                          />
+                          <path
+                            v-if="active.ratioLocked"
+                            d="M8 11V8a4 4 0 0 1 8 0v3"
+                          />
+                          <path v-else d="M8 11V8a4 4 0 0 1 7.2-2.2" />
+                        </svg>
+                      </button>
+                    </span>
+                    <span
+                      v-else
                       class="px-6px h-18px leading-18px rounded-2px bg-black/70 text-white text-11px font-600 font-mono"
                     >
                       {{ boxRatioLabel }}
@@ -931,7 +1038,7 @@ onBeforeUnmount(() => {
                 <span
                   v-else-if="active.mode === 'position'"
                   class="text-11px color-t3"
-                  >拖动白框移动，拖四边或四角改大小。刚切换时与比例裁剪的框重合。</span
+                  >拖动白框移动，拖四边或四角改大小，框中间可输入比例。默认锁定，只能等比缩放；点锁可以解开。刚切换时与比例裁剪的框重合。</span
                 >
                 <span v-else class="text-11px color-t3"
                   >播放到这里会跳过，不进入成片。</span
@@ -1018,36 +1125,46 @@ onBeforeUnmount(() => {
               </div>
               <div
                 ref="timelineRef"
-                class="relative h-64px mx-8px mb-8px bg-[#2a2a2a] overflow-hidden cursor-pointer flex"
+                class="relative h-64px mx-8px mb-8px bg-[#2a2a2a] overflow-hidden cursor-pointer"
                 @pointerdown="seekFromTimeline"
               >
-                <button
-                  v-for="(piece, index) in segments"
-                  :key="piece.id"
-                  type="button"
-                  class="seg-clip"
-                  :class="{
-                    'is-drop': piece.mode === 'drop',
-                    'is-position': piece.mode === 'position',
-                    'is-on': isSelected(piece.id),
-                  }"
-                  :style="{ flex: segmentFlex(piece) }"
-                  @pointerdown.stop
-                  @click.stop="onClipClick(piece.id, $event)"
-                >
-                  <span class="text-11px font-600"
-                    >{{ index + 1 }} · {{ modeName(piece.mode) }}</span
+                <div class="absolute inset-0">
+                  <div
+                    v-for="(piece, index) in segments"
+                    :key="piece.id"
+                    class="absolute top-0 bottom-0 pointer-events-none"
+                    :style="pieceFrame(piece)"
                   >
-                  <span class="text-10px opacity-75 font-mono">{{
-                    formatClock(piece.end - piece.start)
-                  }}</span>
-                  <i
-                    v-if="index < segments.length - 1"
-                    class="seg-handle"
-                    @pointerdown="onBoundaryDown(index, $event)"
-                  ></i>
-                </button>
-                <i class="seg-playhead" :style="{ left: playheadLeft }"></i>
+                    <button
+                      type="button"
+                      class="seg-clip"
+                      :class="{
+                        'is-drop': piece.mode === 'drop',
+                        'is-position': piece.mode === 'position',
+                        'is-on': isSelected(piece.id),
+                      }"
+                      @pointerdown.stop
+                      @click.stop="onClipClick(piece.id, $event)"
+                    >
+                      <span class="text-11px font-600 truncate max-w-full"
+                        >{{ index + 1 }} · {{ modeName(piece.mode) }}</span
+                      >
+                      <span class="text-10px opacity-75 font-mono truncate max-w-full">{{
+                        formatClock(piece.end - piece.start)
+                      }}</span>
+                    </button>
+                    <i
+                      v-if="index < segments.length - 1"
+                      class="seg-handle"
+                      @pointerdown="onBoundaryDown(index, $event)"
+                    ></i>
+                  </div>
+                </div>
+                <i
+                  class="seg-playhead"
+                  :style="{ left: playheadLeft }"
+                  @pointerdown.stop="seekFromTimeline"
+                ></i>
               </div>
             </div>
           </template>
@@ -1104,15 +1221,19 @@ onBeforeUnmount(() => {
   align-items: flex-start;
   justify-content: center;
   gap: 2px;
+  width: 100%;
   min-width: 0;
   height: 100%;
   margin: 0;
   padding: 0 8px;
   border: none;
+  overflow: hidden;
+  appearance: none;
   background: #0f6cbd;
   color: #fff;
   cursor: pointer;
   text-align: left;
+  pointer-events: auto;
 }
 .seg-clip.is-position {
   background: #5c2e91;
@@ -1141,6 +1262,7 @@ onBeforeUnmount(() => {
   height: 100%;
   cursor: ew-resize;
   background: transparent;
+  pointer-events: auto;
 }
 .seg-handle::after {
   content: "";
@@ -1210,11 +1332,11 @@ onBeforeUnmount(() => {
   position: absolute;
   top: 0;
   bottom: 0;
-  z-index: 3;
+  z-index: 4;
   width: 1px;
-  margin-left: -1px;
   background: #c50f1f;
-  pointer-events: none;
+  cursor: ew-resize;
+  touch-action: none;
 }
 .seg-playhead::before {
   content: "";
@@ -1224,5 +1346,13 @@ onBeforeUnmount(() => {
   border-left: 5px solid transparent;
   border-right: 5px solid transparent;
   border-top: 7px solid #c50f1f;
+}
+.seg-playhead::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -6px;
+  width: 13px;
 }
 </style>

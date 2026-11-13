@@ -25,6 +25,8 @@ const props = defineProps<{
   offsetY?: number;
   /** 已有单独分段配置的路径 */
   markedPaths?: Set<string>;
+  /** 勾选框只切换勾选，不选中该行 */
+  isolateCheck?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -77,6 +79,10 @@ function onRowClick(file: FileInfo) {
   if (props.selectable) {
     emit("toggleCheck", file.path);
   }
+}
+
+function onCheckClick(file: FileInfo) {
+  emit("toggleCheck", file.path);
 }
 
 function openPreview(file: FileInfo, e: Event) {
@@ -268,7 +274,9 @@ onBeforeUnmount(() => {
           >
             <div
               v-if="selectable"
-              class="flex items-center justify-center h-full pointer-events-none"
+              class="flex items-center justify-center h-full"
+              :class="isolateCheck ? 'cursor-pointer' : 'pointer-events-none'"
+              @click.stop="isolateCheck && onCheckClick(file)"
             >
               <input
                 type="checkbox"
@@ -317,7 +325,7 @@ onBeforeUnmount(() => {
                 <span
                   v-if="markedPaths?.has(file.path)"
                   class="shrink-0 h-16px px-4px rounded-4px bg-secondary-soft color-secondary text-10px font-600"
-                >分段</span>
+                >已配置</span>
               </div>
               <div class="text-10px color-t3 font-mono uppercase truncate">{{ fileExt(file.name) }}</div>
             </div>

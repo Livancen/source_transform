@@ -15,6 +15,10 @@ export interface SegmentPiece {
   /** 位置模式的框大小。0 表示还没改过，用比例裁剪的默认框。 */
   cropW: number;
   cropH: number;
+  /** 锁上后拖动手柄只等比缩放。 */
+  ratioLocked: boolean;
+  /** 锁定时的宽高比（宽/高）。未锁定为 0。 */
+  lockRatio: number;
 }
 
 export interface SegmentFileConfig {
@@ -138,6 +142,8 @@ export function fullSpanSegment(duration: number, global: SegmentGlobal): Segmen
     cropY: 0,
     cropW: 0,
     cropH: 0,
+    ratioLocked: true,
+    lockRatio: 0,
   };
 }
 
@@ -248,6 +254,149 @@ export function formatBoxRatio(width: number, height: number): string {
   const major = target >= 1 ? target : h / w;
   const text = (Math.round(major * 100) / 100).toString();
   return target >= 1 ? `${text}:1` : `1:${text}`;
+}
+
+function evenClamp(value: number, min: number, max: number): number {
+  const evenMax = Math.max(2, max & ~1);
+  const evenMin = Math.min(evenMax, Math.max(2, min & ~1));
+  let even = Math.round(value) & ~1;
+  if (even < evenMin) even = evenMin;
+  if (even > evenMax) even = evenMax;
+  return even;
+}
+
+/** 按目标宽高比改裁切框。尽量保持中心，必要时缩小以留在画面内。 */
+export function resizeBoxToRatio(
+  mediaW: number,
+  mediaH: number,
+  box: { cropX: number; cropY: number; cropW: number; cropH: number },
+  ratio: number,
+): { cropX: number; cropY: number; cropW: number; cropH: number } {
+  const maxW = Math.max(16, mediaW & ~1);
+  const maxH = Math.max(16, mediaH & ~1);
+  if (!(ratio > 0) || !Number.isFinite(ratio) || mediaW < 16 || mediaH < 16) {
+    return { ...box };
+  }
+  const cx = box.cropX + box.cropW / 2;
+  const cy = box.cropY + box.cropH / 2;
+  let width = Math.max(16, box.cropW);
+  let height = Math.max(16, box.cropH);
+  const current = width / height;
+  if (ratio > current) {
+    const grownW = height * ratio;
+    if (grownW <= maxW) width = grownW;
+    else {
+      width = maxW;
+      height = width / ratio;
+    }
+  } else if (ratio < current) {
+    const grownH = width / ratio;
+    if (grownH <= maxH) height = grownH;
+    else {
+      height = maxH;
+      width = height * ratio;
+    }
+  }
+  let cropW = evenClamp(width, 16, maxW);
+  let cropH = evenClamp(cropW / ratio, 16, maxH);
+  if (Math.abs(cropW / cropH - ratio) / ratio > 0.02) {
+    cropW = evenClamp(cropH * ratio, 16, maxW);
+  }
+  let cropX = Math.round(cx - cropW / 2);
+  let cropY = Math.round(cy - cropH / 2);
+  const maxX = Math.max(0, mediaW - cropW);
+  const maxY = Math.max(0, mediaH - cropH);
+  cropX = Math.min(maxX, Math.max(0, cropX));
+  cropY = Math.min(maxY, Math.max(0, cropY));
+  const evenX = cropX & ~1;
+  const evenY = cropY & ~1;
+  cropX = evenX + cropW <= mediaW ? evenX : maxX & ~1;
+  cropY = evenY + cropH <= mediaH ? evenY : maxY & ~1;
+  return { cropX, cropY, cropW, cropH };
+}
+
+type ScaleHandle = "n" | "s" | "e" | "w" | "nw" | "ne" | "sw" | "se";
+
+/** 以起始框的比例缩放。对角钉住对角，四边钉住对边并在另一轴居中。 */
+export function scaleLockedBox(
+  handle: ScaleHandle,
+  start: { cropX: number; cropY: number; cropW: number; cropH: number },
+  dx: number,
+  dy: number,
+  ratio: number,
+  mediaW: number,
+  mediaH: number,
+): { cropX: number; cropY: number; cropW: number; cropH: number } {
+  if (!(start.cropW > 0) || !(start.cropH > 0)) return { ...start };
+  const min = 16;
+  const left = start.cropX;
+  const top = start.cropY;
+  const right = start.cropX + start.cropW;
+  const bottom = start.cropY + start.cropH;
+  const centerX = left + start.cropW / 2;
+  const centerY = top + start.cropH / 2;
+
+  let widthDelta = 0;
+  let heightDelta = 0;
+  if (handle.includes("e")) widthDelta = dx;
+  if (handle.includes("w")) widthDelta = -dx;
+  if (handle.includes("s")) heightDelta = dy;
+  if (handle.includes("n")) heightDelta = -dy;
+
+  const affectsW = handle.includes("e") || handle.includes("w");
+  const affectsH = handle.includes("n") || handle.includes("s");
+  const scaleW = (start.cropW + widthDelta) / start.cropW;
+  const scaleH = (start.cropH + heightDelta) / start.cropH;
+  let scale = 1;
+  if (affectsW && affectsH) {
+    scale = Math.abs(scaleW - 1) >= Math.abs(scaleH - 1) ? scaleW : scaleH;
+  } else if (affectsW) {
+    scale = scaleW;
+  } else {
+    scale = scaleH;
+  }
+
+  let maxScale = Number.POSITIVE_INFINITY;
+  if (handle.includes("w")) maxScale = Math.min(maxScale, right / start.cropW);
+  else if (handle.includes("e")) maxScale = Math.min(maxScale, (mediaW - left) / start.cropW);
+  else {
+    maxScale = Math.min(
+      maxScale,
+      (2 * centerX) / start.cropW,
+      (2 * (mediaW - centerX)) / start.cropW,
+    );
+  }
+  if (handle.includes("n")) maxScale = Math.min(maxScale, bottom / start.cropH);
+  else if (handle.includes("s")) maxScale = Math.min(maxScale, (mediaH - top) / start.cropH);
+  else {
+    maxScale = Math.min(
+      maxScale,
+      (2 * centerY) / start.cropH,
+      (2 * (mediaH - centerY)) / start.cropH,
+    );
+  }
+
+  const minScale = Math.max(min / start.cropW, min / start.cropH);
+  if (!Number.isFinite(maxScale) || maxScale <= 0) maxScale = minScale;
+  scale = Math.min(Math.max(scale, Math.min(minScale, maxScale)), maxScale);
+
+  const aspect = ratio > 0 ? ratio : start.cropW / start.cropH;
+  let cropW = Math.max(2, Math.floor(start.cropW * scale));
+  let cropH = Math.max(2, Math.round(cropW / aspect));
+  if (cropH > mediaH || cropW > mediaW) {
+    cropH = Math.max(2, Math.min(mediaH, cropH));
+    cropW = Math.max(2, Math.round(cropH * aspect));
+  }
+  let cropX = left;
+  let cropY = top;
+  if (handle.includes("w")) cropX = right - cropW;
+  else if (!handle.includes("e")) cropX = centerX - cropW / 2;
+  if (handle.includes("n")) cropY = bottom - cropH;
+  else if (!handle.includes("s")) cropY = centerY - cropH / 2;
+
+  cropX = Math.min(mediaW - cropW, Math.max(0, Math.round(cropX)));
+  cropY = Math.min(mediaH - cropH, Math.max(0, Math.round(cropY)));
+  return { cropX, cropY, cropW, cropH };
 }
 
 export function offsetsFromPosition(
