@@ -154,6 +154,26 @@ const ticks = computed(() => {
     label: formatClock((duration.value * index) / count),
   }));
 });
+function pieceAtTime(time: number): SegmentPiece | null {
+  const list = segments.value;
+  if (!list.length) return null;
+  const hit = list.find((piece) => time >= piece.start && time < piece.end);
+  if (hit) return hit;
+  const last = list[list.length - 1];
+  return time >= last.end - 0.001 ? last : list[0];
+}
+
+function onTimeUpdate() {
+  const video = videoRef.value;
+  if (!video) return;
+  const time = video.currentTime || 0;
+  currentTime.value = time;
+  if (video.paused || selectedIds.value.length > 1) return;
+  const hit = pieceAtTime(time);
+  if (!hit || selectedIds.value[0] === hit.id) return;
+  selectOnly(hit.id);
+}
+
 function pieceFrame(piece: SegmentPiece) {
   const d = duration.value;
   if (!(d > 0)) return { left: "0%", width: "0%", maxWidth: "0%" };
@@ -912,25 +932,29 @@ onBeforeUnmount(() => {
                   :src="convertFileSrc(selected.path)"
                   playsinline
                   @loadedmetadata="onVideoMeta"
-                  @timeupdate="currentTime = videoRef?.currentTime || 0"
+                  @timeupdate="onTimeUpdate"
                   @play="playing = true"
                   @pause="playing = false"
                 />
                 <template v-if="shade">
                   <div
                     class="absolute left-0 right-0 top-0 bg-black/55 pointer-events-none"
+                    :class="playing ? 'crop-follow' : ''"
                     :style="shade.top"
                   ></div>
                   <div
                     class="absolute left-0 right-0 bottom-0 bg-black/55 pointer-events-none"
+                    :class="playing ? 'crop-follow' : ''"
                     :style="shade.bottom"
                   ></div>
                   <div
                     class="absolute left-0 bg-black/55 pointer-events-none"
+                    :class="playing ? 'crop-follow' : ''"
                     :style="shade.left"
                   ></div>
                   <div
                     class="absolute right-0 bg-black/55 pointer-events-none"
+                    :class="playing ? 'crop-follow' : ''"
                     :style="shade.right"
                   ></div>
                 </template>
@@ -938,9 +962,11 @@ onBeforeUnmount(() => {
                   v-if="box"
                   class="absolute border-1 border-dotted border-white shadow-[0_0_0_1px_rgba(0,0,0,.45)]"
                   :class="
-                    active?.mode === 'position' && !multi
-                      ? 'cursor-move'
-                      : 'pointer-events-none'
+                    playing
+                      ? 'crop-follow pointer-events-none'
+                      : active?.mode === 'position' && !multi
+                        ? 'cursor-move'
+                        : 'pointer-events-none'
                   "
                   :style="boxStyle"
                   @pointerdown="onBoxDown($event, 'move')"
@@ -955,7 +981,7 @@ onBeforeUnmount(() => {
                     class="absolute inset-0 grid place-items-center pointer-events-none"
                   >
                     <span
-                      v-if="active?.mode === 'position' && !multi"
+                      v-if="!playing && active?.mode === 'position' && !multi"
                       class="pointer-events-auto inline-flex items-center gap-2px"
                     >
                       <input
@@ -1022,7 +1048,7 @@ onBeforeUnmount(() => {
                   </span>
                   <i
                     v-for="handle in boxHandles"
-                    v-show="active?.mode === 'position' && !multi"
+                    v-show="!playing && active?.mode === 'position' && !multi"
                     :key="handle"
                     class="crop-handle"
                     :class="'is-' + handle"
@@ -1414,6 +1440,18 @@ onBeforeUnmount(() => {
   outline: 1px solid #fff;
   outline-offset: -1px;
   z-index: 1;
+}
+.crop-follow {
+  transition:
+    left 0.4s cubic-bezier(0.22, 1, 0.36, 1),
+    top 0.4s cubic-bezier(0.22, 1, 0.36, 1),
+    width 0.4s cubic-bezier(0.22, 1, 0.36, 1),
+    height 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+}
+@media (prefers-reduced-motion: reduce) {
+  .crop-follow {
+    transition: none;
+  }
 }
 .seg-ruler {
   cursor: grab;
