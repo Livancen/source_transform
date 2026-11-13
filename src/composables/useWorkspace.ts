@@ -58,6 +58,12 @@ function clampQuality(n: number): number {
   return Math.min(100, Math.max(1, Math.round(n)));
 }
 
+function clampRatioOffset(n: unknown): number {
+  const v = typeof n === "number" ? n : Number(n);
+  if (!Number.isFinite(v)) return 0;
+  return Math.min(100, Math.max(-100, Math.round(v)));
+}
+
 function loadRatioOutput(): RatioOutputOptions {
   const base = defaultRatioOutputOptions();
   try {
@@ -81,6 +87,8 @@ function loadRatioOutput(): RatioOutputOptions {
   base.image.compress_quality = clampQuality(base.image.compress_quality);
   base.video.compress_quality = clampQuality(base.video.compress_quality);
   if (!(base.video.target_framerate > 0)) base.video.target_framerate = 30;
+  base.offset_x = clampRatioOffset(base.offset_x);
+  base.offset_y = clampRatioOffset(base.offset_y);
   return base;
 }
 

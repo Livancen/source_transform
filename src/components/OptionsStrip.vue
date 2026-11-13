@@ -44,6 +44,29 @@ function openWatermark() {
   watermarkVisible.value = true;
 }
 
+function clampRatioOffset(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Math.min(100, Math.max(-100, Math.round(value)));
+}
+
+function setRatioOffset(axis: "x" | "y", value: number) {
+  const next = clampRatioOffset(value);
+  if (axis === "x") props.ratioOutput.offset_x = next;
+  else props.ratioOutput.offset_y = next;
+}
+
+function ratioOffsetText(axis: "x" | "y", value: number): string {
+  const v = clampRatioOffset(value);
+  if (v === 0) return "居中";
+  if (axis === "x") return v > 0 ? `偏右 ${v}%` : `偏左 ${-v}%`;
+  return v > 0 ? `偏下 ${v}%` : `偏上 ${-v}%`;
+}
+
+function resetRatioOffset() {
+  props.ratioOutput.offset_x = 0;
+  props.ratioOutput.offset_y = 0;
+}
+
 function applyWatermarkDraft(draft: WatermarkDraft) {
   const o = props.options;
   o.watermark = true;
@@ -510,6 +533,126 @@ function applyWatermarkDraft(draft: WatermarkDraft) {
         </div>
         <p v-if="ratioError" class="text-11px color-danger w-full">
           {{ ratioError }}
+        </p>
+      </div>
+
+      <div
+        class="flex flex-wrap items-center gap-x-14px gap-y-8px py-8px px-12px rounded-4px bg-bg0 border border-dashed border-border"
+      >
+        <div class="flex items-center gap-8px font-500 text-12px color-t1 shrink-0">
+          裁切偏移
+          <span class="text-11px color-t3 font-400"
+            >相对居中 · 按多余边距的百分比</span
+          >
+        </div>
+        <label class="inline-flex items-center gap-8px min-w-240px flex-1">
+          <span class="text-11px color-t2 w-28px shrink-0">水平</span>
+          <input
+            class="flex-1 min-w-72px accent-secondary"
+            type="range"
+            min="-100"
+            max="100"
+            step="1"
+            :value="ratioOutput.offset_x || 0"
+            @input="
+              setRatioOffset(
+                'x',
+                Number(($event.target as HTMLInputElement).value),
+              )
+            "
+          />
+          <input
+            class="field w-52px! h-24px! px-6px! text-11px!"
+            type="number"
+            min="-100"
+            max="100"
+            step="1"
+            :value="ratioOutput.offset_x || 0"
+            @change="
+              setRatioOffset(
+                'x',
+                Number(($event.target as HTMLInputElement).value),
+              )
+            "
+          />
+          <span class="text-11px color-t3 w-64px shrink-0 tabular-nums">{{
+            ratioOffsetText("x", ratioOutput.offset_x || 0)
+          }}</span>
+        </label>
+        <label class="inline-flex items-center gap-8px min-w-240px flex-1">
+          <span class="text-11px color-t2 w-28px shrink-0">垂直</span>
+          <input
+            class="flex-1 min-w-72px accent-secondary"
+            type="range"
+            min="-100"
+            max="100"
+            step="1"
+            :value="ratioOutput.offset_y || 0"
+            @input="
+              setRatioOffset(
+                'y',
+                Number(($event.target as HTMLInputElement).value),
+              )
+            "
+          />
+          <input
+            class="field w-52px! h-24px! px-6px! text-11px!"
+            type="number"
+            min="-100"
+            max="100"
+            step="1"
+            :value="ratioOutput.offset_y || 0"
+            @change="
+              setRatioOffset(
+                'y',
+                Number(($event.target as HTMLInputElement).value),
+              )
+            "
+          />
+          <span class="text-11px color-t3 w-64px shrink-0 tabular-nums">{{
+            ratioOffsetText("y", ratioOutput.offset_y || 0)
+          }}</span>
+        </label>
+        <div class="flex flex-wrap gap-6px">
+          <button
+            class="tb-btn h-24px! px-8px! text-11px!"
+            type="button"
+            @click="resetRatioOffset"
+          >
+            居中
+          </button>
+          <button
+            class="tb-btn h-24px! px-8px! text-11px!"
+            type="button"
+            @click="setRatioOffset('y', -100)"
+          >
+            靠上
+          </button>
+          <button
+            class="tb-btn h-24px! px-8px! text-11px!"
+            type="button"
+            @click="setRatioOffset('y', 100)"
+          >
+            靠下
+          </button>
+          <button
+            class="tb-btn h-24px! px-8px! text-11px!"
+            type="button"
+            @click="setRatioOffset('x', -100)"
+          >
+            靠左
+          </button>
+          <button
+            class="tb-btn h-24px! px-8px! text-11px!"
+            type="button"
+            @click="setRatioOffset('x', 100)"
+          >
+            靠右
+          </button>
+        </div>
+        <p class="text-11px color-t3 w-full leading-relaxed">
+          0
+          为居中。正值把裁切框向右或向下移，用来把刚好被切掉的文字留在画面里。只在该方向比目标比例多出画面时生效，另一方向保持贴边。
         </p>
       </div>
 

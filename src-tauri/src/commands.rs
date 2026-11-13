@@ -163,17 +163,47 @@ fn ratio_image_adjust(opts: Option<&RatioImageOutput>) -> (Option<u32>, u32, u32
     (quality, resize_w, resize_h)
 }
 
-fn compute_cover_crop(width: u32, height: u32, target_ratio: f64) -> (u32, u32, u32, u32) {
+/// 把 -100～100 的偏移映射到多余边距上的起点。0 为居中，且与旧的整数除法居中一致。
+fn offset_origin(slack: u32, percent: f64) -> u32 {
+    if slack == 0 {
+        return 0;
+    }
+    let pct = if percent.is_finite() {
+        percent.clamp(-100.0, 100.0)
+    } else {
+        0.0
+    };
+    if pct == 0.0 {
+        return slack / 2;
+    }
+    let half = slack as f64 / 2.0;
+    let origin = (half + half * (pct / 100.0)).round();
+    if origin <= 0.0 {
+        0
+    } else {
+        (origin as u32).min(slack)
+    }
+}
+
+fn compute_cover_crop(
+    width: u32,
+    height: u32,
+    target_ratio: f64,
+    offset_x_pct: f64,
+    offset_y_pct: f64,
+) -> (u32, u32, u32, u32) {
     let video_ratio = width as f64 / height as f64;
     let (mut crop_w, mut crop_h, mut crop_x, mut crop_y) = if target_ratio < video_ratio {
         let ch = height;
-        let cw = (height as f64 * target_ratio) as u32;
-        let cx = (width.saturating_sub(cw)) / 2;
+        let cw = ((height as f64 * target_ratio) as u32).clamp(1, width);
+        let slack = width.saturating_sub(cw);
+        let cx = offset_origin(slack, offset_x_pct);
         (cw, ch, cx, 0u32)
     } else {
         let cw = width;
-        let ch = (width as f64 / target_ratio) as u32;
-        let cy = (height.saturating_sub(ch)) / 2;
+        let ch = ((width as f64 / target_ratio) as u32).clamp(1, height);
+        let slack = height.saturating_sub(ch);
+        let cy = offset_origin(slack, offset_y_pct);
         (cw, ch, 0u32, cy)
     };
     crop_w = even_dim(crop_w);
@@ -665,11 +695,15 @@ pub async fn crop_by_ratios(
         return Err("请至少添加一个比例".to_string());
     }
 
+    let offset_x = output_options.as_ref().map(|o| o.offset_x).unwrap_or(0.0);
+    let offset_y = output_options.as_ref().map(|o| o.offset_y).unwrap_or(0.0);
     logger::info(format!(
-        "开始比例裁剪 ratios={:?} filter={:?} paths={}",
+        "开始比例裁剪 ratios={:?} filter={:?} paths={} offset=({:.1}%, {:.1}%)",
         ratios,
         file_type_filter,
-        file_paths.as_ref().map(|p| p.len()).unwrap_or(0)
+        file_paths.as_ref().map(|p| p.len()).unwrap_or(0),
+        offset_x,
+        offset_y
     ));
     std::fs::create_dir_all(&output_dir).map_err(|e| e.to_string())?;
 
@@ -798,7 +832,8 @@ pub async fn crop_by_ratios(
             }
 
             let target_ratio = rw / rh;
-            let (crop_w, crop_h, crop_x, crop_y) = compute_cover_crop(width, height, target_ratio);
+            let (crop_w, crop_h, crop_x, crop_y) =
+                compute_cover_crop(width, height, target_ratio, offset_x, offset_y);
 
             let output_filename = ratio_output_name(&file_stem, ratio, target_ratio, &out_ext);
             let output_path = PathBuf::from(&output_dir).join(&output_filename);
@@ -1653,4 +1688,38 @@ pub fn export_logs(dest: String) -> Result<(), String> {
 pub fn open_logs_dir() -> Result<(), String> {
     let dir = logger::logs_dir().ok_or_else(|| "日志尚未初始化".to_string())?;
     open_folder(dir.to_string_lossy().to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{compute_cover_crop, offset_origin};
+
+    #[test]
+    fn zero_offset_matches_integer_center() {
+        assert_eq!(offset_origin(480, 0.0), 240);
+        assert_eq!(offset_origin(7, 0.0), 3);
+        assert_eq!(offset_origin(0, 40.0), 0);
+        assert_eq!(offset_origin(480, 100.0), 480);
+        assert_eq!(offset_origin(480, -100.0), 0);
+        assert_eq!(offset_origin(480, 50.0), 360);
+    }
+
+    #[test]
+    fn cover_crop_center_is_unchanged() {
+        // 1920x1080 → 1:1，左右裁，垂直没有多余边距
+        assert_eq!(compute_cover_crop(1920, 1080, 1.0, 0.0, 0.0), (1080, 1080, 420, 0));
+        // 向右偏满：裁切框贴右
+        assert_eq!(
+            compute_cover_crop(1920, 1080, 1.0, 100.0, 0.0),
+            (1080, 1080, 840, 0)
+        );
+        // 1080x1920 → 1:1，上下裁
+        assert_eq!(compute_cover_crop(1080, 1920, 1.0, 0.0, 0.0), (1080, 1080, 0, 420));
+        assert_eq!(
+            compute_cover_crop(1080, 1920, 1.0, 0.0, 100.0),
+            (1080, 1080, 0, 840)
+        );
+        // 靠上：保留顶部文字
+        assert_eq!(compute_cover_crop(1080, 1920, 1.0, 0.0, -100.0), (1080, 1080, 0, 0));
+    }
 }

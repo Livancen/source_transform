@@ -365,6 +365,13 @@ pub struct RatioOutputOptions {
     pub image: RatioImageOutput,
     #[serde(default)]
     pub video: RatioVideoOutput,
+    /// 水平偏移，-100～100。0 为居中，正值把裁切框向右移（保留更多右侧）。
+    /// 按该方向被裁掉的多余边距计百分比，而不是整幅画面。
+    #[serde(default)]
+    pub offset_x: f64,
+    /// 垂直偏移，-100～100。0 为居中，正值把裁切框向下移（保留更多下方）。
+    #[serde(default)]
+    pub offset_y: f64,
 }
 
 impl Default for RatioOutputOptions {
@@ -372,6 +379,8 @@ impl Default for RatioOutputOptions {
         Self {
             image: RatioImageOutput::default(),
             video: RatioVideoOutput::default(),
+            offset_x: 0.0,
+            offset_y: 0.0,
         }
     }
 }

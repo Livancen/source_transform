@@ -291,6 +291,13 @@ export interface RatioVideoOutput {
 export interface RatioOutputOptions {
   image: RatioImageOutput;
   video: RatioVideoOutput;
+  /**
+   * 水平偏移百分比，-100～100。0 为居中，正值裁切框右移（保留更多右侧）。
+   * 按该方向被裁掉的多余边距计算，不是整幅画面的百分比。
+   */
+  offset_x: number;
+  /** 垂直偏移百分比，-100～100。0 为居中，正值裁切框下移（保留更多下方）。 */
+  offset_y: number;
 }
 
 export function defaultRatioOutputOptions(): RatioOutputOptions {
@@ -321,6 +328,8 @@ export function defaultRatioOutputOptions(): RatioOutputOptions {
       change_framerate: false,
       target_framerate: 30,
     },
+    offset_x: 0,
+    offset_y: 0,
   };
 }
 

@@ -5,6 +5,7 @@ import { formatFileSizeMb } from "../types";
 import { useFileThumbs } from "../composables/useFileThumbs";
 import { useVirtualList } from "../composables/useVirtualList";
 import MediaPreviewModal from "./MediaPreviewModal.vue";
+import RatioCropPreviewModal from "./RatioCropPreviewModal.vue";
 
 const props = defineProps<{
   kind: "input" | "output";
@@ -17,6 +18,11 @@ const props = defineProps<{
   allChecked?: boolean;
   /** 处理中禁止删除 */
   locked?: boolean;
+  /** 比例裁剪：输入行显示裁切预览 */
+  cropPreview?: boolean;
+  ratios?: string[];
+  offsetX?: number;
+  offsetY?: number;
 }>();
 
 const emit = defineEmits<{
@@ -26,6 +32,8 @@ const emit = defineEmits<{
   toggleCheck: [path: string];
   toggleCheckAll: [];
   deleteFile: [file: FileInfo];
+  "update:offsetX": [value: number];
+  "update:offsetY": [value: number];
 }>();
 
 const title = computed(() => (props.kind === "input" ? "输入" : "输出"));
@@ -50,6 +58,8 @@ watch(
 
 const previewVisible = ref(false);
 const previewFile = ref<FileInfo | null>(null);
+const cropPreviewVisible = ref(false);
+const cropPreviewFile = ref<FileInfo | null>(null);
 
 function fileExt(name: string) {
   const i = name.lastIndexOf(".");
@@ -76,6 +86,17 @@ function openPreview(file: FileInfo, e: Event) {
 function closePreview() {
   previewVisible.value = false;
   previewFile.value = null;
+}
+
+function openCropPreview(file: FileInfo, e: Event) {
+  e.stopPropagation();
+  cropPreviewFile.value = file;
+  cropPreviewVisible.value = true;
+}
+
+function closeCropPreview() {
+  cropPreviewVisible.value = false;
+  cropPreviewFile.value = null;
 }
 
 const menu = ref<{ x: number; y: number; file: FileInfo } | null>(null);
@@ -116,6 +137,7 @@ function confirmDelete() {
   if (!file) return;
   pendingDelete.value = null;
   if (previewFile.value?.path === file.path) closePreview();
+  if (cropPreviewFile.value?.path === file.path) closeCropPreview();
   emit("deleteFile", file);
 }
 
@@ -195,7 +217,9 @@ onBeforeUnmount(() => {
     <div
       class="shrink-0 grid h-28px items-center px-10px bg-bg2 border-b border-border text-11px font-500 color-t3"
       :class="selectable
-        ? 'grid-cols-[28px_48px_minmax(0,1fr)_56px_64px]'
+        ? (cropPreview
+          ? 'grid-cols-[28px_48px_minmax(0,1fr)_56px_64px_48px]'
+          : 'grid-cols-[28px_48px_minmax(0,1fr)_56px_64px]')
         : 'grid-cols-[48px_minmax(0,1fr)_56px_64px]'"
     >
       <label v-if="selectable" class="flex items-center justify-center" @click.stop>
@@ -211,6 +235,7 @@ onBeforeUnmount(() => {
       <span class="px-6px truncate">名称</span>
       <span class="px-4px truncate">大小</span>
       <span class="px-4px truncate">类型</span>
+      <span v-if="selectable && cropPreview" class="px-4px truncate">裁切</span>
     </div>
 
     <div
@@ -227,7 +252,9 @@ onBeforeUnmount(() => {
             :style="{ top: top + 'px', height: ROW_H - 2 + 'px' }"
             :class="[
               selectable
-                ? 'grid-cols-[28px_48px_minmax(0,1fr)_56px_64px] cursor-pointer'
+                ? (cropPreview
+                  ? 'grid-cols-[28px_48px_minmax(0,1fr)_56px_64px_48px] cursor-pointer'
+                  : 'grid-cols-[28px_48px_minmax(0,1fr)_56px_64px] cursor-pointer')
                 : 'grid-cols-[48px_minmax(0,1fr)_56px_64px] cursor-default',
               {
                 'bg-bg-selected outline outline-1 outline-secondary/25': selectedPath === file.path,
@@ -301,6 +328,17 @@ onBeforeUnmount(() => {
                 {{ file.file_type === "image" ? "图片" : "视频" }}
               </span>
             </div>
+
+            <div v-if="selectable && cropPreview" class="px-2px" @click.stop>
+              <button
+                class="h-22px px-6px rounded-4px border border-border bg-bg1 text-10px font-600 color-secondary cursor-pointer hover:bg-secondary-soft"
+                type="button"
+                title="预览各比例裁切区域"
+                @click="openCropPreview(file, $event)"
+              >
+                预览
+              </button>
+            </div>
           </div>
         </div>
       </template>
@@ -322,6 +360,18 @@ onBeforeUnmount(() => {
       :visible="previewVisible"
       :file="previewFile"
       @close="closePreview"
+    />
+
+    <RatioCropPreviewModal
+      v-if="cropPreview"
+      :visible="cropPreviewVisible"
+      :file="cropPreviewFile"
+      :ratios="ratios || []"
+      :offset-x="offsetX || 0"
+      :offset-y="offsetY || 0"
+      @close="closeCropPreview"
+      @update:offset-x="emit('update:offsetX', $event)"
+      @update:offset-y="emit('update:offsetY', $event)"
     />
 
     <Teleport to="body">
