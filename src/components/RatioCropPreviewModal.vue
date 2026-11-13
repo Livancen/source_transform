@@ -28,6 +28,12 @@ const videoFailed = ref(false);
 const framePending = ref(false);
 const outputVideoRef = ref<HTMLVideoElement | null>(null);
 const sourceVideoRef = ref<HTMLVideoElement | null>(null);
+const SPEEDS = [0.5, 1, 1.5, 2, 3];
+const playbackRate = ref(1);
+const currentTime = ref(0);
+const duration = ref(0);
+const playing = ref(false);
+const scrubbing = ref(false);
 
 const isVideo = computed(() => props.file?.file_type === "video");
 
@@ -103,9 +109,7 @@ const offsetNote = computed(() => {
   if (!horizontal && !vertical) return "与原比例一致，不会裁掉画面，偏移不生效";
   const parts: string[] = [];
   parts.push(
-    horizontal
-      ? `水平 ${offsetText("x", props.offsetX)}`
-      : "水平已贴边",
+    horizontal ? `水平 ${offsetText("x", props.offsetX)}` : "水平已贴边",
   );
   parts.push(
     vertical ? `垂直 ${offsetText("y", props.offsetY)}` : "垂直已贴边",
@@ -140,6 +144,11 @@ function resetMedia() {
   loading.value = false;
   videoFailed.value = false;
   framePending.value = false;
+  currentTime.value = 0;
+  duration.value = 0;
+  playing.value = false;
+  scrubbing.value = false;
+  playbackRate.value = 1;
   pauseVideos();
 }
 
@@ -160,11 +169,19 @@ async function loadMedia(file: FileInfo) {
   mediaH.value = 0;
   videoFailed.value = false;
   framePending.value = false;
+  currentTime.value = 0;
+  duration.value = 0;
+  playing.value = false;
+  scrubbing.value = false;
+  playbackRate.value = 1;
   try {
     if (file.file_type === "video") {
-      const dimensions = await invoke<[number, number]>("get_video_dimensions", {
-        videoPath: file.path,
-      });
+      const dimensions = await invoke<[number, number]>(
+        "get_video_dimensions",
+        {
+          videoPath: file.path,
+        },
+      );
       mediaW.value = dimensions[0];
       mediaH.value = dimensions[1];
       previewUrl.value = convertFileSrc(file.path);
@@ -195,7 +212,8 @@ function selectRatio(index: number) {
 
 function stepRatio(delta: number) {
   if (props.ratios.length === 0) return;
-  const next = (activeIndex.value + delta + props.ratios.length) % props.ratios.length;
+  const next =
+    (activeIndex.value + delta + props.ratios.length) % props.ratios.length;
   activeIndex.value = next;
 }
 
@@ -217,6 +235,105 @@ function setOffset(axis: "x" | "y", value: number) {
   else emit("update:offsetY", next);
 }
 
+function videoEls(): HTMLVideoElement[] {
+  return [outputVideoRef.value, sourceVideoRef.value].filter(
+    (video): video is HTMLVideoElement => video != null,
+  );
+}
+
+function applyRate() {
+  for (const video of videoEls()) video.playbackRate = playbackRate.value;
+}
+
+function onVideoReady(event: Event) {
+  const video = event.target as HTMLVideoElement;
+  video.playbackRate = playbackRate.value;
+  if (Number.isFinite(video.duration) && video.duration > 0) {
+    duration.value = video.duration;
+  }
+  if (
+    currentTime.value > 0.05 &&
+    Math.abs(video.currentTime - currentTime.value) > 0.2
+  ) {
+    video.currentTime = Math.min(
+      currentTime.value,
+      video.duration || currentTime.value,
+    );
+  }
+}
+
+function onTimeUpdate(event: Event) {
+  const video = event.target as HTMLVideoElement;
+  if (video !== outputVideoRef.value || scrubbing.value) return;
+  currentTime.value = video.currentTime;
+  if (Number.isFinite(video.duration) && video.duration > 0) {
+    duration.value = video.duration;
+  }
+  const other = sourceVideoRef.value;
+  if (other && Math.abs(other.currentTime - video.currentTime) > 0.25) {
+    other.currentTime = video.currentTime;
+  }
+}
+
+function onPlayState(event: Event) {
+  const video = event.target as HTMLVideoElement;
+  if (video !== outputVideoRef.value) return;
+  playing.value = !video.paused;
+}
+
+function togglePlay() {
+  const master = outputVideoRef.value;
+  if (!master) return;
+  if (master.paused) {
+    applyRate();
+    void master.play();
+    void sourceVideoRef.value?.play();
+  } else {
+    master.pause();
+    sourceVideoRef.value?.pause();
+  }
+}
+
+function seekTo(value: number) {
+  const next = Number.isFinite(value) ? Math.max(0, value) : 0;
+  currentTime.value = next;
+  for (const video of videoEls()) {
+    const limit = Number.isFinite(video.duration) ? video.duration : next;
+    video.currentTime = Math.min(next, limit);
+  }
+}
+
+function onScrub(value: number) {
+  if (!scrubbing.value) {
+    scrubbing.value = true;
+    window.addEventListener("pointerup", endScrub);
+    window.addEventListener("pointercancel", endScrub);
+  }
+  seekTo(value);
+}
+
+function endScrub() {
+  scrubbing.value = false;
+  window.removeEventListener("pointerup", endScrub);
+  window.removeEventListener("pointercancel", endScrub);
+}
+
+function setRate(rate: number) {
+  playbackRate.value = rate;
+  applyRate();
+}
+
+function formatClock(sec: number) {
+  if (!Number.isFinite(sec) || sec < 0) return "0:00";
+  const total = Math.floor(sec);
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  const ss = String(s).padStart(2, "0");
+  if (h > 0) return `${h}:${String(m).padStart(2, "0")}:${ss}`;
+  return `${m}:${ss}`;
+}
+
 async function onVideoError() {
   if (framePending.value || videoFailed.value || !props.file) return;
   framePending.value = true;
@@ -232,7 +349,10 @@ async function onVideoError() {
 
 function onKey(e: KeyboardEvent) {
   if (!props.visible) return;
-  if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+  if (
+    e.target instanceof HTMLInputElement ||
+    e.target instanceof HTMLTextAreaElement
+  ) {
     if (e.key === "Escape") emit("close");
     return;
   }
@@ -245,6 +365,9 @@ function onKey(e: KeyboardEvent) {
   } else if (e.key === "ArrowRight") {
     e.preventDefault();
     stepRatio(1);
+  } else if (e.key === " " && !(e.target instanceof HTMLButtonElement)) {
+    e.preventDefault();
+    togglePlay();
   }
 }
 
@@ -259,6 +382,7 @@ watch(
 
 onBeforeUnmount(() => {
   window.removeEventListener("keydown", onKey);
+  endScrub();
 });
 </script>
 
@@ -269,7 +393,7 @@ onBeforeUnmount(() => {
     @click.self="emit('close')"
   >
     <div
-      class="modal-panel w-980px! max-w-94vw! max-h-92vh! overflow-hidden! flex flex-col"
+      class="modal-panel w-980px! max-w-94vw! max-h-98vh! overflow-hidden! flex flex-col"
       @click.stop
     >
       <div
@@ -288,12 +412,19 @@ onBeforeUnmount(() => {
             <template v-else-if="isVideo"> · 首帧预览</template>
           </div>
         </div>
-        <button class="tb-btn shrink-0 text-20px lh-20px" type="button" title="关闭" @click="emit('close')">
+        <button
+          class="tb-btn shrink-0 text-20px lh-20px"
+          type="button"
+          title="关闭"
+          @click="emit('close')"
+        >
           ×
         </button>
       </div>
 
-      <div class="shrink-0 px-16px py-10px border-b border-border flex flex-wrap items-center gap-8px">
+      <div
+        class="shrink-0 px-16px py-10px border-b border-border flex flex-wrap items-center gap-8px"
+      >
         <span class="text-11px color-t3 shrink-0">比例</span>
         <button
           v-for="(ratio, index) in ratios"
@@ -315,7 +446,7 @@ onBeforeUnmount(() => {
         <span v-else class="text-10px color-t3 ml-auto">← → 切换</span>
       </div>
 
-      <div class="flex-1 min-h-0 overflow-auto p-16px">
+      <div class="flex-1 min-h-0 overflow-auto px-16px">
         <div v-if="loading" class="py-48px text-center text-13px color-t3">
           加载预览中…
         </div>
@@ -341,7 +472,9 @@ onBeforeUnmount(() => {
         >
           <div class="min-w-0 flex flex-col gap-8px">
             <div class="text-12px font-600 color-t1">最终输出</div>
-            <div class="rounded-4px bg-[#1b1b1b] p-12px flex items-center justify-center min-h-180px">
+            <div
+              class="rounded-4px bg-[#1b1b1b] p-12px flex items-center justify-center min-h-180px"
+            >
               <div class="overflow-hidden bg-black" :style="outputFrameStyle">
                 <video
                   v-if="isVideo && !videoFailed"
@@ -355,6 +488,10 @@ onBeforeUnmount(() => {
                   autoplay
                   playsinline
                   @error="onVideoError"
+                  @loadedmetadata="onVideoReady"
+                  @timeupdate="onTimeUpdate"
+                  @play="onPlayState"
+                  @pause="onPlayState"
                 />
                 <img
                   v-else
@@ -367,8 +504,57 @@ onBeforeUnmount(() => {
               </div>
             </div>
             <div class="text-11px color-t3 font-mono">
-              {{ activeRatio }} · {{ crop.cropW }}×{{ crop.cropH }} · 起点
-              ({{ crop.cropX }}, {{ crop.cropY }})
+              {{ activeRatio }} · {{ crop.cropW }}×{{ crop.cropH }} · 起点 ({{
+                crop.cropX
+              }}, {{ crop.cropY }})
+            </div>
+            <div
+              v-if="isVideo && !videoFailed"
+              class="flex flex-wrap items-center gap-8px"
+            >
+              <button
+                class="tb-btn h-24px! px-8px! text-11px! shrink-0"
+                type="button"
+                @click="togglePlay"
+              >
+                {{ playing ? "暂停" : "播放" }}
+              </button>
+              <span class="text-11px color-t3 font-mono shrink-0 tabular-nums">
+                {{ formatClock(currentTime) }} / {{ formatClock(duration) }}
+              </span>
+              <input
+                class="flex-1 min-w-120px accent-secondary h-16px cursor-pointer"
+                type="range"
+                min="0"
+                :max="duration || 0"
+                step="0.05"
+                :value="currentTime"
+                :disabled="!duration"
+                title="拖动进度"
+                @pointerdown="scrubbing = true"
+                @input="
+                  onScrub(Number(($event.target as HTMLInputElement).value))
+                "
+                @change="endScrub"
+                @pointerup="endScrub"
+                @pointercancel="endScrub"
+              />
+              <div class="flex gap-4px shrink-0">
+                <button
+                  v-for="rate in SPEEDS"
+                  :key="rate"
+                  type="button"
+                  class="h-22px px-6px rounded-4px border text-10px font-600 cursor-pointer"
+                  :class="
+                    playbackRate === rate
+                      ? 'bg-secondary color-white border-secondary'
+                      : 'bg-bg1 color-t2 border-border hover:border-secondary'
+                  "
+                  @click="setRate(rate)"
+                >
+                  {{ rate }}x
+                </button>
+              </div>
             </div>
           </div>
 
@@ -389,6 +575,7 @@ onBeforeUnmount(() => {
                 autoplay
                 playsinline
                 @error="onVideoError"
+                @loadedmetadata="onVideoReady"
               />
               <img
                 v-else
@@ -397,16 +584,24 @@ onBeforeUnmount(() => {
                 draggable="false"
                 alt=""
               />
-              <div class="absolute left-0 right-0 top-0 bg-black/55" :style="shade.top" />
-              <div class="absolute left-0 right-0 bottom-0 bg-black/55" :style="shade.bottom" />
+              <div
+                class="absolute left-0 right-0 top-0 bg-black/55"
+                :style="shade.top"
+              />
+              <div
+                class="absolute left-0 right-0 bottom-0 bg-black/55"
+                :style="shade.bottom"
+              />
               <div class="absolute left-0 bg-black/55" :style="shade.left" />
               <div class="absolute right-0 bg-black/55" :style="shade.right" />
               <div
-                class="absolute border-2 border-white pointer-events-none"
+                class="absolute border-1 border-dotted border-red pointer-events-none"
                 :style="cropBoxStyle"
               />
             </div>
-            <p class="text-11px color-t3 leading-relaxed">暗区会被裁掉，白框是导出区域。</p>
+            <p class="text-11px color-t3 leading-relaxed">
+              暗区会被裁掉，红框是导出区域。
+            </p>
           </div>
         </div>
       </div>
@@ -426,9 +621,16 @@ onBeforeUnmount(() => {
               max="100"
               step="1"
               :value="offsetX || 0"
-              @input="setOffset('x', Number(($event.target as HTMLInputElement).value))"
+              @input="
+                setOffset(
+                  'x',
+                  Number(($event.target as HTMLInputElement).value),
+                )
+              "
             />
-            <span class="text-11px color-t3 w-64px">{{ offsetText("x", offsetX) }}</span>
+            <span class="text-11px color-t3 w-64px">{{
+              offsetText("x", offsetX)
+            }}</span>
           </label>
           <label class="inline-flex items-center gap-8px min-w-220px flex-1">
             <span class="text-11px color-t2 w-28px">垂直</span>
@@ -439,9 +641,16 @@ onBeforeUnmount(() => {
               max="100"
               step="1"
               :value="offsetY || 0"
-              @input="setOffset('y', Number(($event.target as HTMLInputElement).value))"
+              @input="
+                setOffset(
+                  'y',
+                  Number(($event.target as HTMLInputElement).value),
+                )
+              "
             />
-            <span class="text-11px color-t3 w-64px">{{ offsetText("y", offsetY) }}</span>
+            <span class="text-11px color-t3 w-64px">{{
+              offsetText("y", offsetY)
+            }}</span>
           </label>
         </div>
       </div>
