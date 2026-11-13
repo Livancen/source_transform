@@ -65,6 +65,8 @@ const loadError = ref("");
 const currentTime = ref(0);
 const playing = ref(false);
 const playbackRate = ref(1);
+const outputPreview = ref(false);
+const previewMotion = ref(false);
 const videoRef = ref<HTMLVideoElement | null>(null);
 const frameRef = ref<HTMLElement | null>(null);
 const timelineRef = ref<HTMLElement | null>(null);
@@ -163,10 +165,121 @@ function pieceAtTime(time: number): SegmentPiece | null {
   return time >= last.end - 0.001 ? last : list[0];
 }
 
+function isKeptPiece(piece: SegmentPiece) {
+  return piece.mode !== "drop" && piece.end - piece.start >= 0.08;
+}
+
+const outputAspect = computed(() => {
+  const ratio = parseRatio(fileRatio.value);
+  if (!ratio || mediaW.value < 2 || mediaH.value < 2) return null;
+  const canon = computeCoverCrop(mediaW.value, mediaH.value, ratio, 0, 0);
+  if (canon.cropW < 2 || canon.cropH < 2) return null;
+  return canon;
+});
+
+const outputPiece = computed(() => pieceAtTime(currentTime.value));
+
+const outputCrop = computed(() => {
+  const piece = outputPiece.value;
+  if (!outputPreview.value || !piece || !isKeptPiece(piece) || !mediaW.value) return null;
+  return coverBox(mediaW.value, mediaH.value, fileRatio.value, piece);
+});
+
+const hasKeptSegment = computed(() => segments.value.some((piece) => isKeptPiece(piece)));
+
+const frameStyle = computed(() => {
+  if (outputPreview.value && outputAspect.value) {
+    return {
+      aspectRatio: `${outputAspect.value.cropW} / ${outputAspect.value.cropH}`,
+      height: "100%",
+    };
+  }
+  if (mediaW.value && mediaH.value) {
+    return { aspectRatio: `${mediaW.value} / ${mediaH.value}`, height: "100%" };
+  }
+  return { width: "100%" };
+});
+
+const outputVideoStyle = computed(() => {
+  if (!outputPreview.value) return undefined;
+  const rect = outputCrop.value;
+  if (!rect || !mediaW.value || !mediaH.value) return { visibility: "hidden" as const };
+  return {
+    width: `${(mediaW.value / rect.cropW) * 100}%`,
+    height: `${(mediaH.value / rect.cropH) * 100}%`,
+    left: `${(-rect.cropX / rect.cropW) * 100}%`,
+    top: `${(-rect.cropY / rect.cropH) * 100}%`,
+  };
+});
+
+let skipUntil = 0;
+
+function nextKeptStart(time: number): number | null {
+  const list = [...segments.value].sort((a, b) => a.start - b.start);
+  for (const piece of list) {
+    if (piece.end <= time + 0.02) continue;
+    if (!isKeptPiece(piece)) continue;
+    if (time >= piece.start - 0.02 && time < piece.end) return null;
+    return piece.start;
+  }
+  return null;
+}
+
+function skipDropped(video: HTMLVideoElement | null) {
+  if (!video || !outputPreview.value || performance.now() < skipUntil) return;
+  const time = video.currentTime || 0;
+  const hit = pieceAtTime(time);
+  if (!hit || isKeptPiece(hit)) return;
+  const jump = nextKeptStart(time);
+  if (jump == null) {
+    video.pause();
+    return;
+  }
+  if (Math.abs(video.currentTime - jump) < 0.03) return;
+  skipUntil = performance.now() + 250;
+  video.currentTime = jump;
+  currentTime.value = jump;
+}
+
+function toggleOutputPreview() {
+  outputPreview.value = !outputPreview.value;
+  previewMotion.value = false;
+  const video = videoRef.value;
+  if (outputPreview.value && video && !video.paused) skipDropped(video);
+}
+
+function onPlay() {
+  playing.value = true;
+  if (outputPreview.value) skipDropped(videoRef.value);
+}
+
+watch(outputPreview, (on) => {
+  previewMotion.value = false;
+  if (!on) return;
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      if (outputPreview.value) previewMotion.value = true;
+    });
+  });
+});
+
 function onTimeUpdate() {
   const video = videoRef.value;
   if (!video) return;
-  const time = video.currentTime || 0;
+  let time = video.currentTime || 0;
+  if (outputPreview.value && !video.paused && performance.now() >= skipUntil) {
+    const hit = pieceAtTime(time);
+    if (hit && !isKeptPiece(hit)) {
+      const jump = nextKeptStart(time);
+      if (jump == null) {
+        video.pause();
+      } else if (Math.abs(time - jump) >= 0.03) {
+        skipUntil = performance.now() + 250;
+        video.currentTime = jump;
+        time = jump;
+      }
+    }
+  }
   currentTime.value = time;
   if (video.paused || selectedIds.value.length > 1) return;
   const hit = pieceAtTime(time);
@@ -919,24 +1032,35 @@ onBeforeUnmount(() => {
               <div
                 ref="frameRef"
                 class="relative max-w-full max-h-full bg-black"
-                :style="
-                  mediaW && mediaH
-                    ? { aspectRatio: `${mediaW} / ${mediaH}`, height: '100%' }
-                    : { width: '100%' }
-                "
+                :class="outputPreview ? 'overflow-hidden' : ''"
+                :style="frameStyle"
               >
                 <video
                   ref="videoRef"
                   :key="selected.path"
-                  class="absolute inset-0 w-full h-full object-fill"
+                  class="absolute object-fill"
+                  :class="
+                    outputPreview
+                      ? previewMotion
+                        ? 'crop-follow'
+                        : ''
+                      : 'inset-0 w-full h-full'
+                  "
+                  :style="outputVideoStyle"
                   :src="convertFileSrc(selected.path)"
                   playsinline
                   @loadedmetadata="onVideoMeta"
                   @timeupdate="onTimeUpdate"
-                  @play="playing = true"
+                  @play="onPlay"
                   @pause="playing = false"
                 />
-                <template v-if="shade">
+                <div
+                  v-if="outputPreview"
+                  class="absolute left-8px top-8px z-10 px-6px h-18px leading-18px rounded-2px bg-black/70 text-white text-10px pointer-events-none"
+                >
+                  成片预览
+                </div>
+                <template v-if="shade && !outputPreview">
                   <div
                     class="absolute left-0 right-0 top-0 bg-black/55 pointer-events-none"
                     :class="playing ? 'crop-follow' : ''"
@@ -959,7 +1083,7 @@ onBeforeUnmount(() => {
                   ></div>
                 </template>
                 <div
-                  v-if="box"
+                  v-if="box && !outputPreview"
                   class="absolute border-1 border-dotted border-white shadow-[0_0_0_1px_rgba(0,0,0,.45)]"
                   :class="
                     playing
@@ -1056,7 +1180,13 @@ onBeforeUnmount(() => {
                   ></i>
                 </div>
                 <div
-                  v-else-if="active?.mode === 'drop'"
+                  v-else-if="outputPreview && outputPiece && !isKeptPiece(outputPiece)"
+                  class="absolute inset-0 grid place-items-center bg-black/55 text-white text-14px font-600 pointer-events-none"
+                >
+                  {{ hasKeptSegment ? "这段不进入成片" : "没有可预览的片段" }}
+                </div>
+                <div
+                  v-else-if="!outputPreview && active?.mode === 'drop'"
                   class="absolute inset-0 grid place-items-center bg-black/55 text-white text-14px font-600 pointer-events-none"
                 >
                   这段不导出
@@ -1285,6 +1415,16 @@ onBeforeUnmount(() => {
                 >
                   {{ multi ? "合并" : "与上段合并" }}
                 </button>
+                <button
+                  class="seg-tool"
+                  type="button"
+                  :class="{ 'is-on': outputPreview }"
+                  :disabled="!mediaW || !duration"
+                  title="按成片比例预览裁切，不重新编码"
+                  @click="toggleOutputPreview"
+                >
+                  {{ outputPreview ? "退出预览" : "预览" }}
+                </button>
                 <span class="ml-auto text-10px color-white/50"
                   >拖红线移动时间 · 悬停边缘改时长 · Ctrl 点选</span
                 >
@@ -1384,6 +1524,14 @@ onBeforeUnmount(() => {
 }
 .seg-tool:hover:not(:disabled) {
   background: rgba(255, 255, 255, 0.08);
+}
+.seg-tool.is-on {
+  background: #fff;
+  color: #1b1b1b;
+  border-color: #fff;
+}
+.seg-tool.is-on:hover:not(:disabled) {
+  background: #fff;
 }
 .play-btn {
   width: 28px;
