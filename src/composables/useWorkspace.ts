@@ -17,7 +17,7 @@ import {
   defaultRatioOutputOptions,
 } from "../types";
 import { useToast } from "./useToast";
-import { buildSegmentJobs, loadSegmentGlobal } from "../utils/segmentCrop";
+import { buildSegmentJobs, loadSegmentGlobal, loadSegmentRatios } from "../utils/segmentCrop";
 import { parseRatio } from "../utils/ratioCrop";
 
 const RATIO_STORAGE_KEY = "aspect-ratio-crop-ratios";
@@ -490,8 +490,8 @@ async function startProcess() {
       resultMessage.value = "请先勾选要裁剪的视频";
       return;
     }
-    if (!parseRatio(loadSegmentGlobal().ratio)) {
-      resultMessage.value = "请填写有效的全局比例，如 9:16";
+    if (!loadSegmentRatios().ratios.some((ratio) => parseRatio(ratio))) {
+      resultMessage.value = "请至少添加一个分段裁剪比例，如 9:16";
       return;
     }
   }

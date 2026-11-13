@@ -15,10 +15,12 @@ import {
   scaleLockedBox,
   loadSegmentConfig,
   loadSegmentGlobal,
+  loadSegmentRatios,
   newSegmentId,
   offsetsFromPosition,
   saveSegmentConfig,
   saveSegmentGlobal,
+  saveSegmentRatios,
   segmentConfigPaths,
   type SegmentGlobal,
   type SegmentPiece,
@@ -44,11 +46,12 @@ const emit = defineEmits<{
 }>();
 
 const globalOpts = ref<SegmentGlobal>(loadSegmentGlobal());
+const initialRatios = loadSegmentRatios();
 const configTick = ref(0);
 const segments = ref<SegmentPiece[]>([]);
-const fileRatios = ref<string[]>([globalOpts.value.ratio]);
+const fileRatios = ref<string[]>([...initialRatios.ratios]);
 const tracks = ref<Record<string, SegmentPiece[]>>({});
-const fileRatio = ref(globalOpts.value.ratio);
+const fileRatio = ref(initialRatios.active);
 const ratioInput = ref("");
 const ratioError = ref("");
 const copyOpen = ref(false);
@@ -104,6 +107,7 @@ const activeIndex = computed(() =>
   segments.value.findIndex((piece) => piece.id === active.value?.id),
 );
 const otherRatios = computed(() => fileRatios.value.filter((ratio) => ratio !== fileRatio.value));
+const ratioCustom = computed(() => Boolean(tracks.value[fileRatio.value]?.length));
 const box = computed(() => {
   const piece = previewPiece.value;
   if (!piece || piece.mode === "drop" || !mediaW.value) return null;
@@ -170,28 +174,13 @@ const playheadLeft = computed(() =>
 
 watch(globalOpts, (value) => saveSegmentGlobal(value), { deep: true });
 
-watch(
-  () =>
-    [
-      globalOpts.value.ratio,
-      globalOpts.value.offsetX,
-      globalOpts.value.offsetY,
-    ] as const,
-  () => {
-    if (saved.value || hydrating || !selected.value) return;
-    const only = segments.value[0];
-    if (fileRatios.value.length !== 1 || segments.value.length !== 1 || !only || only.mode !== "offset") return;
-    hydrating = true;
-    const ratio = globalOpts.value.ratio;
-    const span = [fullSpanSegment(duration.value || only.end || 1, globalOpts.value)];
-    fileRatio.value = ratio;
-    fileRatios.value = [ratio];
-    tracks.value = { [ratio]: span.map((piece) => ({ ...piece })) };
-    segments.value = span;
-    selectOnly(segments.value[0].id);
-    hydrating = false;
-  },
-);
+function centeredSpan(end: number) {
+  return fullSpanSegment(end, { ...globalOpts.value, offsetX: 0, offsetY: 0 });
+}
+
+function rememberRatios() {
+  saveSegmentRatios({ ratios: [...fileRatios.value], active: fileRatio.value });
+}
 
 watch(
   () => props.selectedPath,
@@ -213,19 +202,25 @@ function touchConfig() {
 }
 
 function snapshotTracks() {
-  const active = fileRatio.value.trim() || globalOpts.value.ratio;
+  const active = fileRatio.value.trim();
+  if (!active || segments.value.length === 0) return;
   tracks.value = {
     ...tracks.value,
     [active]: segments.value.map((piece) => ({ ...piece })),
   };
-  if (!fileRatios.value.includes(active)) fileRatios.value = [active, ...fileRatios.value];
 }
 
 function persist() {
   const file = selected.value;
   if (!file || hydrating || !(duration.value > 0)) return;
   snapshotTracks();
-  const ratios = fileRatios.value.filter((ratio) => tracks.value[ratio]?.length);
+  const ratios = Object.keys(tracks.value).filter((ratio) => tracks.value[ratio]?.length);
+  if (ratios.length === 0) {
+    clearSegmentConfig(file.path);
+    saved.value = false;
+    touchConfig();
+    return;
+  }
   saveSegmentConfig(file.path, {
     ratio: fileRatio.value,
     ratios,
@@ -239,7 +234,7 @@ function applyTrack(ratio: string) {
   const pieces = tracks.value[ratio];
   segments.value = pieces?.length
     ? pieces.map((piece) => ({ ...piece }))
-    : [fullSpanSegment(duration.value || 1, globalOpts.value)];
+    : [centeredSpan(duration.value || 1)];
   const time = currentTime.value;
   const hit = segments.value.find((piece) => time >= piece.start && time < piece.end) || segments.value[0];
   selectOnly(hit?.id || "");
@@ -256,20 +251,9 @@ async function openFile(file: FileInfo) {
   const cfg = loadSegmentConfig(file.path);
   saved.value = !!cfg;
   copyOpen.value = false;
-  ratioError.value = "";
-  ratioInput.value = "";
-  if (cfg) {
-    fileRatios.value = [...cfg.ratios];
-    tracks.value = Object.fromEntries(
-      cfg.ratios.map((ratio) => [ratio, cfg.tracks[ratio].map((piece) => ({ ...piece }))]),
-    );
-    fileRatio.value = cfg.ratio;
-  } else {
-    const ratio = globalOpts.value.ratio;
-    fileRatio.value = ratio;
-    fileRatios.value = [ratio];
-    tracks.value = {};
-  }
+  tracks.value = cfg
+    ? Object.fromEntries(cfg.ratios.map((ratio) => [ratio, cfg.tracks[ratio].map((piece) => ({ ...piece }))]))
+    : {};
   try {
     const dimensions = await invoke<[number, number]>("get_video_dimensions", {
       videoPath: file.path,
@@ -282,12 +266,7 @@ async function openFile(file: FileInfo) {
     loading.value = false;
     hydrating = false;
   }
-  if (cfg) {
-    applyTrack(fileRatio.value);
-  } else {
-    segments.value = [fullSpanSegment(1, globalOpts.value)];
-    selectOnly(segments.value[0]?.id || "");
-  }
+  applyTrack(fileRatio.value);
 }
 
 function onVideoMeta() {
@@ -295,14 +274,12 @@ function onVideoMeta() {
   if (!video || !Number.isFinite(video.duration) || video.duration <= 0) return;
   duration.value = video.duration;
   video.playbackRate = playbackRate.value;
-  if (!saved.value && fileRatios.value.length === 1) {
+  if (!tracks.value[fileRatio.value]?.length) {
     const only = segments.value[0];
     if (segments.value.length === 1 && only?.start === 0 && only.mode === "offset" && only.end <= 1.05) {
       hydrating = true;
-      const span = [fullSpanSegment(video.duration, globalOpts.value)];
-      segments.value = span;
-      tracks.value = { [fileRatio.value]: span.map((piece) => ({ ...piece })) };
-      selectOnly(span[0].id);
+      segments.value = [centeredSpan(video.duration)];
+      selectOnly(segments.value[0].id);
       hydrating = false;
     }
   }
@@ -376,14 +353,14 @@ function updateActive(patch: Partial<SegmentPiece>) {
 }
 
 function switchRatio(ratio: string) {
-  if (props.locked || ratio === fileRatio.value || !tracks.value[ratio]?.length) return;
-  hydrating = true;
-  snapshotTracks();
+  if (props.locked || ratio === fileRatio.value || !fileRatios.value.includes(ratio)) return;
   fileRatio.value = ratio;
+  rememberRatios();
+  copyOpen.value = false;
+  if (!selected.value) return;
+  hydrating = true;
   applyTrack(ratio);
   hydrating = false;
-  persist();
-  copyOpen.value = false;
 }
 
 function addFileRatio() {
@@ -397,39 +374,24 @@ function addFileRatio() {
     ratioError.value = "该比例已存在";
     return;
   }
-  snapshotTracks();
-  const end =
-    duration.value > 0
-      ? duration.value
-      : Math.max(0.1, ...segments.value.map((piece) => piece.end));
-  const blank = fullSpanSegment(end, {
-    ...globalOpts.value,
-    offsetX: 0,
-    offsetY: 0,
-  });
-  tracks.value = {
-    ...tracks.value,
-    [value]: [blank],
-  };
   fileRatios.value = [...fileRatios.value, value];
   ratioInput.value = "";
-  persist();
+  switchRatio(value);
 }
 
 function removeFileRatio(ratio: string) {
   if (props.locked || fileRatios.value.length <= 1) return;
   const nextRatios = fileRatios.value.filter((item) => item !== ratio);
-  const nextTracks = { ...tracks.value };
-  delete nextTracks[ratio];
   fileRatios.value = nextRatios;
-  tracks.value = nextTracks;
   if (fileRatio.value === ratio) {
-    hydrating = true;
     fileRatio.value = nextRatios[0];
-    applyTrack(fileRatio.value);
-    hydrating = false;
+    if (selected.value) {
+      hydrating = true;
+      applyTrack(fileRatio.value);
+      hydrating = false;
+    }
   }
-  persist();
+  rememberRatios();
 }
 
 function copyActiveTo(target: string) {
@@ -561,14 +523,9 @@ function resetFile() {
   clearSegmentConfig(file.path);
   saved.value = false;
   copyOpen.value = false;
-  ratioError.value = "";
-  const ratio = globalOpts.value.ratio;
-  fileRatio.value = ratio;
-  fileRatios.value = [ratio];
   hydrating = true;
-  const span = [fullSpanSegment(duration.value || 1, globalOpts.value)];
-  tracks.value = { [ratio]: span.map((piece) => ({ ...piece })) };
-  segments.value = span;
+  tracks.value = {};
+  segments.value = [centeredSpan(duration.value || 1)];
   selectOnly(segments.value[0].id);
   hydrating = false;
   touchConfig();
@@ -779,6 +736,50 @@ onBeforeUnmount(() => {
 <template>
   <div class="flex-1 min-h-0 flex flex-col bg-bg0">
     <div
+      class="shrink-0 px-12px py-6px border-b border-border bg-bg1 flex flex-wrap items-center gap-6px"
+    >
+      <span class="text-11px color-t2 shrink-0">输出比例</span>
+      <span class="text-10px color-t3 shrink-0">仅分段裁剪，勾选的素材都会各出一条</span>
+      <button
+        v-for="ratio in fileRatios"
+        :key="ratio"
+        type="button"
+        class="inline-flex items-center gap-4px h-26px px-8px rounded-full border text-12px font-mono"
+        :class="
+          ratio === fileRatio
+            ? 'bg-secondary-soft border-secondary/30 color-secondary font-600'
+            : 'bg-bg0 border-border color-t2'
+        "
+        :disabled="locked"
+        @click="switchRatio(ratio)"
+      >
+        {{ ratio }}
+        <span
+          v-if="fileRatios.length > 1"
+          class="color-t3 hover:color-danger"
+          @click.stop="removeFileRatio(ratio)"
+          >×</span
+        >
+      </button>
+      <input
+        class="field w-72px! h-26px! text-12px! font-mono"
+        :value="ratioInput"
+        placeholder="W:H"
+        :disabled="locked"
+        @input="ratioInput = ($event.target as HTMLInputElement).value"
+        @keyup.enter="addFileRatio"
+      />
+      <button
+        class="tb-btn h-26px! px-8px! text-11px!"
+        type="button"
+        :disabled="locked"
+        @click="addFileRatio"
+      >
+        添加
+      </button>
+      <span v-if="ratioError" class="text-11px color-danger">{{ ratioError }}</span>
+    </div>
+    <div
       class="flex-1 min-h-0 grid"
       style="grid-template-columns: minmax(280px, 42%) 6px minmax(0, 1fr)"
     >
@@ -811,7 +812,7 @@ onBeforeUnmount(() => {
         </div>
         <template v-else>
           <div
-            class="shrink-0 h-40px px-12px flex items-center gap-8px border-b border-border"
+            class="shrink-0 min-h-40px px-12px py-6px flex flex-wrap items-center gap-8px border-b border-border"
           >
             <div
               class="min-w-0 flex-1 truncate text-13px font-600"
@@ -820,61 +821,11 @@ onBeforeUnmount(() => {
               {{ selected.name }}
             </div>
             <span
-              v-if="saved"
+              v-if="ratioCustom"
               class="text-10px color-secondary font-600 shrink-0"
-              >已配置</span
+              >此比例已分段</span
             >
-            <span v-else class="text-10px color-t3 shrink-0">未配置</span>
-            <button
-              class="tb-btn h-26px! px-8px! text-11px!"
-              type="button"
-              :disabled="!saved || locked"
-              @click="resetFile"
-            >
-              恢复整段
-            </button>
-          </div>
-          <div
-            class="shrink-0 px-12px py-6px border-b border-border flex flex-wrap items-center gap-6px"
-          >
-            <span class="text-11px color-t2 shrink-0">比例</span>
-            <button
-              v-for="ratio in fileRatios"
-              :key="ratio"
-              type="button"
-              class="inline-flex items-center gap-4px h-26px px-8px rounded-full border text-12px font-mono"
-              :class="
-                ratio === fileRatio
-                  ? 'bg-secondary-soft border-secondary/30 color-secondary font-600'
-                  : 'bg-bg0 border-border color-t2'
-              "
-              :disabled="locked"
-              @click="switchRatio(ratio)"
-            >
-              {{ ratio }}
-              <span
-                v-if="fileRatios.length > 1"
-                class="color-t3 hover:color-danger"
-                @click.stop="removeFileRatio(ratio)"
-                >×</span
-              >
-            </button>
-            <input
-              class="field w-72px! h-26px! text-12px! font-mono"
-              :value="ratioInput"
-              placeholder="W:H"
-              :disabled="locked"
-              @input="ratioInput = ($event.target as HTMLInputElement).value"
-              @keyup.enter="addFileRatio"
-            />
-            <button
-              class="tb-btn h-26px! px-8px! text-11px!"
-              type="button"
-              :disabled="locked"
-              @click="addFileRatio"
-            >
-              添加
-            </button>
+            <span v-else class="text-10px color-t3 shrink-0">此比例整段</span>
             <div v-if="fileRatios.length > 1" class="relative">
               <button
                 class="tb-btn h-26px! px-8px! text-11px!"
@@ -886,7 +837,7 @@ onBeforeUnmount(() => {
               </button>
               <div
                 v-if="copyOpen"
-                class="absolute right-0 top-30px z-20 min-w-120px py-4px rounded-4px border border-border bg-bg1 shadow-fluent"
+                class="absolute right-0 top-30px z-20 min-w-140px py-4px rounded-4px border border-border bg-bg1 shadow-fluent"
               >
                 <button
                   v-for="ratio in otherRatios"
@@ -907,7 +858,14 @@ onBeforeUnmount(() => {
                 </button>
               </div>
             </div>
-            <span v-if="ratioError" class="text-11px color-danger">{{ ratioError }}</span>
+            <button
+              class="tb-btn h-26px! px-8px! text-11px!"
+              type="button"
+              :disabled="!saved || locked"
+              @click="resetFile"
+            >
+              恢复整段
+            </button>
           </div>
 
           <div v-if="loading" class="m-auto text-12px color-t3">

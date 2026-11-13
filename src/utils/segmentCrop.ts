@@ -59,6 +59,13 @@ export interface SegmentExportJob {
 
 const GLOBAL_KEY = "segment-crop-global";
 const CONFIG_KEY = "segment-crop-configs";
+/** 只在分段裁剪里生效，不和比例裁剪的比例列表共用。 */
+const RATIO_KEY = "segment-crop-ratios";
+
+export interface SegmentRatioSet {
+  ratios: string[];
+  active: string;
+}
 
 export function defaultSegmentGlobal(): SegmentGlobal {
   return { ratio: "9:16", offsetX: 0, offsetY: 0, mute: false };
@@ -93,6 +100,63 @@ export function saveSegmentGlobal(value: SegmentGlobal) {
     mute: Boolean(value.mute),
   };
   localStorage.setItem(GLOBAL_KEY, JSON.stringify(next));
+}
+
+function cleanRatioList(values: unknown): string[] {
+  if (!Array.isArray(values)) return [];
+  const ratios: string[] = [];
+  for (const item of values) {
+    const ratio = String(item ?? "").trim();
+    if (!parseRatio(ratio) || ratios.includes(ratio)) continue;
+    ratios.push(ratio);
+  }
+  return ratios;
+}
+
+function migrateSegmentRatios(): SegmentRatioSet {
+  const ratios: string[] = [];
+  const push = (ratio: string) => {
+    const text = ratio.trim();
+    if (!parseRatio(text) || ratios.includes(text)) return;
+    ratios.push(text);
+  };
+  push(loadSegmentGlobal().ratio);
+  for (const raw of Object.values(readAll())) {
+    const cfg = normalizeSegmentConfig(raw);
+    cfg?.ratios.forEach(push);
+  }
+  if (ratios.length === 0) ratios.push("9:16");
+  const preferred = loadSegmentGlobal().ratio.trim();
+  return {
+    ratios,
+    active: ratios.includes(preferred) ? preferred : ratios[0],
+  };
+}
+
+export function loadSegmentRatios(): SegmentRatioSet {
+  try {
+    const raw = localStorage.getItem(RATIO_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw) as Partial<SegmentRatioSet>;
+      const ratios = cleanRatioList(parsed.ratios);
+      if (ratios.length > 0) {
+        const active = String(parsed.active ?? "").trim();
+        return { ratios, active: ratios.includes(active) ? active : ratios[0] };
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+  const migrated = migrateSegmentRatios();
+  saveSegmentRatios(migrated);
+  return migrated;
+}
+
+export function saveSegmentRatios(value: SegmentRatioSet) {
+  const ratios = cleanRatioList(value.ratios);
+  const next = ratios.length > 0 ? ratios : ["9:16"];
+  const active = next.includes(value.active) ? value.active : next[0];
+  localStorage.setItem(RATIO_KEY, JSON.stringify({ ratios: next, active }));
 }
 
 function readAll(): Record<string, unknown> {
@@ -216,28 +280,18 @@ function toExportPieces(pieces: SegmentPiece[]): SegmentExportPiece[] {
   }));
 }
 
-export function buildSegmentJobs(files: FileInfo[], global: SegmentGlobal): SegmentExportJob[] {
+export function buildSegmentJobs(files: FileInfo[], _global: SegmentGlobal): SegmentExportJob[] {
+  const ratios = loadSegmentRatios().ratios;
   return files
     .filter((file) => file.file_type === "video")
     .flatMap((file) => {
       const cfg = loadSegmentConfig(file.path);
-      if (!cfg) {
-        return [
-          {
-            path: file.path,
-            ratio: global.ratio,
-            offset_x: global.offsetX,
-            offset_y: global.offsetY,
-            segments: [],
-          },
-        ];
-      }
-      return cfg.ratios.map((ratio) => ({
+      return ratios.map((ratio) => ({
         path: file.path,
         ratio,
-        offset_x: global.offsetX,
-        offset_y: global.offsetY,
-        segments: toExportPieces(cfg.tracks[ratio] || []),
+        offset_x: 0,
+        offset_y: 0,
+        segments: toExportPieces(cfg?.tracks[ratio] || []),
       }));
     });
 }
