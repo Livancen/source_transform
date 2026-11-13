@@ -359,6 +359,39 @@ impl Default for RatioVideoOutput {
     }
 }
 
+/// 分段裁剪的一段。mode: offset | position | drop。
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct SegmentPieceInput {
+    pub start: f64,
+    pub end: f64,
+    pub mode: String,
+    #[serde(default)]
+    pub offset_x: f64,
+    #[serde(default)]
+    pub offset_y: f64,
+    #[serde(default)]
+    pub crop_x: u32,
+    #[serde(default)]
+    pub crop_y: u32,
+    #[serde(default)]
+    pub crop_w: u32,
+    #[serde(default)]
+    pub crop_h: u32,
+}
+
+/// 一个视频的分段任务。segments 为空时，整段用 offset_x/offset_y 做比例裁剪。
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct SegmentCropJob {
+    pub path: String,
+    pub ratio: String,
+    #[serde(default)]
+    pub offset_x: f64,
+    #[serde(default)]
+    pub offset_y: f64,
+    #[serde(default)]
+    pub segments: Vec<SegmentPieceInput>,
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct RatioOutputOptions {
     #[serde(default)]

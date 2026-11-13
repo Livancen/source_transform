@@ -17,6 +17,8 @@ import {
   defaultRatioOutputOptions,
 } from "../types";
 import { useToast } from "./useToast";
+import { buildSegmentJobs, loadSegmentGlobal } from "../utils/segmentCrop";
+import { parseRatio } from "../utils/ratioCrop";
 
 const RATIO_STORAGE_KEY = "aspect-ratio-crop-ratios";
 const RATIO_OUTPUT_KEY = "ratio-output-options";
@@ -28,6 +30,7 @@ const WORK_MODES: WorkMode[] = [
   "image",
   "video",
   "ratio",
+  "segment",
   "crop",
   "merge",
   "join",
@@ -196,6 +199,8 @@ const files = computed(() => {
       return allInputFiles.value.filter((f) => f.file_type === "video");
     case "ratio":
       return allInputFiles.value;
+    case "segment":
+      return allInputFiles.value.filter((f) => f.file_type === "video");
     case "crop":
     case "merge":
     case "join":
@@ -241,6 +246,8 @@ const primaryActionLabel = computed(() => {
       return `开始处理视频 (${n})`;
     case "ratio":
       return `按比例裁剪 (${n}×${ratios.value.length || 0})`;
+    case "segment":
+      return `分段裁剪 (${n})`;
     case "crop":
       return "导出裁剪";
     case "merge":
@@ -260,6 +267,8 @@ const canStart = computed(() => {
       return checkedFiles.value.length > 0;
     case "ratio":
       return checkedFiles.value.length > 0 && ratios.value.length > 0;
+    case "segment":
+      return checkedFiles.value.length > 0;
     case "crop":
     case "merge":
     case "join":
@@ -476,12 +485,33 @@ async function startProcess() {
     }
   }
 
+  if (workMode.value === "segment") {
+    if (paths.length === 0) {
+      resultMessage.value = "请先勾选要裁剪的视频";
+      return;
+    }
+    if (!parseRatio(loadSegmentGlobal().ratio)) {
+      resultMessage.value = "请填写有效的全局比例，如 9:16";
+      return;
+    }
+  }
+
   isProcessing.value = true;
   progress.value = null;
   resultMessage.value = "";
 
   try {
-    if (workMode.value === "ratio") {
+    if (workMode.value === "segment") {
+      const segmentGlobal = loadSegmentGlobal();
+      const result = await invoke<string>("segment_crop_videos", {
+        outputDir: outputDir.value,
+        jobs: buildSegmentJobs(checkedFiles.value, segmentGlobal),
+        mute: segmentGlobal.mute,
+        naming: naming.value,
+      });
+      resultMessage.value = result;
+      showToast(result || "处理完成", "success", 2000);
+    } else if (workMode.value === "ratio") {
       const result = await invoke<string>("crop_by_ratios", {
         inputDir: inputDir.value,
         outputDir: outputDir.value,
@@ -584,6 +614,9 @@ async function initWorkspace() {
       applyProgress(event.payload);
     });
     await listen<ProcessProgress>("crop-progress", (event) => {
+      applyProgress(event.payload);
+    });
+    await listen<ProcessProgress>("segment-progress", (event) => {
       applyProgress(event.payload);
     });
   } catch (e) {

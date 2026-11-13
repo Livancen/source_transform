@@ -1,4 +1,5 @@
 mod commands;
+mod segment;
 mod hw;
 mod logger;
 mod naming;
@@ -117,6 +118,7 @@ pub fn run() {
             commands::custom_crop,
             commands::merge_videos,
             commands::join_media,
+            segment::segment_crop_videos,
             commands::delete_listed_file,
             commands::open_folder,
             commands::start_upload_server,

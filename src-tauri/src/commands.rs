@@ -34,7 +34,7 @@ fn get_file_type(path: &PathBuf) -> Option<String> {
     }
 }
 
-fn emit_progress(
+pub(crate) fn emit_progress(
     app: &AppHandle,
     event: &str,
     current: usize,
@@ -185,7 +185,7 @@ fn offset_origin(slack: u32, percent: f64) -> u32 {
     }
 }
 
-fn compute_cover_crop(
+pub(crate) fn compute_cover_crop(
     width: u32,
     height: u32,
     target_ratio: f64,

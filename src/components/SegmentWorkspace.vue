@@ -1,0 +1,1228 @@
+<script setup lang="ts">
+import { computed, onBeforeUnmount, ref, watch } from "vue";
+import { convertFileSrc, invoke } from "@tauri-apps/api/core";
+import type { FileInfo } from "../types";
+import { computeCoverCrop, parseRatio } from "../utils/ratioCrop";
+import {
+  clampOffset,
+  clearSegmentConfig,
+  coverBox,
+  formatBoxRatio,
+  formatClock,
+  fullSpanSegment,
+  loadSegmentConfig,
+  loadSegmentGlobal,
+  newSegmentId,
+  offsetsFromPosition,
+  saveSegmentConfig,
+  saveSegmentGlobal,
+  segmentConfigPaths,
+  type SegmentGlobal,
+  type SegmentPiece,
+} from "../utils/segmentCrop";
+import FilePane from "./FilePane.vue";
+
+const props = defineProps<{
+  dir: string;
+  files: FileInfo[];
+  selectedPath: string;
+  checkedPaths: Set<string>;
+  allChecked: boolean;
+  locked: boolean;
+}>();
+
+const emit = defineEmits<{
+  selectDir: [];
+  openFolder: [];
+  selectFile: [file: FileInfo];
+  toggleCheck: [path: string];
+  toggleCheckAll: [];
+  deleteFile: [file: FileInfo];
+}>();
+
+const globalOpts = ref<SegmentGlobal>(loadSegmentGlobal());
+const configTick = ref(0);
+const segments = ref<SegmentPiece[]>([]);
+const fileRatio = ref(globalOpts.value.ratio);
+const saved = ref(false);
+const selectedIds = ref<string[]>([]);
+const duration = ref(0);
+const mediaW = ref(0);
+const mediaH = ref(0);
+const loading = ref(false);
+const loadError = ref("");
+const currentTime = ref(0);
+const playing = ref(false);
+const playbackRate = ref(1);
+const videoRef = ref<HTMLVideoElement | null>(null);
+const frameRef = ref<HTMLElement | null>(null);
+const timelineRef = ref<HTMLElement | null>(null);
+const speeds = [0.5, 1, 1.5, 2];
+let hydrating = false;
+
+const selected = computed(
+  () => props.files.find((file) => file.path === props.selectedPath) || null,
+);
+const markedPaths = computed(() => {
+  configTick.value;
+  return segmentConfigPaths();
+});
+const active = computed(() => {
+  if (selectedIds.value.length !== 1) return null;
+  return (
+    segments.value.find((piece) => piece.id === selectedIds.value[0]) ?? null
+  );
+});
+const multi = computed(() => selectedIds.value.length > 1);
+const previewPiece = computed(() => {
+  if (active.value) return active.value;
+  const time = currentTime.value;
+  return (
+    segments.value.find((piece) => time >= piece.start && time < piece.end) ??
+    segments.value[0] ??
+    null
+  );
+});
+const selectionContiguous = computed(() => {
+  const indexes = segments.value
+    .map((piece, index) => (selectedIds.value.includes(piece.id) ? index : -1))
+    .filter((index) => index >= 0);
+  if (indexes.length < 2) return false;
+  return indexes[indexes.length - 1] - indexes[0] + 1 === indexes.length;
+});
+const activeIndex = computed(() =>
+  segments.value.findIndex((piece) => piece.id === active.value?.id),
+);
+const box = computed(() => {
+  const piece = previewPiece.value;
+  if (!piece || piece.mode === "drop" || !mediaW.value) return null;
+  return coverBox(mediaW.value, mediaH.value, fileRatio.value, piece);
+});
+const boxRatioLabel = computed(() => {
+  const rect = box.value;
+  if (!rect || previewPiece.value?.mode !== "position") return "";
+  return formatBoxRatio(rect.cropW, rect.cropH);
+});
+const boxStyle = computed(() => {
+  const rect = box.value;
+  if (!rect || !mediaW.value || !mediaH.value) return {};
+  return {
+    left: `${(rect.cropX / mediaW.value) * 100}%`,
+    top: `${(rect.cropY / mediaH.value) * 100}%`,
+    width: `${(rect.cropW / mediaW.value) * 100}%`,
+    height: `${(rect.cropH / mediaH.value) * 100}%`,
+  };
+});
+const shade = computed(() => {
+  const rect = box.value;
+  if (!rect || !mediaW.value || !mediaH.value) return null;
+  const x = (rect.cropX / mediaW.value) * 100;
+  const y = (rect.cropY / mediaH.value) * 100;
+  const w = (rect.cropW / mediaW.value) * 100;
+  const h = (rect.cropH / mediaH.value) * 100;
+  return {
+    top: { height: `${y}%` },
+    bottom: { top: `${y + h}%` },
+    left: { top: `${y}%`, width: `${x}%`, height: `${h}%` },
+    right: { top: `${y}%`, left: `${x + w}%`, height: `${h}%` },
+  };
+});
+const ticks = computed(() => {
+  if (!(duration.value > 0)) return [];
+  const count = duration.value > 120 ? 6 : 4;
+  return Array.from({ length: count + 1 }, (_, index) => ({
+    left: (index / count) * 100,
+    label: formatClock((duration.value * index) / count),
+  }));
+});
+const playheadLeft = computed(() =>
+  duration.value > 0 ? `${(currentTime.value / duration.value) * 100}%` : "0%",
+);
+
+watch(globalOpts, (value) => saveSegmentGlobal(value), { deep: true });
+
+watch(
+  () =>
+    [
+      globalOpts.value.ratio,
+      globalOpts.value.offsetX,
+      globalOpts.value.offsetY,
+    ] as const,
+  () => {
+    if (saved.value || hydrating || !selected.value) return;
+    const only = segments.value[0];
+    if (segments.value.length !== 1 || !only || only.mode !== "offset") return;
+    hydrating = true;
+    fileRatio.value = globalOpts.value.ratio;
+    segments.value = [
+      fullSpanSegment(duration.value || only.end || 1, globalOpts.value),
+    ];
+    selectOnly(segments.value[0].id);
+    hydrating = false;
+  },
+);
+
+watch(
+  () => props.selectedPath,
+  async (path) => {
+    if (!path) {
+      segments.value = [];
+      saved.value = false;
+      return;
+    }
+    const file = props.files.find((item) => item.path === path);
+    if (!file) return;
+    await openFile(file);
+  },
+  { immediate: true },
+);
+
+function touchConfig() {
+  configTick.value += 1;
+}
+
+function persist() {
+  const file = selected.value;
+  if (!file || hydrating || !(duration.value > 0)) return;
+  saveSegmentConfig(file.path, {
+    ratio: fileRatio.value.trim() || globalOpts.value.ratio,
+    segments: segments.value.map((piece) => ({ ...piece })),
+  });
+  saved.value = true;
+  touchConfig();
+}
+
+async function openFile(file: FileInfo) {
+  hydrating = true;
+  loading.value = true;
+  loadError.value = "";
+  duration.value = 0;
+  mediaW.value = 0;
+  mediaH.value = 0;
+  currentTime.value = 0;
+  const cfg = loadSegmentConfig(file.path);
+  saved.value = !!cfg;
+  fileRatio.value = cfg?.ratio || globalOpts.value.ratio;
+  try {
+    const dimensions = await invoke<[number, number]>("get_video_dimensions", {
+      videoPath: file.path,
+    });
+    mediaW.value = dimensions[0];
+    mediaH.value = dimensions[1];
+  } catch (error) {
+    loadError.value = String(error);
+  } finally {
+    loading.value = false;
+    hydrating = false;
+  }
+  const cfgNow = loadSegmentConfig(file.path);
+  if (cfgNow) {
+    segments.value = cfgNow.segments.map((piece) => ({ ...piece }));
+  } else {
+    segments.value = [fullSpanSegment(1, globalOpts.value)];
+  }
+  selectOnly(segments.value[0]?.id || "");
+}
+
+function onVideoMeta() {
+  const video = videoRef.value;
+  if (!video || !Number.isFinite(video.duration) || video.duration <= 0) return;
+  duration.value = video.duration;
+  video.playbackRate = playbackRate.value;
+  if (
+    !saved.value &&
+    segments.value.length === 1 &&
+    segments.value[0]?.start === 0
+  ) {
+    hydrating = true;
+    segments.value = [fullSpanSegment(video.duration, globalOpts.value)];
+    selectOnly(segments.value[0].id);
+    hydrating = false;
+  }
+}
+
+function selectOnly(id: string) {
+  selectedIds.value = id ? [id] : [];
+}
+
+function isSelected(id: string) {
+  return selectedIds.value.includes(id);
+}
+
+function modeName(mode: SegmentPiece["mode"]) {
+  if (mode === "drop") return "不导出";
+  if (mode === "position") return "拖动位置";
+  return "按偏移";
+}
+
+function onClipClick(id: string, event: MouseEvent) {
+  if (event.ctrlKey || event.metaKey) {
+    const next = new Set(selectedIds.value);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    selectedIds.value = next.size ? [...next] : [id];
+    return;
+  }
+  selectOnly(id);
+  const piece = segments.value.find((item) => item.id === id);
+  const video = videoRef.value;
+  if (!piece || !video) return;
+  if (
+    video.currentTime < piece.start ||
+    video.currentTime >= piece.end - 0.01
+  ) {
+    video.currentTime = piece.start;
+  }
+}
+
+function updateActive(patch: Partial<SegmentPiece>) {
+  const index = activeIndex.value;
+  if (index < 0) return;
+  const prev = segments.value[index];
+  const next = { ...prev, ...patch };
+  if (patch.mode === "position" && prev.mode !== "position" && mediaW.value) {
+    const rect = computeCoverCrop(
+      mediaW.value,
+      mediaH.value,
+      parseRatio(fileRatio.value) || 1,
+      next.offsetX,
+      next.offsetY,
+    );
+    next.cropX = rect.cropX;
+    next.cropY = rect.cropY;
+    next.cropW = rect.cropW;
+    next.cropH = rect.cropH;
+  }
+  if (patch.mode === "offset" && prev.mode === "position" && mediaW.value) {
+    const offsets = offsetsFromPosition(
+      mediaW.value,
+      mediaH.value,
+      fileRatio.value,
+      next.cropX,
+      next.cropY,
+    );
+    next.offsetX = offsets.offsetX;
+    next.offsetY = offsets.offsetY;
+  }
+  segments.value.splice(index, 1, next);
+  persist();
+}
+
+function setFileRatio(value: string) {
+  fileRatio.value = value;
+  persist();
+}
+
+function splitAtPlayhead() {
+  const piece = active.value;
+  const time = currentTime.value;
+  if (!piece || time <= piece.start + 0.15 || time >= piece.end - 0.15) return;
+  const right: SegmentPiece = { ...piece, id: newSegmentId(), start: time };
+  const left: SegmentPiece = { ...piece, end: time };
+  const index = activeIndex.value;
+  segments.value.splice(index, 1, left, right);
+  selectOnly(right.id);
+  persist();
+}
+
+function dropActive() {
+  const ids = selectedIds.value.length
+    ? selectedIds.value
+    : active.value
+      ? [active.value.id]
+      : [];
+  if (!ids.length) return;
+  const picked = segments.value.filter((piece) => ids.includes(piece.id));
+  const restore =
+    picked.length > 0 && picked.every((piece) => piece.mode === "drop");
+  segments.value = segments.value.map((piece) =>
+    ids.includes(piece.id)
+      ? { ...piece, mode: restore ? "offset" : "drop" }
+      : piece,
+  );
+  persist();
+}
+
+function mergeWithPrev() {
+  if (multi.value) {
+    if (!selectionContiguous.value) return;
+    const indexes = segments.value
+      .map((piece, index) =>
+        selectedIds.value.includes(piece.id) ? index : -1,
+      )
+      .filter((index) => index >= 0);
+    const first = segments.value[indexes[0]];
+    const last = segments.value[indexes[indexes.length - 1]];
+    const merged = { ...first, end: last.end };
+    segments.value.splice(indexes[0], indexes.length, merged);
+    selectOnly(merged.id);
+    persist();
+    return;
+  }
+  const index = activeIndex.value;
+  if (index <= 0) return;
+  const prev = segments.value[index - 1];
+  const cur = segments.value[index];
+  segments.value.splice(index - 1, 2, { ...prev, end: cur.end });
+  selectOnly(prev.id);
+  persist();
+}
+
+function resetFile() {
+  const file = selected.value;
+  if (!file) return;
+  clearSegmentConfig(file.path);
+  saved.value = false;
+  fileRatio.value = globalOpts.value.ratio;
+  hydrating = true;
+  segments.value = [fullSpanSegment(duration.value || 1, globalOpts.value)];
+  selectOnly(segments.value[0].id);
+  hydrating = false;
+  touchConfig();
+}
+
+function onBoundaryDown(index: number, event: PointerEvent) {
+  if (props.locked) return;
+  const bar = timelineRef.value;
+  if (!bar || duration.value <= 0) return;
+  event.preventDefault();
+  event.stopPropagation();
+  const rect = bar.getBoundingClientRect();
+  const move = (ev: PointerEvent) => {
+    const ratio = Math.min(
+      1,
+      Math.max(0, (ev.clientX - rect.left) / rect.width),
+    );
+    const time = ratio * duration.value;
+    const left = segments.value[index];
+    const right = segments.value[index + 1];
+    if (!left || !right) return;
+    const next = Math.min(right.end - 0.2, Math.max(left.start + 0.2, time));
+    left.end = Number(next.toFixed(3));
+    right.start = left.end;
+  };
+  const up = () => {
+    window.removeEventListener("pointermove", move);
+    persist();
+  };
+  window.addEventListener("pointermove", move);
+  window.addEventListener("pointerup", up, { once: true });
+}
+
+function seekFromTimeline(event: PointerEvent) {
+  const bar = timelineRef.value;
+  const video = videoRef.value;
+  if (!bar || !video || duration.value <= 0) return;
+  const rect = bar.getBoundingClientRect();
+  const time = Math.min(
+    duration.value,
+    Math.max(0, ((event.clientX - rect.left) / rect.width) * duration.value),
+  );
+  video.currentTime = time;
+  const hit =
+    segments.value.find((piece) => time >= piece.start && time < piece.end) ||
+    segments.value[segments.value.length - 1];
+  if (hit && !event.ctrlKey && !event.metaKey) selectOnly(hit.id);
+}
+
+type BoxHandle = "move" | "n" | "s" | "e" | "w" | "nw" | "ne" | "sw" | "se";
+const boxHandles: BoxHandle[] = ["nw", "n", "ne", "e", "se", "s", "sw", "w"];
+let drag: {
+  handle: BoxHandle;
+  x: number;
+  y: number;
+  cropX: number;
+  cropY: number;
+  cropW: number;
+  cropH: number;
+  scale: number;
+} | null = null;
+
+function onBoxDown(event: PointerEvent, handle: BoxHandle) {
+  const piece = active.value;
+  const rect = box.value;
+  const frame = frameRef.value;
+  if (
+    !piece ||
+    piece.mode !== "position" ||
+    !rect ||
+    !frame ||
+    props.locked ||
+    multi.value
+  )
+    return;
+  event.preventDefault();
+  event.stopPropagation();
+  const bounds = frame.getBoundingClientRect();
+  const scale = mediaW.value / Math.max(1, bounds.width);
+  drag = {
+    handle,
+    x: event.clientX,
+    y: event.clientY,
+    cropX: rect.cropX,
+    cropY: rect.cropY,
+    cropW: rect.cropW,
+    cropH: rect.cropH,
+    scale,
+  };
+  window.addEventListener("pointermove", onBoxMove);
+  window.addEventListener("pointerup", onBoxUp);
+}
+
+function onBoxMove(event: PointerEvent) {
+  if (!drag) return;
+  const dx = (event.clientX - drag.x) * drag.scale;
+  const dy = (event.clientY - drag.y) * drag.scale;
+  let cropX = drag.cropX;
+  let cropY = drag.cropY;
+  let cropW = drag.cropW;
+  let cropH = drag.cropH;
+  const min = 16;
+  const handle = drag.handle;
+  if (handle === "move") {
+    cropX = Math.round(Math.min(mediaW.value - cropW, Math.max(0, cropX + dx)));
+    cropY = Math.round(Math.min(mediaH.value - cropH, Math.max(0, cropY + dy)));
+  } else {
+    if (handle.includes("e"))
+      cropW = Math.round(
+        Math.min(mediaW.value - cropX, Math.max(min, cropW + dx)),
+      );
+    if (handle.includes("s"))
+      cropH = Math.round(
+        Math.min(mediaH.value - cropY, Math.max(min, cropH + dy)),
+      );
+    if (handle.includes("w")) {
+      const nextX = Math.round(
+        Math.min(cropX + cropW - min, Math.max(0, cropX + dx)),
+      );
+      cropW = cropW - (nextX - cropX);
+      cropX = nextX;
+    }
+    if (handle.includes("n")) {
+      const nextY = Math.round(
+        Math.min(cropY + cropH - min, Math.max(0, cropY + dy)),
+      );
+      cropH = cropH - (nextY - cropY);
+      cropY = nextY;
+    }
+  }
+  const index = activeIndex.value;
+  if (index < 0) return;
+  segments.value[index] = {
+    ...segments.value[index],
+    cropX,
+    cropY,
+    cropW,
+    cropH,
+  };
+}
+
+function onBoxUp() {
+  drag = null;
+  window.removeEventListener("pointermove", onBoxMove);
+  window.removeEventListener("pointerup", onBoxUp);
+  persist();
+}
+
+function togglePlay() {
+  const video = videoRef.value;
+  if (!video) return;
+  if (video.paused) void video.play();
+  else video.pause();
+}
+
+function onScrub(value: number) {
+  const video = videoRef.value;
+  currentTime.value = value;
+  if (video) video.currentTime = value;
+}
+
+function setRate(rate: number) {
+  playbackRate.value = rate;
+  if (videoRef.value) videoRef.value.playbackRate = rate;
+}
+
+function segmentFlex(piece: SegmentPiece) {
+  return Math.max(0.04, piece.end - piece.start);
+}
+
+onBeforeUnmount(() => {
+  onBoxUp();
+});
+</script>
+
+<template>
+  <div class="flex-1 min-h-0 flex flex-col bg-bg0">
+    <div
+      class="shrink-0 px-12px py-8px border-b border-border bg-bg1 flex flex-wrap items-center gap-10px"
+    >
+      <span class="text-12px font-600 color-t1 shrink-0">未分段的视频</span>
+      <div class="flex flex-wrap items-center gap-10px">
+        <label class="inline-flex items-center gap-6px">
+          <span class="text-11px color-t2">比例</span>
+          <input
+            class="field w-72px! h-26px! text-12px! font-mono"
+            :value="globalOpts.ratio"
+            @change="
+              globalOpts.ratio = (
+                $event.target as HTMLInputElement
+              ).value.trim()
+            "
+          />
+        </label>
+        <label class="inline-flex items-center gap-6px min-w-180px">
+          <span class="text-11px color-t2 w-28px">水平</span>
+          <input
+            class="w-120px accent-secondary"
+            type="range"
+            min="-100"
+            max="100"
+            step="1"
+            :value="globalOpts.offsetX"
+            @input="
+              globalOpts.offsetX = clampOffset(
+                Number(($event.target as HTMLInputElement).value),
+              )
+            "
+          />
+          <span class="text-11px color-t3 w-36px font-mono">{{
+            globalOpts.offsetX
+          }}</span>
+        </label>
+        <label class="inline-flex items-center gap-6px min-w-180px">
+          <span class="text-11px color-t2 w-28px">垂直</span>
+          <input
+            class="w-120px accent-secondary"
+            type="range"
+            min="-100"
+            max="100"
+            step="1"
+            :value="globalOpts.offsetY"
+            @input="
+              globalOpts.offsetY = clampOffset(
+                Number(($event.target as HTMLInputElement).value),
+              )
+            "
+          />
+          <span class="text-11px color-t3 w-36px font-mono">{{
+            globalOpts.offsetY
+          }}</span>
+        </label>
+        <label class="inline-flex items-center gap-6px text-12px color-t2">
+          <input
+            v-model="globalOpts.mute"
+            type="checkbox"
+            class="accent-secondary"
+          />
+          静音
+        </label>
+      </div>
+    </div>
+
+    <div
+      class="flex-1 min-h-0 grid"
+      style="grid-template-columns: minmax(280px, 42%) 6px minmax(0, 1fr)"
+    >
+      <FilePane
+        kind="input"
+        :dir="dir"
+        :files="files"
+        :selected-path="selectedPath"
+        selectable
+        :checked-paths="checkedPaths"
+        :all-checked="allChecked"
+        :locked="locked"
+        :marked-paths="markedPaths"
+        @select-dir="emit('selectDir')"
+        @open-folder="emit('openFolder')"
+        @select-file="emit('selectFile', $event)"
+        @toggle-check="emit('toggleCheck', $event)"
+        @toggle-check-all="emit('toggleCheckAll')"
+        @delete-file="emit('deleteFile', $event)"
+      />
+      <div class="bg-bg0 border-l border-r border-border"></div>
+
+      <section class="min-w-0 min-h-0 bg-bg1 flex flex-col">
+        <div
+          v-if="!selected"
+          class="m-auto text-13px color-t3 text-center px-24px leading-relaxed"
+        >
+          左侧选择视频。下面的时间轴用来分段，选中一段后再改这一段怎么裁。
+        </div>
+        <template v-else>
+          <div
+            class="shrink-0 h-40px px-12px flex items-center gap-8px border-b border-border"
+          >
+            <div
+              class="min-w-0 flex-1 truncate text-13px font-600"
+              :title="selected.name"
+            >
+              {{ selected.name }}
+            </div>
+            <label class="inline-flex items-center gap-6px shrink-0">
+              <span class="text-11px color-t2">比例</span>
+              <input
+                class="field w-72px! h-26px! text-12px! font-mono"
+                :value="fileRatio"
+                @change="
+                  setFileRatio(($event.target as HTMLInputElement).value.trim())
+                "
+              />
+            </label>
+            <span
+              v-if="saved"
+              class="text-10px color-secondary font-600 shrink-0"
+              >已分段</span
+            >
+            <span v-else class="text-10px color-t3 shrink-0"
+              >整段 · 用上方默认</span
+            >
+            <button
+              class="tb-btn h-26px! px-8px! text-11px!"
+              type="button"
+              :disabled="!saved || locked"
+              @click="resetFile"
+            >
+              恢复整段
+            </button>
+          </div>
+
+          <div v-if="loading" class="m-auto text-12px color-t3">
+            读取视频信息…
+          </div>
+          <div v-else-if="loadError" class="m-auto text-12px color-danger">
+            {{ loadError }}
+          </div>
+          <template v-else>
+            <div
+              class="flex-1 min-h-0 grid place-items-center bg-[#141414] p-12px"
+            >
+              <div
+                ref="frameRef"
+                class="relative max-w-full max-h-full bg-black"
+                :style="
+                  mediaW && mediaH
+                    ? { aspectRatio: `${mediaW} / ${mediaH}`, height: '100%' }
+                    : { width: '100%' }
+                "
+              >
+                <video
+                  ref="videoRef"
+                  :key="selected.path"
+                  class="absolute inset-0 w-full h-full object-fill"
+                  :src="convertFileSrc(selected.path)"
+                  playsinline
+                  @loadedmetadata="onVideoMeta"
+                  @timeupdate="currentTime = videoRef?.currentTime || 0"
+                  @play="playing = true"
+                  @pause="playing = false"
+                />
+                <template v-if="shade">
+                  <div
+                    class="absolute left-0 right-0 top-0 bg-black/55 pointer-events-none"
+                    :style="shade.top"
+                  ></div>
+                  <div
+                    class="absolute left-0 right-0 bottom-0 bg-black/55 pointer-events-none"
+                    :style="shade.bottom"
+                  ></div>
+                  <div
+                    class="absolute left-0 bg-black/55 pointer-events-none"
+                    :style="shade.left"
+                  ></div>
+                  <div
+                    class="absolute right-0 bg-black/55 pointer-events-none"
+                    :style="shade.right"
+                  ></div>
+                </template>
+                <div
+                  v-if="box"
+                  class="absolute border-1 border-dotted border-white shadow-[0_0_0_1px_rgba(0,0,0,.45)]"
+                  :class="
+                    active?.mode === 'position' && !multi
+                      ? 'cursor-move'
+                      : 'pointer-events-none'
+                  "
+                  :style="boxStyle"
+                  @pointerdown="onBoxDown($event, 'move')"
+                >
+                  <span
+                    class="absolute left-4px top-4px px-4px h-16px leading-16px rounded-2px bg-black/60 text-white text-10px pointer-events-none"
+                  >
+                    {{ previewPiece ? modeName(previewPiece.mode) : "" }}
+                  </span>
+                  <span
+                    v-if="boxRatioLabel"
+                    class="absolute inset-0 grid place-items-center pointer-events-none"
+                  >
+                    <span
+                      class="px-6px h-18px leading-18px rounded-2px bg-black/70 text-white text-11px font-600 font-mono"
+                    >
+                      {{ boxRatioLabel }}
+                    </span>
+                  </span>
+                  <i
+                    v-for="handle in boxHandles"
+                    v-show="active?.mode === 'position' && !multi"
+                    :key="handle"
+                    class="crop-handle"
+                    :class="'is-' + handle"
+                    @pointerdown="onBoxDown($event, handle)"
+                  ></i>
+                </div>
+                <div
+                  v-else-if="active?.mode === 'drop'"
+                  class="absolute inset-0 grid place-items-center bg-black/55 text-white text-14px font-600 pointer-events-none"
+                >
+                  这段不导出
+                </div>
+              </div>
+            </div>
+
+            <div
+              class="shrink-0 h-40px px-12px flex items-center gap-8px border-t border-border bg-bg1"
+            >
+              <button
+                class="play-btn"
+                type="button"
+                :title="playing ? '暂停' : '播放'"
+                @click="togglePlay"
+              >
+                <svg
+                  v-if="playing"
+                  viewBox="0 0 24 24"
+                  class="w-14px h-14px"
+                  fill="currentColor"
+                >
+                  <rect x="6" y="5" width="4" height="14" rx="1" />
+                  <rect x="14" y="5" width="4" height="14" rx="1" />
+                </svg>
+                <svg
+                  v-else
+                  viewBox="0 0 24 24"
+                  class="w-14px h-14px"
+                  fill="currentColor"
+                >
+                  <polygon points="8,5 19,12 8,19" />
+                </svg>
+              </button>
+              <span class="text-11px color-t2 font-mono tabular-nums shrink-0">
+                {{ formatClock(currentTime) }} / {{ formatClock(duration) }}
+              </span>
+              <input
+                class="flex-1 min-w-80px accent-secondary"
+                type="range"
+                min="0"
+                :max="duration || 0"
+                step="0.05"
+                :value="currentTime"
+                :disabled="!duration"
+                @input="
+                  onScrub(Number(($event.target as HTMLInputElement).value))
+                "
+              />
+              <button
+                v-for="rate in speeds"
+                :key="rate"
+                type="button"
+                class="h-22px px-6px rounded-4px border text-10px font-600 cursor-pointer"
+                :class="
+                  playbackRate === rate
+                    ? 'bg-secondary color-white border-secondary'
+                    : 'bg-bg1 color-t2 border-border'
+                "
+                @click="setRate(rate)"
+              >
+                {{ rate }}x
+              </button>
+            </div>
+
+            <div
+              v-if="multi"
+              class="shrink-0 px-12px py-10px border-t border-border bg-bg2 text-12px color-t2"
+            >
+              已选 {{ selectedIds.length }} 段。按住 Ctrl
+              继续点选。此时只能删除或合并，合并要求选中的段彼此相连。
+            </div>
+            <div
+              v-else-if="active"
+              class="shrink-0 px-12px py-8px border-t border-border bg-bg2 flex flex-col gap-8px"
+            >
+              <div class="flex items-center gap-8px">
+                <span class="text-12px font-600 color-t1"
+                  >第 {{ activeIndex + 1 }} 段</span
+                >
+                <span class="text-11px color-t3 font-mono">
+                  {{ formatClock(active.start) }} –
+                  {{ formatClock(active.end) }}
+                </span>
+                <span v-if="box" class="text-11px color-t3 font-mono ml-auto">
+                  {{ box.cropW }}×{{ box.cropH }}
+                </span>
+              </div>
+              <div class="flex flex-wrap items-center gap-8px">
+                <div
+                  class="inline-flex p-2px rounded-4px bg-bg0 border border-border"
+                >
+                  <button
+                    v-for="mode in ['offset', 'position', 'drop'] as const"
+                    :key="mode"
+                    type="button"
+                    class="h-26px px-10px rounded-2px border-none text-12px cursor-pointer"
+                    :class="
+                      active.mode === mode
+                        ? 'bg-bg1 color-t1 font-600 shadow-fluent-sm'
+                        : 'bg-transparent color-t2'
+                    "
+                    :disabled="locked"
+                    @click="
+                      mode === 'drop'
+                        ? active.mode === 'drop'
+                          ? updateActive({ mode: 'offset' })
+                          : updateActive({ mode: 'drop' })
+                        : updateActive({ mode })
+                    "
+                  >
+                    {{ modeName(mode) }}
+                  </button>
+                </div>
+                <template v-if="active.mode === 'offset'">
+                  <label class="inline-flex items-center gap-6px">
+                    <span class="text-11px color-t2 w-28px">水平</span>
+                    <input
+                      class="w-120px accent-secondary"
+                      type="range"
+                      min="-100"
+                      max="100"
+                      :value="active.offsetX"
+                      @input="
+                        updateActive({
+                          offsetX: clampOffset(
+                            Number(($event.target as HTMLInputElement).value),
+                          ),
+                        })
+                      "
+                    />
+                    <span class="text-11px color-t3 w-28px font-mono">{{
+                      active.offsetX
+                    }}</span>
+                  </label>
+                  <label class="inline-flex items-center gap-6px">
+                    <span class="text-11px color-t2 w-28px">垂直</span>
+                    <input
+                      class="w-120px accent-secondary"
+                      type="range"
+                      min="-100"
+                      max="100"
+                      :value="active.offsetY"
+                      @input="
+                        updateActive({
+                          offsetY: clampOffset(
+                            Number(($event.target as HTMLInputElement).value),
+                          ),
+                        })
+                      "
+                    />
+                    <span class="text-11px color-t3 w-28px font-mono">{{
+                      active.offsetY
+                    }}</span>
+                  </label>
+                </template>
+                <span
+                  v-else-if="active.mode === 'position'"
+                  class="text-11px color-t3"
+                  >拖动白框移动，拖四边或四角改大小。刚切换时与比例裁剪的框重合。</span
+                >
+                <span v-else class="text-11px color-t3"
+                  >播放到这里会跳过，不进入成片。</span
+                >
+              </div>
+            </div>
+
+            <div
+              class="seg-dock shrink-0 border-t border-border bg-[#1b1b1b] text-white"
+            >
+              <div class="h-36px px-8px flex items-center gap-6px">
+                <button
+                  class="play-btn play-btn-dark"
+                  type="button"
+                  :title="playing ? '暂停' : '播放'"
+                  @click="togglePlay"
+                >
+                  <svg
+                    v-if="playing"
+                    viewBox="0 0 24 24"
+                    class="w-14px h-14px"
+                    fill="currentColor"
+                  >
+                    <rect x="6" y="5" width="4" height="14" />
+                    <rect x="14" y="5" width="4" height="14" />
+                  </svg>
+                  <svg
+                    v-else
+                    viewBox="0 0 24 24"
+                    class="w-14px h-14px"
+                    fill="currentColor"
+                  >
+                    <polygon points="8,5 19,12 8,19" />
+                  </svg>
+                </button>
+                <button
+                  class="seg-tool"
+                  type="button"
+                  :disabled="locked || multi"
+                  @click="splitAtPlayhead"
+                >
+                  分割
+                </button>
+                <button
+                  class="seg-tool"
+                  type="button"
+                  :disabled="locked || selectedIds.length === 0"
+                  @click="dropActive"
+                >
+                  {{
+                    selectedIds.length &&
+                    segments
+                      .filter((piece) => selectedIds.includes(piece.id))
+                      .every((piece) => piece.mode === "drop")
+                      ? "恢复"
+                      : "删除"
+                  }}
+                </button>
+                <button
+                  class="seg-tool"
+                  type="button"
+                  :disabled="
+                    locked || (multi ? !selectionContiguous : activeIndex <= 0)
+                  "
+                  @click="mergeWithPrev"
+                >
+                  {{ multi ? "合并" : "与上段合并" }}
+                </button>
+                <span class="ml-auto text-10px color-white/50"
+                  >Ctrl 点选多段 · 拖边缘改时长</span
+                >
+              </div>
+              <div
+                class="relative h-22px mx-8px"
+                @pointerdown="seekFromTimeline"
+              >
+                <span
+                  v-for="tick in ticks"
+                  :key="tick.left"
+                  class="absolute top-0 text-10px color-white/45 font-mono -translate-x-1/2"
+                  :style="{ left: `${tick.left}%` }"
+                  >{{ tick.label }}</span
+                >
+              </div>
+              <div
+                ref="timelineRef"
+                class="relative h-64px mx-8px mb-8px bg-[#2a2a2a] overflow-hidden cursor-pointer flex"
+                @pointerdown="seekFromTimeline"
+              >
+                <button
+                  v-for="(piece, index) in segments"
+                  :key="piece.id"
+                  type="button"
+                  class="seg-clip"
+                  :class="{
+                    'is-drop': piece.mode === 'drop',
+                    'is-position': piece.mode === 'position',
+                    'is-on': isSelected(piece.id),
+                  }"
+                  :style="{ flex: segmentFlex(piece) }"
+                  @pointerdown.stop
+                  @click.stop="onClipClick(piece.id, $event)"
+                >
+                  <span class="text-11px font-600"
+                    >{{ index + 1 }} · {{ modeName(piece.mode) }}</span
+                  >
+                  <span class="text-10px opacity-75 font-mono">{{
+                    formatClock(piece.end - piece.start)
+                  }}</span>
+                  <i
+                    v-if="index < segments.length - 1"
+                    class="seg-handle"
+                    @pointerdown="onBoundaryDown(index, $event)"
+                  ></i>
+                </button>
+                <i class="seg-playhead" :style="{ left: playheadLeft }"></i>
+              </div>
+            </div>
+          </template>
+        </template>
+      </section>
+    </div>
+  </div>
+</template>
+
+<style scoped>
+.seg-dock .play-btn,
+.seg-dock .seg-tool,
+.seg-dock .seg-clip {
+  border-radius: 0;
+}
+.seg-tool {
+  height: 24px;
+  padding: 0 8px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 0;
+  background: transparent;
+  color: #fff;
+  font-size: 12px;
+  cursor: pointer;
+}
+.seg-tool:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+.seg-tool:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.08);
+}
+.play-btn {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  border: none;
+  border-radius: 50%;
+  background: #0f6cbd;
+  color: #fff;
+  cursor: pointer;
+}
+.play-btn-dark {
+  border-radius: 0;
+  background: #fff;
+  color: #1b1b1b;
+}
+.seg-clip {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 2px;
+  min-width: 0;
+  height: 100%;
+  margin: 0;
+  padding: 0 8px;
+  border: none;
+  background: #0f6cbd;
+  color: #fff;
+  cursor: pointer;
+  text-align: left;
+}
+.seg-clip.is-position {
+  background: #5c2e91;
+}
+.seg-clip.is-drop {
+  background: repeating-linear-gradient(
+    -45deg,
+    #3a3a3a,
+    #3a3a3a 6px,
+    #4a4a4a 6px,
+    #4a4a4a 12px
+  );
+  color: rgba(255, 255, 255, 0.7);
+}
+.seg-clip.is-on {
+  outline: 1px solid #fff;
+  outline-offset: -1px;
+  z-index: 1;
+}
+.seg-handle {
+  position: absolute;
+  top: 0;
+  right: -3px;
+  z-index: 2;
+  width: 5px;
+  height: 100%;
+  cursor: ew-resize;
+  background: transparent;
+}
+.seg-handle::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 2px;
+  width: 1px;
+  background: rgba(255, 255, 255, 0.55);
+}
+.seg-clip.is-on .seg-handle::after {
+  background: transparent;
+}
+.crop-handle {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  background: #fff;
+  border: 1px solid #1b1b1b;
+  z-index: 2;
+}
+.crop-handle.is-nw {
+  left: -4px;
+  top: -4px;
+  cursor: nwse-resize;
+}
+.crop-handle.is-ne {
+  right: -4px;
+  top: -4px;
+  cursor: nesw-resize;
+}
+.crop-handle.is-sw {
+  left: -4px;
+  bottom: -4px;
+  cursor: nesw-resize;
+}
+.crop-handle.is-se {
+  right: -4px;
+  bottom: -4px;
+  cursor: nwse-resize;
+}
+.crop-handle.is-n {
+  left: 50%;
+  top: -4px;
+  margin-left: -4px;
+  cursor: ns-resize;
+}
+.crop-handle.is-s {
+  left: 50%;
+  bottom: -4px;
+  margin-left: -4px;
+  cursor: ns-resize;
+}
+.crop-handle.is-e {
+  right: -4px;
+  top: 50%;
+  margin-top: -4px;
+  cursor: ew-resize;
+}
+.crop-handle.is-w {
+  left: -4px;
+  top: 50%;
+  margin-top: -4px;
+  cursor: ew-resize;
+}
+.seg-playhead {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 3;
+  width: 1px;
+  margin-left: -1px;
+  background: #c50f1f;
+  pointer-events: none;
+}
+.seg-playhead::before {
+  content: "";
+  position: absolute;
+  top: -2px;
+  left: -4px;
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-top: 7px solid #c50f1f;
+}
+</style>

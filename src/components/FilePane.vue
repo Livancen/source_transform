@@ -23,6 +23,8 @@ const props = defineProps<{
   ratios?: string[];
   offsetX?: number;
   offsetY?: number;
+  /** 已有单独分段配置的路径 */
+  markedPaths?: Set<string>;
 }>();
 
 const emit = defineEmits<{
@@ -310,7 +312,13 @@ onBeforeUnmount(() => {
             </button>
 
             <div class="min-w-0 px-6px">
-              <div class="truncate text-13px" :title="file.path">{{ file.name }}</div>
+              <div class="flex items-center gap-4px min-w-0">
+                <span class="truncate text-13px" :title="file.path">{{ file.name }}</span>
+                <span
+                  v-if="markedPaths?.has(file.path)"
+                  class="shrink-0 h-16px px-4px rounded-4px bg-secondary-soft color-secondary text-10px font-600"
+                >分段</span>
+              </div>
               <div class="text-10px color-t3 font-mono uppercase truncate">{{ fileExt(file.name) }}</div>
             </div>
 

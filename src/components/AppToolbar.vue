@@ -21,6 +21,7 @@ const modes: { id: WorkMode; label: string }[] = [
   { id: "image", label: "图片" },
   { id: "video", label: "视频" },
   { id: "ratio", label: "比例裁剪" },
+  { id: "segment", label: "分段裁剪" },
   { id: "crop", label: "自定义裁剪" },
   { id: "merge", label: "拼接" },
   { id: "join", label: "自定义拼接" },
@@ -44,7 +45,7 @@ function progressPercent() {
   <header
     class="shrink-0 h-48px px-12px flex items-center gap-10px bg-bg1 border-b border-border z-20"
   >
-    <nav class="flex items-stretch gap-0 shrink-0 h-full" aria-label="工作模式">
+    <nav class="flex items-stretch gap-0 min-w-0 h-full overflow-x-auto" aria-label="工作模式">
       <button
         v-for="m in modes"
         :key="m.id"

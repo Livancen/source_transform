@@ -12,6 +12,7 @@ import StatusBar from "../components/StatusBar.vue";
 import CropWorkspace from "../components/CropWorkspace.vue";
 import MergeWorkspace from "../components/MergeWorkspace.vue";
 import JoinWorkspace from "../components/JoinWorkspace.vue";
+import SegmentWorkspace from "../components/SegmentWorkspace.vue";
 import type { FileInfo } from "../types";
 import { useToast } from "../composables/useToast";
 
@@ -98,7 +99,8 @@ const showStart = computed(
   () =>
     workMode.value === "image" ||
     workMode.value === "video" ||
-    workMode.value === "ratio",
+    workMode.value === "ratio" ||
+    workMode.value === "segment",
 );
 
 const listFiles = computed(() => {
@@ -222,6 +224,22 @@ function handleJoinCompleted(message: string) {
       @started="beginWorkspaceJob('自定义拼接')"
       @completed="handleJoinCompleted"
       @finished="endWorkspaceJob"
+    />
+
+    <SegmentWorkspace
+      v-if="workMode === 'segment'"
+      :dir="inputDir"
+      :files="listFiles"
+      :selected-path="selectedInputPath"
+      :checked-paths="checkedPaths"
+      :all-checked="allVisibleChecked"
+      :locked="isProcessing"
+      @select-dir="selectInputDir"
+      @open-folder="openFolder(inputDir)"
+      @select-file="selectedInputPath = $event.path"
+      @toggle-check="toggleCheck"
+      @toggle-check-all="toggleCheckAllVisible"
+      @delete-file="deleteListedFile('input', $event)"
     />
 
     <div

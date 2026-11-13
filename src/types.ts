@@ -104,7 +104,7 @@ export interface HwAccelOptions {
   encoders: HwEncoderInfo[];
 }
 
-export type WorkMode = "image" | "video" | "ratio" | "crop" | "merge" | "join";
+export type WorkMode = "image" | "video" | "ratio" | "segment" | "crop" | "merge" | "join";
 
 export type VideoMergeLayout = "vertical" | "horizontal";
 
