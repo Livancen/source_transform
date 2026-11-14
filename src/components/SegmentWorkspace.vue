@@ -66,7 +66,6 @@ const currentTime = ref(0);
 const playing = ref(false);
 const playbackRate = ref(1);
 const outputPreview = ref(false);
-const previewMotion = ref(false);
 const videoRef = ref<HTMLVideoElement | null>(null);
 const frameRef = ref<HTMLElement | null>(null);
 const timelineRef = ref<HTMLElement | null>(null);
@@ -251,7 +250,6 @@ function skipDropped(video: HTMLVideoElement | null) {
 
 function toggleOutputPreview() {
   outputPreview.value = !outputPreview.value;
-  previewMotion.value = false;
   const video = videoRef.value;
   if (outputPreview.value && video && !video.paused) skipDropped(video);
 }
@@ -260,16 +258,6 @@ function onPlay() {
   playing.value = true;
   if (outputPreview.value) skipDropped(videoRef.value);
 }
-
-watch(outputPreview, (on) => {
-  previewMotion.value = false;
-  if (!on) return;
-  requestAnimationFrame(() => {
-    requestAnimationFrame(() => {
-      if (outputPreview.value) previewMotion.value = true;
-    });
-  });
-});
 
 function onTimeUpdate() {
   const video = videoRef.value;
@@ -1084,13 +1072,7 @@ onBeforeUnmount(() => {
                   ref="videoRef"
                   :key="selected.path"
                   class="absolute object-fill"
-                  :class="
-                    outputPreview
-                      ? previewMotion
-                        ? 'crop-follow'
-                        : ''
-                      : 'inset-0 w-full h-full'
-                  "
+                  :class="outputPreview ? '' : 'inset-0 w-full h-full'"
                   :style="outputVideoStyle"
                   :src="convertFileSrc(selected.path)"
                   playsinline
@@ -1108,22 +1090,18 @@ onBeforeUnmount(() => {
                 <template v-if="shade && !outputPreview">
                   <div
                     class="absolute left-0 right-0 top-0 bg-black/55 pointer-events-none"
-                    :class="playing ? 'crop-follow' : ''"
                     :style="shade.top"
                   ></div>
                   <div
                     class="absolute left-0 right-0 bottom-0 bg-black/55 pointer-events-none"
-                    :class="playing ? 'crop-follow' : ''"
                     :style="shade.bottom"
                   ></div>
                   <div
                     class="absolute left-0 bg-black/55 pointer-events-none"
-                    :class="playing ? 'crop-follow' : ''"
                     :style="shade.left"
                   ></div>
                   <div
                     class="absolute right-0 bg-black/55 pointer-events-none"
-                    :class="playing ? 'crop-follow' : ''"
                     :style="shade.right"
                   ></div>
                 </template>
@@ -1131,11 +1109,9 @@ onBeforeUnmount(() => {
                   v-if="box && !outputPreview"
                   class="absolute border-1 border-dotted border-white shadow-[0_0_0_1px_rgba(0,0,0,.45)]"
                   :class="
-                    playing
-                      ? 'crop-follow pointer-events-none'
-                      : active?.mode === 'position' && !multi
-                        ? 'cursor-move'
-                        : 'pointer-events-none'
+                    playing || active?.mode !== 'position' || multi
+                      ? 'pointer-events-none'
+                      : 'cursor-move'
                   "
                   :style="boxStyle"
                   @pointerdown="onBoxDown($event, 'move')"
@@ -1651,18 +1627,6 @@ onBeforeUnmount(() => {
 }
 .seg-piece:has(+ .seg-piece > .seg-clip.is-on) > .seg-clip::after {
   opacity: 0;
-}
-.crop-follow {
-  transition:
-    left 0.4s cubic-bezier(0.22, 1, 0.36, 1),
-    top 0.4s cubic-bezier(0.22, 1, 0.36, 1),
-    width 0.4s cubic-bezier(0.22, 1, 0.36, 1),
-    height 0.4s cubic-bezier(0.22, 1, 0.36, 1);
-}
-@media (prefers-reduced-motion: reduce) {
-  .crop-follow {
-    transition: none;
-  }
 }
 .seg-ruler {
   cursor: grab;
