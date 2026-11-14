@@ -6,6 +6,9 @@
 - 启动约 1.5s 后检查：
   `https://github.com/Livancen/source_transform/releases/latest/download/latest.json`
 - 有新版本 → 弹窗 → 用户确认 → 下载进度条 → 安装并重启
+- 设置 → 界面与更新 →「GitHub 更新加速」可填写加速站 https 地址（只填域名或前缀，不带 GitHub 路径）
+- 填写后，检查和下载都会变成 `加速地址/原来的 GitHub 链接`；留空则仍直连 GitHub
+- 加速站连不上、返回异常或验签失败时，自动改回 GitHub 直连。安装包仍用原来的公钥验签
 
 ## 2. 签名密钥（必须配置）
 

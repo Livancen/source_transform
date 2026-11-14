@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import type { FileInfo } from "../types";
 import { computeCoverCrop, parseRatio } from "../utils/ratioCrop";
@@ -10,6 +10,7 @@ import {
   coverBox,
   formatBoxRatio,
   formatClock,
+  formatClockMs,
   fullSpanSegment,
   resizeBoxToRatio,
   scaleLockedBox,
@@ -70,6 +71,12 @@ const videoRef = ref<HTMLVideoElement | null>(null);
 const frameRef = ref<HTMLElement | null>(null);
 const timelineRef = ref<HTMLElement | null>(null);
 const speeds = [0.5, 1, 1.5, 2];
+const timeSteps = [
+  { delta: -1000, title: "后退 1 秒（Shift+←）", icon: "sec-back" },
+  { delta: -1, title: "后退 1 毫秒（←）", icon: "ms-back" },
+  { delta: 1, title: "前进 1 毫秒（→）", icon: "ms-fwd" },
+  { delta: 1000, title: "前进 1 秒（Shift+→）", icon: "sec-fwd" },
+] as const;
 const ratioDraft = ref("");
 const ratioEditing = ref(false);
 let hydrating = false;
@@ -896,7 +903,53 @@ function togglePlay() {
   else video.pause();
 }
 
+let ignoreScrub = false;
+
+function stepTime(deltaMs: number) {
+  const video = videoRef.value;
+  const limit = duration.value > 0 ? duration.value : video?.duration || 0;
+  if (!(limit > 0) || !deltaMs) return;
+  if (video && !video.paused) video.pause();
+  const base = video ? video.currentTime || 0 : currentTime.value;
+  const nextMs = Math.min(
+    Math.round(limit * 1000),
+    Math.max(0, Math.round(base * 1000) + deltaMs),
+  );
+  const next = nextMs / 1000;
+  ignoreScrub = true;
+  currentTime.value = next;
+  if (video) video.currentTime = next;
+  requestAnimationFrame(() => {
+    ignoreScrub = false;
+  });
+  if (selectedIds.value.length > 1) return;
+  const hit = pieceAtTime(next);
+  if (hit) selectOnly(hit.id);
+}
+
+function onStepKey(event: KeyboardEvent) {
+  if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+  if (event.altKey || event.ctrlKey || event.metaKey) return;
+  const target = event.target;
+  if (target instanceof HTMLElement) {
+    const tag = target.tagName;
+    if (
+      tag === "INPUT" ||
+      tag === "TEXTAREA" ||
+      tag === "SELECT" ||
+      target.isContentEditable
+    ) {
+      return;
+    }
+  }
+  if (!(duration.value > 0)) return;
+  event.preventDefault();
+  const dir = event.key === "ArrowLeft" ? -1 : 1;
+  stepTime(dir * (event.shiftKey ? 1000 : 1));
+}
+
 function onScrub(value: number) {
+  if (ignoreScrub) return;
   const video = videoRef.value;
   currentTime.value = value;
   if (video) video.currentTime = value;
@@ -907,9 +960,14 @@ function setRate(rate: number) {
   if (videoRef.value) videoRef.value.playbackRate = rate;
 }
 
+onMounted(() => {
+  window.addEventListener("keydown", onStepKey);
+});
+
 onBeforeUnmount(() => {
   onBoxUp();
   stopScrub?.();
+  window.removeEventListener("keydown", onStepKey);
 });
 </script>
 
@@ -1240,8 +1298,54 @@ onBeforeUnmount(() => {
                   <polygon points="8,5 19,12 8,19" />
                 </svg>
               </button>
+              <button
+                v-for="step in timeSteps"
+                :key="step.delta"
+                class="step-icon"
+                type="button"
+                :title="step.title"
+                :disabled="!duration"
+                @click="stepTime(step.delta)"
+              >
+                <svg
+                  v-if="step.icon === 'sec-back'"
+                  viewBox="0 0 24 24"
+                  class="w-14px h-14px"
+                  fill="currentColor"
+                >
+                  <polygon points="12,6 5,12 12,18" />
+                  <polygon points="20,6 13,12 20,18" />
+                </svg>
+                <svg
+                  v-else-if="step.icon === 'ms-back'"
+                  viewBox="0 0 24 24"
+                  class="w-14px h-14px"
+                  fill="currentColor"
+                >
+                  <rect x="5" y="6" width="2" height="12" />
+                  <polygon points="18,6 9,12 18,18" />
+                </svg>
+                <svg
+                  v-else-if="step.icon === 'ms-fwd'"
+                  viewBox="0 0 24 24"
+                  class="w-14px h-14px"
+                  fill="currentColor"
+                >
+                  <polygon points="6,6 15,12 6,18" />
+                  <rect x="17" y="6" width="2" height="12" />
+                </svg>
+                <svg
+                  v-else
+                  viewBox="0 0 24 24"
+                  class="w-14px h-14px"
+                  fill="currentColor"
+                >
+                  <polygon points="4,6 11,12 4,18" />
+                  <polygon points="12,6 19,12 12,18" />
+                </svg>
+              </button>
               <span class="text-11px color-t2 font-mono tabular-nums shrink-0">
-                {{ formatClock(currentTime) }} / {{ formatClock(duration) }}
+                {{ formatClockMs(currentTime) }} / {{ formatClockMs(duration) }}
               </span>
               <input
                 class="flex-1 min-w-80px accent-secondary"
@@ -1402,6 +1506,52 @@ onBeforeUnmount(() => {
                   </svg>
                 </button>
                 <button
+                  v-for="step in timeSteps"
+                  :key="step.delta"
+                  class="step-icon"
+                  type="button"
+                  :title="step.title"
+                  :disabled="!duration"
+                  @click="stepTime(step.delta)"
+                >
+                  <svg
+                    v-if="step.icon === 'sec-back'"
+                    viewBox="0 0 24 24"
+                    class="w-14px h-14px"
+                    fill="currentColor"
+                  >
+                    <polygon points="12,6 5,12 12,18" />
+                    <polygon points="20,6 13,12 20,18" />
+                  </svg>
+                  <svg
+                    v-else-if="step.icon === 'ms-back'"
+                    viewBox="0 0 24 24"
+                    class="w-14px h-14px"
+                    fill="currentColor"
+                  >
+                    <rect x="5" y="6" width="2" height="12" />
+                    <polygon points="18,6 9,12 18,18" />
+                  </svg>
+                  <svg
+                    v-else-if="step.icon === 'ms-fwd'"
+                    viewBox="0 0 24 24"
+                    class="w-14px h-14px"
+                    fill="currentColor"
+                  >
+                    <polygon points="6,6 15,12 6,18" />
+                    <rect x="17" y="6" width="2" height="12" />
+                  </svg>
+                  <svg
+                    v-else
+                    viewBox="0 0 24 24"
+                    class="w-14px h-14px"
+                    fill="currentColor"
+                  >
+                    <polygon points="4,6 11,12 4,18" />
+                    <polygon points="12,6 19,12 12,18" />
+                  </svg>
+                </button>
+                <button
                   class="seg-tool"
                   type="button"
                   :disabled="locked || multi"
@@ -1445,7 +1595,8 @@ onBeforeUnmount(() => {
                   {{ outputPreview ? "退出预览" : "预览" }}
                 </button>
                 <span class="ml-auto text-10px color-white/50"
-                  >拖红线移动时间 · 悬停边缘改时长 · Ctrl 点选</span
+                  >拖红线移动时间 · ← → 1 毫秒 · Shift+← → 1 秒 · 悬停边缘改时长
+                  · Ctrl 点选</span
                 >
               </div>
               <div
@@ -1524,8 +1675,36 @@ onBeforeUnmount(() => {
 <style scoped>
 .seg-dock .play-btn,
 .seg-dock .seg-tool,
-.seg-dock .seg-clip {
+.seg-dock .seg-clip,
+.seg-dock .step-icon {
   border-radius: 0;
+}
+.step-icon {
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  padding: 0;
+  border: 1px solid #e0e0e0;
+  border-radius: 4px;
+  background: transparent;
+  color: #616161;
+  cursor: pointer;
+}
+.step-icon:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+.step-icon:hover:not(:disabled) {
+  background: rgba(0, 0, 0, 0.06);
+}
+.seg-dock .step-icon {
+  border-color: rgba(255, 255, 255, 0.16);
+  color: #fff;
+}
+.seg-dock .step-icon:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.08);
 }
 .seg-tool {
   height: 24px;

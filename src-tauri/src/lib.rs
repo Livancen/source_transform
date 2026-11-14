@@ -1,3 +1,5 @@
+#[cfg(desktop)]
+mod app_update;
 mod commands;
 mod segment;
 mod hw;
@@ -48,6 +50,7 @@ pub fn run() {
 
             #[cfg(desktop)]
             {
+                app.manage(app_update::PendingUpdate::default());
                 app.handle()
                     .plugin(tauri_plugin_updater::Builder::new().build())?;
 
@@ -127,6 +130,8 @@ pub fn run() {
             commands::clear_logs,
             commands::export_logs,
             commands::open_logs_dir,
+            app_update::check_app_update,
+            app_update::download_and_install_app_update,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

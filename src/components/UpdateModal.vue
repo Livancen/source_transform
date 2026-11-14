@@ -11,6 +11,7 @@ const {
   downloadedBytes,
   totalBytes,
   errorMessage,
+  downloadHint,
   isUpdating,
   formatBytes,
   startUpdate,
@@ -66,6 +67,7 @@ const {
           <p class="text-13px color-t2 leading-relaxed">
             检测到新版本 <strong class="color-t1">{{ latestVersion }}</strong>，是否立即更新？
           </p>
+          <p v-if="downloadHint" class="text-11px color-t3">{{ downloadHint }}</p>
           <div
             v-if="releaseNotes"
             class="max-h-140px overflow-auto p-10px rounded-4px bg-bg0 border border-border text-12px color-t2 whitespace-pre-wrap"
@@ -87,6 +89,9 @@ const {
                 ? "下载完成，正在安装…"
                 : "正在下载更新包，请勿关闭应用"
             }}
+          </div>
+          <div v-if="downloadHint" class="text-11px color-t3">
+            {{ downloadHint }}
           </div>
           <div class="h-3px rounded-full bg-bg3 overflow-hidden">
             <div

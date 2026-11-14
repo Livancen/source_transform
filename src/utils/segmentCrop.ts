@@ -266,6 +266,15 @@ export function formatClock(sec: number): string {
   return `${m}:${String(s).padStart(2, "0")}.${tenth}`;
 }
 
+export function formatClockMs(sec: number): string {
+  if (!Number.isFinite(sec) || sec < 0) return "0:00.000";
+  const total = Math.floor(sec);
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  const ms = Math.min(999, Math.floor((sec - total) * 1000));
+  return `${m}:${String(s).padStart(2, "0")}.${String(ms).padStart(3, "0")}`;
+}
+
 function toExportPieces(pieces: SegmentPiece[]): SegmentExportPiece[] {
   return pieces.map((piece) => ({
     start: piece.start,

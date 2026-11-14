@@ -24,7 +24,8 @@ const {
   scanAllFiles,
 } = useWorkspace();
 
-const { phase, checkForUpdates } = useUpdater();
+const { phase, checkForUpdates, mirrorInput, mirrorError, persistMirror } =
+  useUpdater();
 const { showToast } = useToast();
 const checkingUpdate = ref(false);
 const logContent = ref("");
@@ -35,6 +36,23 @@ const logBox = ref<HTMLElement | null>(null);
 
 function goHome() {
   router.push({ name: "home" });
+}
+
+function saveMirrorSetting() {
+  const result = persistMirror();
+  if (!result.ok) {
+    showToast(result.message, "error");
+    return;
+  }
+  showToast(
+    result.value ? "更新加速已保存" : "已关闭更新加速，将直连 GitHub",
+    "success",
+  );
+}
+
+function clearMirrorSetting() {
+  mirrorInput.value = "";
+  saveMirrorSetting();
 }
 
 async function onCheckUpdate() {
@@ -357,6 +375,43 @@ onMounted(() => {
               <span class="color-t1 font-mono">{{ hwAccel.active_h264 }}</span>
               · H.265
               <span class="color-t1 font-mono">{{ hwAccel.active_hevc }}</span>
+            </div>
+          </div>
+
+          <div
+            class="p-10px rounded-4px bg-bg2 border border-border flex flex-col gap-6px"
+          >
+            <div class="text-12px font-500">GitHub 更新加速</div>
+            <div class="text-10px color-t3 leading-relaxed">
+              只填加速站的 https 地址，不要带 GitHub 路径。检查更新和下载安装包时，会把它拼在原来的 GitHub 链接前面。留空则直连；加速站失败会自动改回直连。
+            </div>
+            <div class="flex items-center gap-6px">
+              <input
+                class="field flex-1 min-w-0 font-mono text-11px! h-28px!"
+                type="text"
+                v-model="mirrorInput"
+                placeholder="https://加速站域名"
+                spellcheck="false"
+                @keyup.enter="saveMirrorSetting"
+              />
+              <button
+                class="tb-btn h-28px! px-8px! text-11px!"
+                type="button"
+                @click="saveMirrorSetting"
+              >
+                保存
+              </button>
+              <button
+                class="tb-btn h-28px! px-8px! text-11px!"
+                type="button"
+                :disabled="!mirrorInput.trim()"
+                @click="clearMirrorSetting"
+              >
+                清除
+              </button>
+            </div>
+            <div v-if="mirrorError" class="text-10px color-danger">
+              {{ mirrorError }}
             </div>
           </div>
 
