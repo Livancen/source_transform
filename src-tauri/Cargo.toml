@@ -1,6 +1,6 @@
 [package]
 name = "source_transform"
-version = "8.6.10"
+version = "8.6.11"
 description = "A Tauri App"
 authors = ["you"]
 edition = "2021"
